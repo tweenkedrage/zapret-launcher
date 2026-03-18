@@ -32,7 +32,7 @@ general (SIMPLE FAKE).bat
 
 Если произошли какие то ошибки: `ipconfig /flushdns && netsh winsock reset && netsh int ip reset && taskkill /F /IM winws.exe 2>nul && taskkill /F /IM ws2s.exe 2>nul && taskkill /F /IM nfqws.exe 2>nul && taskkill /F /IM divert.exe 2>nul`
 
-Оригинальный запрет: https://github.com/flowseal/zapret-discord-youtube
-Оригинальный тг прокси: https://github.com/Flowseal/tg-ws-proxy
+1. Оригинальный запрет: https://github.com/flowseal/zapret-discord-youtube
+2. Оригинальный тг прокси: https://github.com/Flowseal/tg-ws-proxy
 
 **by trimansberg.**
