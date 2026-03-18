@@ -199,9 +199,6 @@ class ZapretCore:
             self.ipset_filter_mode = modes[(current_idx + 1) % 3]
             return True, f"IPSet Filter: {self.ipset_filter_mode}"
             
-        elif command == "update_hosts":
-            return self.update_hosts_file()
-            
         elif command == "update_ipset":
             return self.download_ipset_list()
             
@@ -214,58 +211,6 @@ class ZapretCore:
             
         return False, f"Неизвестная команда: {command}"
         
-    def update_hosts_file(self) -> Tuple[bool, str]:
-        try:
-            hosts_path = Path(os.environ['SystemRoot']) / 'System32' / 'drivers' / 'etc' / 'hosts'
-            backup_path = hosts_path.with_suffix('.bak')
-            
-            if hosts_path.exists() and not backup_path.exists():
-                shutil.copy2(hosts_path, backup_path)
-                
-            with open(hosts_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-                
-            new_entries = """
-# ZAPRET LAUNCHER ENTRIES
-149.154.167.220 pluto.web.telegram.org
-149.154.167.220 venus.web.telegram.org
-149.154.167.220 aurora.web.telegram.org
-149.154.167.220 flora.web.telegram.org
-149.154.167.220 stars.web.telegram.org
-149.154.167.220 web.telegram.org
-149.154.167.220 get.web.telegram.org
-149.154.167.220 react.web.telegram.org
-149.154.167.220 comments.web.telegram.org
-149.154.167.220 instant.view
-149.154.167.220 t.me
-149.154.167.220 telegram.org
-149.154.167.220 discord.com
-149.154.167.220 discord.media
-149.154.167.220 discordapp.com
-"""
-            lines = content.splitlines()
-            new_lines = []
-            skip = False
-            for line in lines:
-                if "# ZAPRET LAUNCHER ENTRIES" in line:
-                    skip = True
-                    continue
-                if skip and line.strip() == "":
-                    skip = False
-                    continue
-                if not skip:
-                    new_lines.append(line)
-                    
-            new_lines.append(new_entries)
-            
-            with open(hosts_path, 'w', encoding='utf-8') as f:
-                f.write("\n".join(new_lines))
-                
-            return True, "Hosts файл успешно обновлен"
-            
-        except Exception as e:
-            return False, f"Ошибка обновления hosts: {str(e)}"
-            
     def download_ipset_list(self) -> Tuple[bool, str]:
         try:
             url = "https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/master/lists/ipset-all.txt"
@@ -588,7 +533,6 @@ class ZapretLauncher:
                 ("🌐 IPSet Filter", "ipset_filter"),
             ]),
             ("Обновление", [
-                ("📝 Обновить hosts", "update_hosts"),
                 ("🌍 Обновить IPSet список", "update_ipset"),
             ]),
         ]
