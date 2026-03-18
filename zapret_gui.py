@@ -17,6 +17,7 @@ import re
 import signal
 import urllib.request
 import urllib.error
+import ctypes
 from typing import Optional, List, Dict, Tuple
 
 from tg_proxy import run_proxy, parse_dc_ip_list
@@ -25,7 +26,19 @@ from list_editor import ListEditor
 APPDATA_DIR = Path(os.getenv('LOCALAPPDATA')) / 'ZapretLauncher'
 CONFIG_FILE = APPDATA_DIR / 'config.json'
 ZAPRET_RESOURCES_ZIP = "zapret_resources.zip"
-ZAPRET_CORE_DIR = Path(__file__).parent / "zapret_core"
+ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
+
+def is_admin():
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin()
+    except:
+        return False
+
+def run_as_admin():
+    ctypes.windll.shell32.ShellExecuteW(
+        None, "runas", sys.executable, " ".join(sys.argv), None, 1
+    )
+    sys.exit()
 
 class TGProxyServer:
     def __init__(self):
@@ -339,7 +352,7 @@ class ModernSwitch(tk.Canvas):
 class RoundedButton(tk.Canvas):
     def __init__(self, parent, text, command, width=200, height=40, 
                  bg='#4361ee', fg='white', font=("Segoe UI", 11, "bold"), corner_radius=8):
-        super().__init__(parent, width=width, height=height, highlightthickness=0, bg=parent['bg'])
+        super().__init__(parent, width=width, height=height, highlightthickness=0, bg=parent['bg'], cursor="hand2")
         self.command = command
         self.bg = bg
         self.fg = fg
@@ -463,7 +476,7 @@ class ZapretLauncher:
         nav_buttons = [
             ("🏠 Главная", self.show_main_page),
             ("⚙️ Сервис", self.show_service_page),
-            ("📋 Редактор листов", self.show_lists_page),
+            ("📋 Редактор", self.show_lists_page),
         ]
         
         for text, command in nav_buttons:
@@ -478,17 +491,24 @@ class ZapretLauncher:
         separator = tk.Frame(left_panel, bg=self.colors['separator'], height=1)
         separator.pack(fill=tk.X, padx=15, pady=20)
         
-        status_frame = tk.Frame(left_panel, bg=self.colors['bg_medium'])
-        status_frame.pack(side=tk.BOTTOM, pady=(0, 30), fill=tk.X)
+        credit_frame = tk.Frame(left_panel, bg=self.colors['bg_medium'])
+        credit_frame.pack(side=tk.BOTTOM, pady=(0, 30), fill=tk.X)
         
-        self.left_status = tk.Label(status_frame, text="⚫", font=("Segoe UI", 12), 
+        self.left_status = tk.Label(credit_frame, text="⚫", font=("Segoe UI", 12), 
                                     fg=self.colors['text_secondary'], bg=self.colors['bg_medium'])
         self.left_status.pack()
         
-        tk.Label(status_frame, text="v1.0", font=("Segoe UI", 9), 
+        tk.Label(credit_frame, text="v2.1", font=("Segoe UI", 9), 
                 fg=self.colors['text_secondary'], bg=self.colors['bg_medium']).pack(pady=(5, 0))
-        tk.Label(status_frame, text="by trimansberg", font=("Segoe UI", 8), 
-                fg=self.colors['text_secondary'], bg=self.colors['bg_medium']).pack()
+        
+        self.credit_label = tk.Label(credit_frame, text="by trimansberg", font=("Segoe UI", 8), 
+                                    fg=self.colors['text_secondary'], bg=self.colors['bg_medium'],
+                                    cursor="hand2")
+        self.credit_label.pack(pady=(2, 0))
+
+        self.credit_label.bind("<Enter>", lambda e: self.credit_label.config(fg=self.colors['accent']))
+        self.credit_label.bind("<Leave>", lambda e: self.credit_label.config(fg=self.colors['text_secondary']))
+        self.credit_label.bind("<Button-1>", lambda e: self.open_github())
 
     def create_main_page(self):
         self.main_page = tk.Frame(self.content_panel, bg=self.colors['bg_dark'])
@@ -524,6 +544,8 @@ class ZapretLauncher:
                                       values=self.zapret.available_strategies,
                                       width=40, font=self.font_primary)
         strategy_combo.pack(side=tk.LEFT, padx=10)
+        strategy_combo.bind("<Enter>", lambda e: strategy_combo.config(cursor="hand2"))
+        strategy_combo.bind("<Leave>", lambda e: strategy_combo.config(cursor=""))
         if self.zapret.available_strategies:
             self.strategy_var.set(self.zapret.available_strategies[0])
         
@@ -535,7 +557,8 @@ class ZapretLauncher:
         
         self.tgws_var = tk.BooleanVar(value=False)
         tgws_check = tk.Checkbutton(tgws_frame, variable=self.tgws_var,
-                                   bg=self.colors['bg_medium'], activebackground=self.colors['bg_medium'])
+                                   bg=self.colors['bg_medium'], activebackground=self.colors['bg_medium'],
+                                   cursor="hand2")
         tgws_check.pack(side=tk.LEFT)
         
         tk.Label(tgws_frame, text="Запустить вместе с Zapret", font=self.font_primary,
@@ -587,7 +610,7 @@ class ZapretLauncher:
     def create_lists_page(self):
         self.lists_page = tk.Frame(self.content_panel, bg=self.colors['bg_dark'])
         
-        tk.Label(self.lists_page, text="Редактор листов", font=("Segoe UI", 32, "bold"),
+        tk.Label(self.lists_page, text="Редактор", font=("Segoe UI", 32, "bold"),
                 fg=self.colors['text_primary'], bg=self.colors['bg_dark']).pack(anchor='w', pady=(30, 30), padx=30)
         
         lists_content = tk.Frame(self.lists_page, bg=self.colors['bg_light'])
@@ -621,6 +644,10 @@ class ZapretLauncher:
         lists_path = os.path.join(self.zapret.zapret_dir, "lists")
         file_path = os.path.join(lists_path, filename)
         ListEditor(self.root, file_path, filename)
+
+    def open_github(self):
+        import webbrowser
+        webbrowser.open("https://github.com/tweenkedrage/zapret-launcher")
 
     def check_initial_status(self):
         if self.zapret.is_winws_running():
