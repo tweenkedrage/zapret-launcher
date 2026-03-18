@@ -28,6 +28,10 @@ CONFIG_FILE = APPDATA_DIR / 'config.json'
 ZAPRET_RESOURCES_ZIP = "zapret_resources.zip"
 ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
+LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
+ZAPRET_API_URL = "https://api.github.com/repos/flowseal/zapret-discord-youtube/releases/latest"
+CURRENT_VERSION = "2.1"
+
 def is_admin():
     try:
         return ctypes.windll.shell32.IsUserAnAdmin()
@@ -39,6 +43,182 @@ def run_as_admin():
         None, "runas", sys.executable, " ".join(sys.argv), None, 1
     )
     sys.exit()
+
+def check_zapret_folder():
+    if not ZAPRET_CORE_DIR.exists():
+        messagebox.showerror(
+            "Ошибка", 
+            "Папка с Zapret не найдена!\n\n"
+            f"Ожидаемая папка: {ZAPRET_CORE_DIR}\n\n"
+            "Запустите программу заново для распаковки ресурсов."
+        )
+        return False
+    return True
+
+def open_zapret_folder():
+    if not check_zapret_folder():
+        return
+    try:
+        os.startfile(ZAPRET_CORE_DIR)
+    except Exception as e:
+        messagebox.showerror("Ошибка", f"Не удалось открыть папку: {str(e)}")
+
+def check_launcher_updates(parent, silent=False):
+    try:
+        with urllib.request.urlopen(LAUNCHER_API_URL, timeout=5) as response:
+            data = json.loads(response.read().decode())
+            latest_version = data.get('tag_name', '').replace('v', '')
+            
+            if latest_version and latest_version > CURRENT_VERSION:
+                result = messagebox.askyesno(
+                    "Обновление лаунчера",
+                    f"Доступна новая версия лаунчера {latest_version}\n"
+                    f"Текущая версия: {CURRENT_VERSION}\n\n"
+                    "Хотите перейти на страницу загрузки?"
+                )
+                if result:
+                    import webbrowser
+                    webbrowser.open(data.get('html_url', 'https://github.com/tweenkedrage/zapret-launcher/releases'))
+                return True
+            else:
+                if not silent:
+                    messagebox.showinfo("Обновления", "У вас установлена последняя версия лаунчера")
+                return False
+    except Exception as e:
+        if not silent:
+            messagebox.showerror("Ошибка", f"Не удалось проверить обновления лаунчера: {str(e)}")
+        return False
+
+def check_zapret_updates(parent, silent=False):
+    try:
+        with urllib.request.urlopen(ZAPRET_API_URL, timeout=5) as response:
+            data = json.loads(response.read().decode())
+            latest_version = data.get('tag_name', '').replace('v', '')
+            
+            zapret_version_file = ZAPRET_CORE_DIR / "version.txt"
+            current_zapret_version = "0.0"
+            if zapret_version_file.exists():
+                with open(zapret_version_file, 'r') as f:
+                    current_zapret_version = f.read().strip()
+            
+            if latest_version and latest_version > current_zapret_version:
+                result = messagebox.askyesno(
+                    "Обновление Zapret",
+                    f"Доступна новая версия Zapret {latest_version}\n"
+                    f"Текущая версия: {current_zapret_version}\n\n"
+                    "Хотите обновить? (Ваши пользовательские списки будут сохранены)"
+                )
+                if result:
+                    update_zapret_core(parent, latest_version)
+                return True
+            else:
+                if not silent:
+                    messagebox.showinfo("Обновления", "У вас установлена последняя версия Zapret")
+                return False
+    except Exception as e:
+        if not silent:
+            messagebox.showerror("Ошибка", f"Не удалось проверить обновления Zapret: {str(e)}")
+        return False
+
+def update_zapret_core(parent, version):
+    try:
+        parent.update_status("Обновление Zapret...", parent.colors['accent'])
+        parent.root.update()
+        
+        if parent.zapret.is_winws_running():
+            parent.zapret.stop_current_strategy()
+            time.sleep(1)
+
+        user_lists = {}
+        lists_dir = ZAPRET_CORE_DIR / "lists"
+        if lists_dir.exists():
+            for file in lists_dir.glob("*-user.txt"):
+                try:
+                    with open(file, 'r', encoding='utf-8') as f:
+                        user_lists[file.name] = f.read()
+                except:
+                    pass
+        
+        download_url = f"https://github.com/flowseal/zapret-discord-youtube/archive/refs/heads/master.zip"
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_file:
+            urllib.request.urlretrieve(download_url, tmp_file.name)
+            temp_zip = tmp_file.name
+            time.sleep(2)
+
+            try:
+                subprocess.run('taskkill /F /IM winws.exe', shell=True, capture_output=True)
+                subprocess.run('taskkill /F /IM ws2s.exe', shell=True, capture_output=True)
+                subprocess.run('taskkill /F /IM nfqws.exe', shell=True, capture_output=True)
+                subprocess.run('sc stop WinDivert*', shell=True, capture_output=True)
+                time.sleep(1)
+            except:
+                pass
+
+            max_attempts = 3
+            for attempt in range(max_attempts):
+                try:
+                    if ZAPRET_CORE_DIR.exists():
+                        shutil.rmtree(ZAPRET_CORE_DIR)
+                    break
+                except Exception as delete_error:
+                    print(f"Попытка {attempt + 1} не удалась: {delete_error}")
+                    if attempt < max_attempts - 1:
+                        try:
+                            os.system(f'rmdir /s /q "{ZAPRET_CORE_DIR}"')
+                            time.sleep(1)
+                        except:
+                            pass
+                        continue
+                    else:
+                        raise Exception(f"Не удалось удалить папку после {max_attempts} попыток. Попробуйте перезагрузить компьютер.")
+        
+        ZAPRET_CORE_DIR.mkdir(parents=True, exist_ok=True)
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with zipfile.ZipFile(temp_zip, 'r') as zipf:
+                zipf.extractall(temp_dir)
+            
+            extracted_dirs = os.listdir(temp_dir)
+            if extracted_dirs:
+                source_dir = os.path.join(temp_dir, extracted_dirs[0])
+                
+                for item in os.listdir(source_dir):
+                    s = os.path.join(source_dir, item)
+                    d = os.path.join(ZAPRET_CORE_DIR, item)
+                    if os.path.isdir(s):
+                        shutil.copytree(s, d)
+                    else:
+                        shutil.copy2(s, d)
+        
+        os.unlink(temp_zip)
+        
+        with open(ZAPRET_CORE_DIR / "version.txt", 'w') as f:
+            f.write(version)
+        
+        lists_dir = ZAPRET_CORE_DIR / "lists"
+        lists_dir.mkdir(exist_ok=True)
+        for filename, content in user_lists.items():
+            try:
+                file_path = lists_dir / filename
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(content)
+            except:
+                pass
+        
+        parent.zapret.load_strategies()
+        strategy_combo = parent.strategy_combo
+        if hasattr(parent, 'strategy_combo'):
+            parent.strategy_combo['values'] = parent.zapret.available_strategies
+            if parent.zapret.available_strategies:
+                parent.strategy_var.set(parent.zapret.available_strategies[0])
+        
+        parent.update_status("Готов к работе")
+        messagebox.showinfo("Успех", f"Zapret успешно обновлен до версии {version}")
+        
+    except Exception as e:
+        messagebox.showerror("Ошибка", f"Не удалось обновить Zapret: {str(e)}")
+        parent.update_status("Готов к работе")
 
 class TGProxyServer:
     def __init__(self):
@@ -118,6 +298,12 @@ class ZapretCore:
         try:
             with zipfile.ZipFile(archive_path, 'r') as zipf:
                 zipf.extractall(self.zapret_dir)
+            
+            version_file = self.zapret_dir / "version.txt"
+            if not version_file.exists():
+                with open(version_file, 'w') as f:
+                    f.write("1.9.7")
+                    
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось распаковать ресурсы: {e}")
             sys.exit(1)
@@ -135,6 +321,12 @@ class ZapretCore:
         return name.strip()
         
     def run_strategy(self, strategy_name: str) -> Tuple[bool, str]:
+        if not is_admin():
+            return False, "Запустите программу от имени администратора!"
+            
+        if not check_zapret_folder():
+            return False, "Папка с Zapret не найдена!"
+            
         strategy_path = self.zapret_dir / strategy_name
         if not strategy_path.exists():
             return False, f"Стратегия {strategy_name} не найдена"
@@ -202,13 +394,6 @@ class ZapretCore:
         elif command == "update_ipset":
             return self.download_ipset_list()
             
-        elif command.startswith("install_"):
-            strategy = command.replace("install_", "")
-            return self.install_service(strategy)
-            
-        elif command == "remove_services":
-            return self.remove_services()
-            
         return False, f"Неизвестная команда: {command}"
         
     def download_ipset_list(self) -> Tuple[bool, str]:
@@ -227,40 +412,6 @@ class ZapretCore:
             return False, f"Ошибка загрузки: {str(e)}"
         except Exception as e:
             return False, f"Ошибка: {str(e)}"
-            
-    def install_service(self, strategy: str) -> Tuple[bool, str]:
-        try:
-            task_name = f"ZapretLauncher_{strategy}"
-            strategy_path = self.zapret_dir / strategy
-            
-            cmd = f'schtasks /create /tn "{task_name}" /tr "{strategy_path}" /sc onstart /ru SYSTEM /f'
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-            
-            if result.returncode == 0:
-                return True, f"Стратегия {strategy} установлена в автозапуск"
-            else:
-                return False, f"Ошибка: {result.stderr}"
-        except Exception as e:
-            return False, str(e)
-            
-    def remove_services(self) -> Tuple[bool, str]:
-        try:
-            cmd = 'schtasks /query | find "ZapretLauncher"'
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-            
-            removed = []
-            for line in result.stdout.splitlines():
-                if "ZapretLauncher" in line:
-                    task_name = line.split()[0]
-                    subprocess.run(f'schtasks /delete /tn "{task_name}" /f', shell=True)
-                    removed.append(task_name)
-                    
-            if removed:
-                return True, f"Удалено задач: {len(removed)}"
-            else:
-                return True, "Задачи не найдены"
-        except Exception as e:
-            return False, str(e)
 
 class ModernSwitch(tk.Canvas):
     def __init__(self, parent, width=50, height=24, bg_color='#25252B', 
@@ -370,6 +521,21 @@ class ZapretLauncher:
         self.font_title = ("Segoe UI", 28, "bold")
         self.font_bold = ("Segoe UI", 12, "bold")
         
+        if not is_admin():
+            result = messagebox.askyesno(
+                "Права администратора",
+                "Программа требует прав администратора для работы.\n\n"
+                "Запустить от имени администратора?"
+            )
+            if result:
+                run_as_admin()
+            else:
+                messagebox.showerror(
+                    "Ошибка", 
+                    "Программа не может работать без прав администратора."
+                )
+                sys.exit(1)
+        
         self.zapret = ZapretCore(self)
         self.tg_proxy = TGProxyServer()
         
@@ -383,6 +549,8 @@ class ZapretLauncher:
         
         self.setup_ui()
         self.root.after(100, self.check_initial_status)
+        self.root.after(1000, lambda: check_launcher_updates(self, silent=True))
+        self.root.after(2000, lambda: check_zapret_updates(self, silent=True))
         self.center_window()
         self.show_main_page()
 
@@ -419,9 +587,9 @@ class ZapretLauncher:
                 fg=self.colors['text_secondary'], bg=self.colors['bg_medium']).pack()
         
         nav_buttons = [
-            ("🏠 Главная", self.show_main_page),
-            ("⚙️ Сервис", self.show_service_page),
-            ("📋 Редактор", self.show_lists_page),
+            ("Главная", self.show_main_page),
+            ("Сервис", self.show_service_page),
+            ("Редактор", self.show_lists_page),
         ]
         
         for text, command in nav_buttons:
@@ -439,11 +607,11 @@ class ZapretLauncher:
         credit_frame = tk.Frame(left_panel, bg=self.colors['bg_medium'])
         credit_frame.pack(side=tk.BOTTOM, pady=(0, 30), fill=tk.X)
         
-        self.left_status = tk.Label(credit_frame, text="⚫", font=("Segoe UI", 12), 
+        self.left_status = tk.Label(credit_frame, text="●", font=("Segoe UI", 12), 
                                     fg=self.colors['text_secondary'], bg=self.colors['bg_medium'])
         self.left_status.pack()
         
-        tk.Label(credit_frame, text="v2.1", font=("Segoe UI", 9), 
+        tk.Label(credit_frame, text=f"v{CURRENT_VERSION}", font=("Segoe UI", 9), 
                 fg=self.colors['text_secondary'], bg=self.colors['bg_medium']).pack(pady=(5, 0))
         
         self.credit_label = tk.Label(credit_frame, text="by trimansberg", font=("Segoe UI", 8), 
@@ -485,12 +653,12 @@ class ZapretLauncher:
                 fg=self.colors['text_secondary'], bg=self.colors['bg_medium']).pack(side=tk.LEFT, padx=(0, 10))
         
         self.strategy_var = tk.StringVar()
-        strategy_combo = ttk.Combobox(strategy_frame, textvariable=self.strategy_var,
+        self.strategy_combo = ttk.Combobox(strategy_frame, textvariable=self.strategy_var,
                                       values=self.zapret.available_strategies,
                                       width=40, font=self.font_primary)
-        strategy_combo.pack(side=tk.LEFT, padx=10)
-        strategy_combo.bind("<Enter>", lambda e: strategy_combo.config(cursor="hand2"))
-        strategy_combo.bind("<Leave>", lambda e: strategy_combo.config(cursor=""))
+        self.strategy_combo.pack(side=tk.LEFT, padx=10)
+        self.strategy_combo.bind("<Enter>", lambda e: self.strategy_combo.config(cursor="hand2"))
+        self.strategy_combo.bind("<Leave>", lambda e: self.strategy_combo.config(cursor=""))
         if self.zapret.available_strategies:
             self.strategy_var.set(self.zapret.available_strategies[0])
         
@@ -524,16 +692,13 @@ class ZapretLauncher:
                 fg=self.colors['text_primary'], bg=self.colors['bg_dark']).pack(anchor='w', pady=(30, 20), padx=30)
         
         functions = [
-            ("Автозапуск", [
-                ("📥 Установить в автозапуск", "install_service"),
-                ("🗑️ Удалить из автозапуска", "remove_services"),
-            ]),
             ("Фильтры", [
-                ("🎮 Game Filter", "game_filter"),
-                ("🌐 IPSet Filter", "ipset_filter"),
+                ("Game Filter", "game_filter"),
+                ("IPSet Filter", "ipset_filter"),
             ]),
             ("Обновление", [
-                ("🌍 Обновить IPSet список", "update_ipset"),
+                ("Проверить обновление лаунчера", "check_launcher"),
+                ("Проверить обновление Zapret", "check_zapret"),
             ]),
         ]
         
@@ -545,10 +710,21 @@ class ZapretLauncher:
                     fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(anchor='w', padx=15, pady=(10, 5))
             
             for btn_text, cmd in items:
-                btn = RoundedButton(card, text=btn_text, 
-                                   command=lambda c=cmd: self.run_service_command(c),
-                                   width=200, height=35, bg=self.colors['button_bg'],
-                                   font=self.font_primary, corner_radius=8)
+                if cmd == "check_launcher":
+                    btn = RoundedButton(card, text=btn_text, 
+                                       command=lambda: check_launcher_updates(self, silent=False),
+                                       width=220, height=35, bg=self.colors['button_bg'],
+                                       font=self.font_primary, corner_radius=8)
+                elif cmd == "check_zapret":
+                    btn = RoundedButton(card, text=btn_text, 
+                                       command=lambda: check_zapret_updates(self, silent=False),
+                                       width=220, height=35, bg=self.colors['button_bg'],
+                                       font=self.font_primary, corner_radius=8)
+                else:
+                    btn = RoundedButton(card, text=btn_text, 
+                                       command=lambda c=cmd: self.run_service_command(c),
+                                       width=200, height=35, bg=self.colors['button_bg'],
+                                       font=self.font_primary, corner_radius=8)
                 btn.pack(anchor='w', padx=15, pady=2)
 
     def create_lists_page(self):
@@ -580,10 +756,18 @@ class ZapretLauncher:
                                      width=100, height=35, bg=self.colors['button_bg'], 
                                      font=("Segoe UI", 10, "bold"), corner_radius=8)
             edit_btn.pack()
+        
+        folder_frame = tk.Frame(self.lists_page, bg=self.colors['bg_dark'])
+        folder_frame.pack(fill=tk.X, padx=30, pady=(20, 10))
+        
+        open_folder_btn = RoundedButton(folder_frame, text="Открыть папку с Zapret", 
+                                       command=open_zapret_folder,
+                                       width=300, height=45, bg=self.colors['button_bg'], 
+                                       font=("Segoe UI", 11, "bold"), corner_radius=10)
+        open_folder_btn.pack()
 
     def edit_list_file(self, filename):
-        if not self.zapret.zapret_dir:
-            messagebox.showerror("Ошибка", "Сначала укажите путь к Zapret")
+        if not check_zapret_folder():
             return
         lists_path = os.path.join(self.zapret.zapret_dir, "lists")
         file_path = os.path.join(lists_path, filename)
@@ -594,6 +778,8 @@ class ZapretLauncher:
         webbrowser.open("https://github.com/tweenkedrage/zapret-launcher")
 
     def check_initial_status(self):
+        if not check_zapret_folder():
+            return
         if self.zapret.is_winws_running():
             self.is_connected = True
             self.update_status("Подключено", self.colors['accent_green'])
@@ -673,6 +859,8 @@ class ZapretLauncher:
         self.connect_btn.set_enabled(True)
 
     def run_service_command(self, command):
+        if not check_zapret_folder():
+            return
         success, result = self.zapret.run_service_command(command)
         if success:
             messagebox.showinfo("Успех", result)
