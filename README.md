@@ -11,4 +11,6 @@
 *Telegram Proxy:*
 Запускаем Telegram на ПК, переходим в настройки —> Продвинутые настройки —> Тип соединения —> Использовать собственное прокси (SOCKS5, Хост: 127.0.0.1, Порт: 1080).
 
+Если произошли какие то ошибки: `ipconfig /flushdns && netsh winsock reset && netsh int ip reset && taskkill /F /IM winws.exe 2>nul && taskkill /F /IM ws2s.exe 2>nul && taskkill /F /IM nfqws.exe 2>nul && taskkill /F /IM divert.exe 2>nul`
+
 by trimansberg.
