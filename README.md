@@ -21,11 +21,11 @@
 1. WIN + R: cmd, ipconfig /flushdns (Можно прописать в CMD также, как снизу (p.s Если произошли какие то ошибки));
 2. В браузере (Пример Google) заходим в настройки —> Конфиденциальность и безопасность —> Безопасность: Выбрать поставщика услуг DNS (Google: Public DNS или Cloudflare);
 3. По порядку пробовать:
-general (ALT).bat
-general (ALT2).bat
-general (ALT3).bat
-general (FAKE TLS AUTO).bat
-general (SIMPLE FAKE).bat
+3.1 general (ALT).bat,
+3.2 general (ALT2).bat,
+3.3 general (ALT3).bat,
+3.4 general (FAKE TLS AUTO).bat,
+3.5 general (SIMPLE FAKE).bat.
 4. Обновите hosts в лаунчере (Сервис —> Обновить hosts);
 
 **Разные провайдеры = разные блокировки.**
