@@ -17,12 +17,11 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 DEFAULT_PORT = 1080
 log = logging.getLogger('tg-ws-proxy')
 
-# Оптимизация: увеличены буферы для скорости
 _TCP_NODELAY = True
-_RECV_BUF = 262144  # Увеличено с 65536 до 262144
-_SEND_BUF = 262144  # Увеличено с 65536 до 262144
-_WS_POOL_SIZE = 8   # Увеличено с 4 до 8
-_WS_POOL_MAX_AGE = 180.0  # Увеличено с 120 до 180
+_RECV_BUF = 262144
+_SEND_BUF = 262144
+_WS_POOL_SIZE = 8
+_WS_POOL_MAX_AGE = 180.0
 
 _TG_RANGES = [
     (struct.unpack('!I', _socket.inet_aton('185.76.151.0'))[0],
@@ -60,14 +59,13 @@ _IP_TO_DC: Dict[str, Tuple[int, bool]] = {
 _dc_opt: Dict[int, Optional[str]] = {}
 _ws_blacklist: Set[Tuple[int, bool]] = set()
 _dc_fail_until: Dict[Tuple[int, bool], float] = {}
-_DC_FAIL_COOLDOWN = 30.0  # Уменьшено с 60 до 30 секунд
+_DC_FAIL_COOLDOWN = 30.0
 
 _ssl_ctx = ssl.create_default_context()
 _ssl_ctx.check_hostname = False
 _ssl_ctx.verify_mode = ssl.CERT_NONE
-# Оптимизация: настройки SSL для скорости
 _ssl_ctx.set_ciphers('HIGH:!aNULL:!kRSA:!PSK:!SRP:!MD5:!RC4')
-_ssl_ctx.options |= ssl.OP_NO_TICKET  # Отключаем TLS tickets для скорости
+_ssl_ctx.options |= ssl.OP_NO_TICKET
 
 def _set_sock_opts(transport):
     sock = transport.get_extra_info('socket')
@@ -117,21 +115,19 @@ class RawWebSocket:
         self.reader = reader
         self.writer = writer
         self._closed = False
-        # Оптимизация: кэшируем маску
         self._mask_cache = os.urandom(4)
 
     @staticmethod
     async def connect(ip: str, domain: str, path: str = '/apiws',
-                      timeout: float = 8.0) -> 'RawWebSocket':  # Уменьшено с 10 до 8
+                      timeout: float = 8.0) -> 'RawWebSocket':
         reader, writer = await asyncio.wait_for(
             asyncio.open_connection(ip, 443, ssl=_ssl_ctx,
                                     server_hostname=domain,
-                                    limit=_RECV_BUF),  # Увеличиваем лимит буфера
+                                    limit=_RECV_BUF),
             timeout=min(timeout, 8))
         _set_sock_opts(writer.transport)
 
         ws_key = base64.b64encode(os.urandom(16)).decode()
-        # Оптимизация: используем bytes для скорости
         req = (
             f'GET {path} HTTP/1.1\r\n'
             f'Host: {domain}\r\n'
@@ -196,7 +192,6 @@ class RawWebSocket:
     async def send_batch(self, parts: List[bytes]):
         if self._closed:
             raise ConnectionError("WebSocket closed")
-        # Оптимизация: объединяем фреймы для отправки
         frames = bytearray()
         for part in parts:
             frames.extend(self._build_frame(self.OP_BINARY, part, mask=True))
@@ -462,7 +457,6 @@ class _WsPool:
             needed = _WS_POOL_SIZE - len(bucket)
             if needed <= 0:
                 return
-            # Оптимизация: параллельное создание соединений
             tasks = [asyncio.create_task(
                 self._connect_one(target_ip, domains)) for _ in range(needed)]
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -476,7 +470,7 @@ class _WsPool:
     async def _connect_one(target_ip, domains) -> Optional[RawWebSocket]:
         for domain in domains:
             try:
-                ws = await RawWebSocket.connect(target_ip, domain, timeout=5)  # Уменьшено с 8 до 5
+                ws = await RawWebSocket.connect(target_ip, domain, timeout=5)
                 return ws
             except WsHandshakeError as exc:
                 if exc.is_redirect:
