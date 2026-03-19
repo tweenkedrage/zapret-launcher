@@ -18,6 +18,8 @@ import signal
 import urllib.request
 import urllib.error
 import ctypes
+import pystray
+from PIL import Image, ImageDraw
 from typing import Optional, List, Dict, Tuple
 
 from tg_proxy import run_proxy, parse_dc_ip_list
@@ -207,7 +209,6 @@ def update_zapret_core(parent, version):
                 pass
         
         parent.zapret.load_strategies()
-        strategy_combo = parent.strategy_combo
         if hasattr(parent, 'strategy_combo'):
             parent.strategy_combo['values'] = parent.zapret.available_strategies
             if parent.zapret.available_strategies:
@@ -391,27 +392,7 @@ class ZapretCore:
             self.ipset_filter_mode = modes[(current_idx + 1) % 3]
             return True, f"IPSet Filter: {self.ipset_filter_mode}"
             
-        elif command == "update_ipset":
-            return self.download_ipset_list()
-            
         return False, f"Неизвестная команда: {command}"
-        
-    def download_ipset_list(self) -> Tuple[bool, str]:
-        try:
-            url = "https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/master/lists/ipset-all.txt"
-            
-            with urllib.request.urlopen(url, timeout=10) as response:
-                data = response.read().decode('utf-8')
-            
-            ipset_path = self.lists_dir / "ipset-all.txt"
-            with open(ipset_path, 'w', encoding='utf-8') as f:
-                f.write(data)
-                
-            return True, "IPSet список обновлен"
-        except urllib.error.URLError as e:
-            return False, f"Ошибка загрузки: {str(e)}"
-        except Exception as e:
-            return False, f"Ошибка: {str(e)}"
 
 class ModernSwitch(tk.Canvas):
     def __init__(self, parent, width=50, height=24, bg_color='#25252B', 
@@ -491,15 +472,93 @@ class RoundedButton(tk.Canvas):
         color = self.normal_color if enabled else '#666666'
         self.itemconfig(self.rect, fill=color)
 
+class SystemTrayIcon:
+    def __init__(self, app):
+        self.app = app
+        self.icon = None
+        self.create_icon()
+
+    def create_icon(self):
+        try:
+            image = Image.open("icon.ico")
+            
+            if image.mode != 'RGBA':
+                image = image.convert('RGBA')
+            
+            image = image.resize((64, 64), Image.Resampling.LANCZOS)
+            
+        except Exception as e:
+            print(f"Не удалось загрузить иконку для трея: {e}")
+            image = Image.new('RGBA', (64, 64), '#4361ee')
+            draw = ImageDraw.Draw(image)
+            draw.rectangle([0, 0, 64, 64], fill='#4361ee', outline='#5a7aff', width=2)
+            draw.text((20, 20), "Z", fill='white', font=None)
+        
+        self.update_menu(image)
+        
+    def update_menu(self, image=None):
+        if self.app.is_connected:
+            connection_text = "Отключиться"
+        else:
+            connection_text = "Подключиться"
+        
+        menu = pystray.Menu(
+            pystray.MenuItem("Открыть лаунчер", self.show_window),
+            pystray.MenuItem(connection_text, self.toggle_connection),
+            pystray.MenuItem("Выход", self.quit_app)
+        )
+        
+        if self.icon:
+            self.icon.menu = menu
+            if image:
+                self.icon.icon = image
+        else:
+            if image is None:
+                image = Image.new('RGBA', (64, 64), '#4361ee')
+                draw = ImageDraw.Draw(image)
+                draw.rectangle([0, 0, 64, 64], fill='#4361ee', outline='#5a7aff', width=2)
+                draw.text((20, 20), "Z", fill='white', font=None)
+            
+            self.icon = pystray.Icon("zapret_launcher", image, "Zapret Launcher", menu)
+        
+    def show_window(self):
+        self.app.root.deiconify()
+        self.app.root.lift()
+        self.app.root.focus_force()
+
+    def toggle_connection(self):
+        self.app.toggle_connection()
+        self.update_menu()
+
+    def quit_app(self):
+        self.icon.stop()
+        self.app.on_closing()
+
+    def run(self):
+        self.icon.run()
+
 class ZapretLauncher:
     def __init__(self, root):
         self.root = root
         self.root.title("Zapret Launcher")
+        
+        try:
+            self.root.iconbitmap(default='icon.ico')
+        except Exception as e:
+            print(f"Ошибка iconbitmap: {e}")
+        try:
+            icon = tk.PhotoImage(file='icon.ico')
+            self.root.iconphoto(True, icon)
+        except Exception as e2:
+            print(f"Ошибка iconphoto: {e2}")
+        
         self.window_width = 1200
         self.window_height = 800
         self.root.geometry(f"{self.window_width}x{self.window_height}")
         self.root.resizable(False, False)
         
+        self.root.protocol("WM_DELETE_WINDOW", self.hide_window)
+            
         self.colors = {
             'bg_dark': '#0F0F12', 
             'bg_medium': '#1A1A1F', 
@@ -553,6 +612,21 @@ class ZapretLauncher:
         self.root.after(2000, lambda: check_zapret_updates(self, silent=True))
         self.center_window()
         self.show_main_page()
+        
+        self.tray_icon = SystemTrayIcon(self)
+        threading.Thread(target=self.tray_icon.run, daemon=True).start()
+
+    def hide_window(self):
+        self.root.withdraw()
+
+    def on_closing(self):
+        try:
+            self.zapret.stop_current_strategy()
+            self.tg_proxy.stop()
+        except:
+            pass
+        self.root.destroy()
+        os._exit(0)
 
     def center_window(self):
         x = (self.root.winfo_screenwidth() // 2) - (self.window_width // 2)
@@ -659,8 +733,6 @@ class ZapretLauncher:
         self.strategy_combo.pack(side=tk.LEFT, padx=10)
         self.strategy_combo.bind("<Enter>", lambda e: self.strategy_combo.config(cursor="hand2"))
         self.strategy_combo.bind("<Leave>", lambda e: self.strategy_combo.config(cursor=""))
-        if self.zapret.available_strategies:
-            self.strategy_var.set(self.zapret.available_strategies[0])
         
         tgws_frame = tk.Frame(quick_frame, bg=self.colors['bg_medium'])
         tgws_frame.pack(fill=tk.X, padx=15, pady=10)
@@ -684,6 +756,9 @@ class ZapretLauncher:
                                        width=300, height=55, bg=self.colors['accent'], 
                                        font=("Segoe UI", 16, "bold"), corner_radius=12)
         self.connect_btn.pack()
+        
+        if self.current_strategy and self.current_strategy in self.zapret.available_strategies:
+            self.strategy_var.set(self.current_strategy)
 
     def create_service_page(self):
         self.service_page = tk.Frame(self.content_panel, bg=self.colors['bg_dark'])
@@ -784,6 +859,8 @@ class ZapretLauncher:
             self.is_connected = True
             self.update_status("Подключено", self.colors['accent_green'])
             self.update_ui_state()
+            if hasattr(self, 'tray_icon'):
+                self.tray_icon.update_menu()
 
     def update_status(self, text, color=None):
         if color is None:
@@ -807,6 +884,8 @@ class ZapretLauncher:
             self.disconnect()
         else:
             self.connect()
+        if hasattr(self, 'tray_icon'):
+            self.tray_icon.update_menu()
 
     def connect(self):
         strategy = self.strategy_var.get()
@@ -826,6 +905,7 @@ class ZapretLauncher:
             self.update_status(f"Подключено: {self.zapret.get_strategy_display_name(strategy)}", 
                               self.colors['accent_green'])
             self.update_ui_state()
+            self.save_settings()
             
             if self.tgws_var.get():
                 self.tg_proxy.start()
@@ -879,6 +959,20 @@ class ZapretLauncher:
                 with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     self.tg_proxy_enabled = data.get('tg_proxy_enabled', False)
+                    saved_strategy = data.get('current_strategy')
+                    if saved_strategy and saved_strategy in self.zapret.available_strategies:
+                        self.current_strategy = saved_strategy
+        except:
+            pass
+
+    def save_settings(self):
+        try:
+            settings = {
+                'tg_proxy_enabled': self.tg_proxy_enabled,
+                'current_strategy': self.current_strategy
+            }
+            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+                json.dump(settings, f, indent=2)
         except:
             pass
 
