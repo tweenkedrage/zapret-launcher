@@ -5,8 +5,6 @@
 
 <img width="1196" height="824" alt="image" src="https://github.com/user-attachments/assets/611acb60-2f20-4666-ba81-9b030b71c612" />
 
-Ааа, понял! Для описания проекта на GitHub вот отформатированный текст:
-
 ***Установка:***
 1. Скачивайте архив и распаковывайте в любое место 2 файла: **Zapret_Launcher.exe** и **zapret_resources.zip**;
 2. Запускайте **Zapret_Launcher.exe** от **имени администратора**;
