@@ -29,4 +29,4 @@
 2. Оригинальный тг прокси: https://github.com/Flowseal/tg-ws-proxy
 
 **Разные провайдеры = разные блокировки.**
-***by trimansberg.***
+***by trimansberg***
