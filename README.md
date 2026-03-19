@@ -67,6 +67,4 @@
 - **Оригинальный TG Proxy**: https://github.com/Flowseal/tg-ws-proxy
 - **Оригинальный ByeDPI**: https://github.com/hufrea/byedpi
 
-**Программа полностью безопасна и с открытым кодом.**
-
 ***by trimansberg***
