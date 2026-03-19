@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import messagebox, filedialog, ttk
+from byedpi_optimizer import ByeDPIOptimizer
 import subprocess
 import os
 import json
@@ -21,6 +22,7 @@ import ctypes
 import pystray
 from PIL import Image, ImageDraw
 from typing import Optional, List, Dict, Tuple
+import webbrowser
 
 from tg_proxy import run_proxy, parse_dc_ip_list
 from list_editor import ListEditor
@@ -32,7 +34,7 @@ ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
 ZAPRET_API_URL = "https://api.github.com/repos/flowseal/zapret-discord-youtube/releases/latest"
-CURRENT_VERSION = "2.1a"
+CURRENT_VERSION = "2.2"
 
 def is_admin():
     try:
@@ -541,16 +543,18 @@ class ZapretLauncher:
     def __init__(self, root):
         self.root = root
         self.root.title("Zapret Launcher")
+        self.byedpi = ByeDPIOptimizer(APPDATA_DIR)
+        self.byedpi_enabled = False
         
         try:
             self.root.iconbitmap(default='icon.ico')
         except Exception as e:
-            print(f"Ошибка iconbitmap: {e}")
+            pass
         try:
             icon = tk.PhotoImage(file='icon.ico')
             self.root.iconphoto(True, icon)
         except Exception as e2:
-            print(f"Ошибка iconphoto: {e2}")
+            pass
         
         self.window_width = 1200
         self.window_height = 800
@@ -623,6 +627,8 @@ class ZapretLauncher:
         try:
             self.zapret.stop_current_strategy()
             self.tg_proxy.stop()
+            if self.byedpi_enabled:
+                self.byedpi.stop()
         except:
             pass
         self.root.destroy()
@@ -645,6 +651,7 @@ class ZapretLauncher:
         self.create_main_page()
         self.create_service_page()
         self.create_lists_page()
+        self.create_help_page()
 
     def create_left_panel(self):
         left_panel = tk.Frame(self.main_container, bg=self.colors['bg_medium'], width=250)
@@ -664,6 +671,7 @@ class ZapretLauncher:
             ("Главная", self.show_main_page),
             ("Сервис", self.show_service_page),
             ("Редактор", self.show_lists_page),
+            ("Помощь", self.show_help_page),
         ]
         
         for text, command in nav_buttons:
@@ -721,7 +729,7 @@ class ZapretLauncher:
                 fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(anchor='w', padx=15, pady=(10, 15))
         
         strategy_frame = tk.Frame(quick_frame, bg=self.colors['bg_medium'])
-        strategy_frame.pack(fill=tk.X, padx=15, pady=10)
+        strategy_frame.pack(fill=tk.X, padx=15, pady=5)
         
         tk.Label(strategy_frame, text="Стратегия:", font=self.font_medium,
                 fg=self.colors['text_secondary'], bg=self.colors['bg_medium']).pack(side=tk.LEFT, padx=(0, 10))
@@ -735,7 +743,7 @@ class ZapretLauncher:
         self.strategy_combo.bind("<Leave>", lambda e: self.strategy_combo.config(cursor=""))
         
         tgws_frame = tk.Frame(quick_frame, bg=self.colors['bg_medium'])
-        tgws_frame.pack(fill=tk.X, padx=15, pady=10)
+        tgws_frame.pack(fill=tk.X, padx=15, pady=5)
         
         tk.Label(tgws_frame, text="TGProxy:", font=self.font_medium,
                 fg=self.colors['text_secondary'], bg=self.colors['bg_medium']).pack(side=tk.LEFT, padx=(0, 10))
@@ -749,8 +757,29 @@ class ZapretLauncher:
         tk.Label(tgws_frame, text="Запустить вместе с Zapret", font=self.font_primary,
                 fg=self.colors['text_secondary'], bg=self.colors['bg_medium']).pack(side=tk.LEFT, padx=5)
         
+        byedpi_frame = tk.Frame(quick_frame, bg=self.colors['bg_medium'])
+        byedpi_frame.pack(fill=tk.X, padx=15, pady=5)
+        
+        tk.Label(byedpi_frame, text="ByeDPI Оптимизатор:", 
+                 font=self.font_medium, fg=self.colors['text_secondary'], 
+                 bg=self.colors['bg_medium']).pack(side=tk.LEFT, padx=(0, 10))
+        
+        self.byedpi_var = tk.BooleanVar(value=self.byedpi_enabled)
+        byedpi_check = tk.Checkbutton(byedpi_frame, variable=self.byedpi_var,
+                                      bg=self.colors['bg_medium'], 
+                                      activebackground=self.colors['bg_medium'],
+                                      cursor="hand2",
+                                      command=self.on_byedpi_change)
+        byedpi_check.pack(side=tk.LEFT)
+        
+        self.byedpi_status = tk.Label(byedpi_frame, text="", 
+                                      font=self.font_primary, 
+                                      fg=self.colors['text_secondary'], 
+                                      bg=self.colors['bg_medium'])
+        self.byedpi_status.pack(side=tk.LEFT, padx=5)
+        
         button_frame = tk.Frame(quick_frame, bg=self.colors['bg_medium'])
-        button_frame.pack(fill=tk.X, padx=15, pady=(20, 10))
+        button_frame.pack(fill=tk.X, padx=15, pady=(15, 10))
         
         self.connect_btn = RoundedButton(button_frame, text="ПОДКЛЮЧИТЬСЯ", command=self.toggle_connection,
                                        width=300, height=55, bg=self.colors['accent'], 
@@ -759,6 +788,33 @@ class ZapretLauncher:
         
         if self.current_strategy and self.current_strategy in self.zapret.available_strategies:
             self.strategy_var.set(self.current_strategy)
+        
+        self.update_byedpi_status()
+
+    def on_byedpi_change(self):
+        self.byedpi_enabled = self.byedpi_var.get()
+        
+        if self.byedpi_enabled:
+            success, msg = self.byedpi.start()
+            if not success:
+                messagebox.showerror("Ошибка ByeDPI", msg)
+                self.byedpi_var.set(False)
+                self.byedpi_enabled = False
+        else:
+            self.byedpi.stop()
+        
+        self.update_byedpi_status()
+        self.save_settings()
+
+    def update_byedpi_status(self):
+        status = self.byedpi.get_status()
+        if status['running']:
+            self.byedpi_status.config(text=f"v{status['version']} ✅", fg=self.colors['accent_green'])
+        else:
+            if status['binary_exists']:
+                self.byedpi_status.config(text=f"v{status['version']} ⚫", fg=self.colors['text_secondary'])
+            else:
+                self.byedpi_status.config(text="не установлен ❌", fg=self.colors['accent_red'])
 
     def create_service_page(self):
         self.service_page = tk.Frame(self.content_panel, bg=self.colors['bg_dark'])
@@ -801,6 +857,170 @@ class ZapretLauncher:
                                        width=200, height=35, bg=self.colors['button_bg'],
                                        font=self.font_primary, corner_radius=8)
                 btn.pack(anchor='w', padx=15, pady=2)
+
+    def create_help_page(self):
+        self.help_page = tk.Frame(self.content_panel, bg=self.colors['bg_dark'])
+        
+        container = tk.Frame(self.help_page, bg=self.colors['bg_dark'])
+        container.pack(fill=tk.BOTH, expand=True)
+        
+        canvas_frame = tk.Frame(container, bg=self.colors['bg_dark'])
+        canvas_frame.pack(fill=tk.BOTH, expand=True)
+        
+        canvas = tk.Canvas(canvas_frame, bg=self.colors['bg_dark'], highlightthickness=0)
+        scrollbar = tk.Scrollbar(canvas_frame, orient="vertical", command=canvas.yview)
+        
+        scrollable_frame = tk.Frame(canvas, bg=self.colors['bg_dark'])
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((20, 0), window=scrollable_frame, anchor="nw", width=880)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        
+        tk.Label(scrollable_frame, text="Помощь", font=("Segoe UI", 28, "bold"),
+                fg=self.colors['text_primary'], bg=self.colors['bg_dark']).pack(anchor='w', pady=(0, 20))
+        
+        self.help_section(scrollable_frame, "Установка:", [
+            ("1.", "Скачивайте архив и распаковывайте в любое место 2 файла: ", "Zapret_Launcher.exe", " и ", "zapret_resources.zip"),
+            ("2.", "Запускайте ", "Zapret_Launcher.exe", " от ", "имени администратора"),
+            ("3.", "Выбирайте любой метод использования Zapret и подключайтесь к ", "стабильной сети", " находясь под ", "ограничениями РКН"),
+            ("4.", "После всех 3-х действий ", "Zapret_Launcher.exe", " можно запускать в любой папке/в любом месте на компьютере ", "без файла zapret_resources.zip")
+        ])
+        
+        self.help_section(scrollable_frame, "Telegram Proxy:", [
+            ("1.", "Ставим галочку ", "Запустить вместе с Zapret", " в лаунчере"),
+            ("2.", "Запускаем ", "Telegram", " на ПК"),
+            ("3.", "Переходим в ", "настройки"),
+            ("4.", "Продвинутые настройки"),
+            ("5.", "Тип соединения"),
+            ("6.", "Использовать собственное прокси (", "SOCKS5", ", Хост: ", "127.0.0.1", ", Порт: ", "1080", ")")
+        ])
+        
+        self.help_section(scrollable_frame, "ByeDPI Оптимизатор:", [
+            ("", "ByeDPI — это дополнительный инструмент для обхода DPI, особенно эффективный для ", "Ростелеком"),
+            ("•", "Включайте, если интернет тормозит или стандартные стратегии не помогают"),
+            ("•", "Особенно полезен для ", "YouTube", " и ", "онлайн-игр"),
+            ("•", "Создает локальный SOCKS5 прокси на порту ", "10801"),
+            ("", "Параметры для Ростелеком: ", "--split 1 --disorder -1"),
+        ])
+        
+        self.help_section(scrollable_frame, "Что такое zapret_resources.zip:", [
+            ("", "Это архив со всеми файлами Zapret, которые необходимы для работы лаунчера"),
+            ("", "При первом запуске лаунчер распаковывает ", "zapret_resources.zip", " в ", "%APPDATA%/ZapretLauncher/zapret_core/"),
+            ("", "Все файлы извлекаются в эту папку"),
+            ("", "Стратегии запускаются оттуда"),
+            ("", "Пользовательские списки (", "*-user.txt", ") сохраняются там же"),
+        ])
+        
+        self.help_section(scrollable_frame, "В каких случаях можно удалить zapret_resources.zip:", [
+            ("", "После успешной распаковки — если папка ", "zapret_core", " уже существует и полная"),
+            ("", "Если ты обновляешь лаунчер — новый .exe уже содержит свежий архив"),
+            ("", "Если ты хочешь сбросить Zapret — удали папку ", "zapret_core", " и при следующем запуске архив распакуется заново"),
+        ])
+        
+        self.help_section(scrollable_frame, "НЕ УДАЛЯЙ, если:", [
+            ("", "Папка ", "zapret_core", " отсутствует или повреждена"),
+            ("", "Ты хочешь сохранить возможность переустановки без скачивания"),
+            ("", "Ты распространяешь программу — архив должен быть рядом с .exe"),
+        ])
+        
+        self.help_section(scrollable_frame, "Антивирус и WinDivert:", [
+        ("", "Некоторые антивирусы могут реагировать на программу из-за использования компонента ", "WinDivert"),
+        ("", " — это легальный драйвер с открытым исходным кодом, используемый для фильтрации сетевых пакетов. Это ", "НОРМАЛЬНО"),
+        ])
+        
+        self.help_section(scrollable_frame, "Если антивирус ругается:", [
+            ("1.", "Добавь папку с программой в ", "исключения"),
+            ("2.", "Или скомпилируй программу сам из исходников или временно отключи антивирус при запуске"),
+        ])
+        
+        self.help_section(scrollable_frame, "Возможные конфликты:", [
+            ("", "Zapret и ByeDPI работают на разных уровнях и ", "в большинстве случаев не конфликтуют"),
+            ("", "Если после включения всего интернет работает нестабильно:"),
+            ("  •", "Отключай по одной галочке, чтобы найти виновника"),
+            ("  •", "Для YouTube иногда помогает ", "отключение QUIC", " в браузере (chrome://flags/#enable-quic)"),
+            ("  •", "Если пинг в играх вырос, отключи ", "TGProxy", " (он для игр не нужен)"),
+            ("  •", "Разные стратегии Zapret могут вести себя по-разному с ByeDPI — экспериментируй"),
+        ])
+        
+        links_frame = tk.Frame(scrollable_frame, bg=self.colors['bg_dark'])
+        links_frame.pack(fill=tk.X, pady=(20, 10))
+        
+        tk.Label(links_frame, text="Полезные ссылки:", font=("Segoe UI", 12, "bold"),
+                fg=self.colors['text_primary'], bg=self.colors['bg_dark']).pack(anchor='w', pady=(0, 10))
+        
+        def on_enter(e):
+            e.widget.config(fg=self.colors['accent_hover'])
+        
+        def on_leave(e):
+            e.widget.config(fg=self.colors['accent'])
+        
+        link1 = tk.Label(links_frame, text="Оригинальный Zapret", font=("Segoe UI", 9),
+                        fg=self.colors['accent'], bg=self.colors['bg_dark'], cursor="hand2")
+        link1.pack(anchor='w', pady=2)
+        link1.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/flowseal/zapret-discord-youtube"))
+        link1.bind("<Enter>", on_enter)
+        link1.bind("<Leave>", on_leave)
+        
+        link2 = tk.Label(links_frame, text="Оригинальный TG Proxy", font=("Segoe UI", 9),
+                        fg=self.colors['accent'], bg=self.colors['bg_dark'], cursor="hand2")
+        link2.pack(anchor='w', pady=2)
+        link2.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/Flowseal/tg-ws-proxy"))
+        link2.bind("<Enter>", on_enter)
+        link2.bind("<Leave>", on_leave)
+        
+        link3 = tk.Label(links_frame, text="Оригинальный ByeDPI", font=("Segoe UI", 9),
+                        fg=self.colors['accent'], bg=self.colors['bg_dark'], cursor="hand2")
+        link3.pack(anchor='w', pady=2)
+        link3.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/hufrea/byedpi"))
+        link3.bind("<Enter>", on_enter)
+        link3.bind("<Leave>", on_leave)
+        
+        author_frame = tk.Frame(scrollable_frame, bg=self.colors['bg_dark'])
+        author_frame.pack(fill=tk.X, pady=(30, 30))
+        
+        tk.Label(author_frame, text="by trimansberg", font=("Segoe UI", 10, "italic"),
+                fg=self.colors['text_secondary'], bg=self.colors['bg_dark']).pack()
+
+    def help_section(self, parent, title, lines):
+        tk.Label(parent, text=title, font=("Segoe UI", 14, "bold"),
+                fg=self.colors['accent'], bg=self.colors['bg_dark']).pack(anchor='w', pady=(15, 5))
+        
+        section_frame = tk.Frame(parent, bg=self.colors['bg_dark'])
+        section_frame.pack(fill=tk.X, pady=2)
+        
+        for line in lines:
+            if len(line) == 2:
+                tk.Label(section_frame, text=line[0] + " " + line[1], 
+                        font=("Segoe UI", 9),
+                        fg=self.colors['text_secondary'], 
+                        bg=self.colors['bg_dark'], wraplength=850, justify=tk.LEFT).pack(anchor='w', pady=1)
+            
+            elif len(line) >= 3:
+                frame = tk.Frame(section_frame, bg=self.colors['bg_dark'])
+                frame.pack(anchor='w', pady=1, fill=tk.X)
+                
+                if line[0]:
+                    tk.Label(frame, text=line[0], font=("Segoe UI", 9),
+                            fg=self.colors['text_secondary'], bg=self.colors['bg_dark']).pack(side=tk.LEFT)
+                
+                for i in range(1, len(line)):
+                    if i % 2 == 1:
+                        tk.Label(frame, text=line[i], font=("Segoe UI", 9, "bold"),
+                                fg=self.colors['accent'], bg=self.colors['bg_dark']).pack(side=tk.LEFT)
+                    else:
+                        tk.Label(frame, text=line[i], font=("Segoe UI", 9),
+                                fg=self.colors['text_secondary'], bg=self.colors['bg_dark']).pack(side=tk.LEFT)
 
     def create_lists_page(self):
         self.lists_page = tk.Frame(self.content_panel, bg=self.colors['bg_dark'])
@@ -926,6 +1146,8 @@ class ZapretLauncher:
         def stop_all():
             self.zapret.stop_current_strategy()
             self.tg_proxy.stop()
+            if self.byedpi_enabled:
+                self.byedpi.stop()
             time.sleep(1)
             self.root.after(0, self.finish_disconnect)
         
@@ -959,6 +1181,7 @@ class ZapretLauncher:
                 with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     self.tg_proxy_enabled = data.get('tg_proxy_enabled', False)
+                    self.byedpi_enabled = data.get('byedpi_enabled', False)
                     saved_strategy = data.get('current_strategy')
                     if saved_strategy and saved_strategy in self.zapret.available_strategies:
                         self.current_strategy = saved_strategy
@@ -969,7 +1192,8 @@ class ZapretLauncher:
         try:
             settings = {
                 'tg_proxy_enabled': self.tg_proxy_enabled,
-                'current_strategy': self.current_strategy
+                'current_strategy': self.current_strategy,
+                'byedpi_enabled': self.byedpi_enabled
             }
             with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
                 json.dump(settings, f, indent=2)
@@ -980,18 +1204,13 @@ class ZapretLauncher:
         if page_name == self.current_page:
             return
         
-        pages = {
-            "main": self.main_page,
-            "service": self.service_page,
-            "lists": self.lists_page,
-        }
-        
         if hasattr(self, f"{self.current_page}_page"):
             getattr(self, f"{self.current_page}_page").place_forget()
         
-        pages[page_name].place(x=0, y=0, width=950, height=800)
-        pages[page_name].tkraise()
-        self.current_page = page_name
+        if hasattr(self, f"{page_name}_page"):
+            getattr(self, f"{page_name}_page").place(x=0, y=0, width=950, height=800)
+            getattr(self, f"{page_name}_page").tkraise()
+            self.current_page = page_name
 
     def show_main_page(self):
         self.show_page("main")
@@ -1001,6 +1220,9 @@ class ZapretLauncher:
         
     def show_lists_page(self):
         self.show_page("lists")
+    
+    def show_help_page(self):
+        self.show_page("help")
 
 if __name__ == "__main__":
     root = tk.Tk()
