@@ -8,6 +8,7 @@ import time
 import threading
 import atexit
 import psutil
+import winreg
 import asyncio
 import zipfile
 import shutil
@@ -34,7 +35,20 @@ ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
 ZAPRET_API_URL = "https://api.github.com/repos/flowseal/zapret-discord-youtube/releases/latest"
-CURRENT_VERSION = "2.2"
+CURRENT_VERSION = "2.2b"
+
+PROVIDER_PARAMS = {
+    "Ростелеком": ["--split", "1", "--disorder", "-1"],
+    "МГТС (МТС)": ["-7", "-e1", "-q"],
+    "Билайн": ["--split", "1", "--disorder", "1", "--fake", "-1", "--ttl", "8"],
+    "ТТК": ["-1", "-e1"],
+    "Дом.ru": ["--split", "1", "--disorder", "1"],
+    "Акадо": ["--fake", "-1", "--ttl", "8"],
+    "Мегафон": ["-s0", "-o1", "-d1", "-r1+s", "-Ar", "-o1", "-At", "-f-1", "-r1+s", "-As"],
+    "Tele2": ["--split", "1", "--disorder", "-1"],
+    "Yota": ["-7", "-e1", "-q"],
+    "SamaraLan": ["--split", "1", "--disorder", "-1"],
+}
 
 def is_admin():
     try:
@@ -539,11 +553,30 @@ class SystemTrayIcon:
     def run(self):
         self.icon.run()
 
+class ByeDPIWithProvider:
+    def __init__(self, app_data_dir):
+        self.base = ByeDPIOptimizer(app_data_dir)
+        self.current_provider = "Ростелеком"
+    
+    def set_provider(self, provider):
+        self.current_provider = provider
+        params = PROVIDER_PARAMS.get(provider, PROVIDER_PARAMS["Ростелеком"])
+        self.base.rostel_params = params + ["-i", "127.0.0.1", "-p", "10801"]
+    
+    def start(self):
+        return self.base.start()
+    
+    def stop(self):
+        return self.base.stop()
+    
+    def get_status(self):
+        return self.base.get_status()
+
 class ZapretLauncher:
     def __init__(self, root):
         self.root = root
         self.root.title("Zapret Launcher")
-        self.byedpi = ByeDPIOptimizer(APPDATA_DIR)
+        self.byedpi = ByeDPIWithProvider(APPDATA_DIR)
         self.byedpi_enabled = False
         
         try:
@@ -606,6 +639,7 @@ class ZapretLauncher:
         self.current_strategy = None
         self.tg_proxy_enabled = False
         self.current_page = "main"
+        self.current_provider = "Ростелеком"
         
         self.ensure_appdata_dir()
         self.load_settings()
@@ -651,6 +685,7 @@ class ZapretLauncher:
         self.create_main_page()
         self.create_service_page()
         self.create_lists_page()
+        self.create_diagnostic_page()
         self.create_help_page()
 
     def create_left_panel(self):
@@ -671,6 +706,7 @@ class ZapretLauncher:
             ("Главная", self.show_main_page),
             ("Сервис", self.show_service_page),
             ("Редактор", self.show_lists_page),
+            ("Диагностика", self.show_diagnostic_page),
             ("Помощь", self.show_help_page),
         ]
         
@@ -778,6 +814,19 @@ class ZapretLauncher:
                                       bg=self.colors['bg_medium'])
         self.byedpi_status.pack(side=tk.LEFT, padx=5)
         
+        provider_frame = tk.Frame(quick_frame, bg=self.colors['bg_medium'])
+        provider_frame.pack(fill=tk.X, padx=15, pady=5)
+        
+        tk.Label(provider_frame, text="Провайдер:", font=self.font_medium,
+                fg=self.colors['text_secondary'], bg=self.colors['bg_medium']).pack(side=tk.LEFT, padx=(0, 10))
+        
+        self.provider_var = tk.StringVar(value=self.current_provider)
+        self.provider_combo = ttk.Combobox(provider_frame, textvariable=self.provider_var,
+                                           values=list(PROVIDER_PARAMS.keys()),
+                                           width=20, font=self.font_primary)
+        self.provider_combo.pack(side=tk.LEFT, padx=10)
+        self.provider_combo.bind("<<ComboboxSelected>>", self.on_provider_change)
+        
         button_frame = tk.Frame(quick_frame, bg=self.colors['bg_medium'])
         button_frame.pack(fill=tk.X, padx=15, pady=(15, 10))
         
@@ -791,10 +840,61 @@ class ZapretLauncher:
         
         self.update_byedpi_status()
 
+    def on_provider_change(self, event):
+        self.current_provider = self.provider_var.get()
+        self.byedpi.set_provider(self.current_provider)
+        self.save_settings()
+        
+        if self.byedpi_enabled:
+            self.byedpi.stop()
+            time.sleep(0.5)
+            success, msg = self.byedpi.start()
+            if not success:
+                messagebox.showerror("Ошибка ByeDPI", msg)
+                self.byedpi_var.set(False)
+                self.byedpi_enabled = False
+            self.update_byedpi_status()
+
+    def set_autostart(self, enabled):
+        try:
+            import winreg
+            
+            exe_path = sys.executable if getattr(sys, 'frozen', False) else sys.argv[0]
+            
+            key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+            
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE) as key:
+                if enabled:
+                    winreg.SetValueEx(key, "ZapretLauncher", 0, winreg.REG_SZ, exe_path)
+                    self.log_to_diagnostic("Автозапуск включен")
+                else:
+                    try:
+                        winreg.DeleteValue(key, "ZapretLauncher")
+                        self.log_to_diagnostic("Автозапуск отключен")
+                    except:
+                        pass
+            return True
+        except Exception as e:
+            self.log_to_diagnostic(f"Ошибка настройки автозапуска: {e}")
+            return False
+
+    def check_autostart_status(self):
+        try:
+            import winreg
+            
+            key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+            
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ) as key:
+                value, _ = winreg.QueryValueEx(key, "ZapretLauncher")
+                return value is not None
+        except:
+            return False
+
     def on_byedpi_change(self):
         self.byedpi_enabled = self.byedpi_var.get()
         
         if self.byedpi_enabled:
+            self.byedpi.set_provider(self.current_provider)
             success, msg = self.byedpi.start()
             if not success:
                 messagebox.showerror("Ошибка ByeDPI", msg)
@@ -809,12 +909,360 @@ class ZapretLauncher:
     def update_byedpi_status(self):
         status = self.byedpi.get_status()
         if status['running']:
-            self.byedpi_status.config(text=f"v{status['version']} ✅", fg=self.colors['accent_green'])
+            self.byedpi_status.config(text=f"v{status['version']} ({self.current_provider})", fg=self.colors['accent_green'])
         else:
             if status['binary_exists']:
-                self.byedpi_status.config(text=f"v{status['version']} ⚫", fg=self.colors['text_secondary'])
+                self.byedpi_status.config(text=f"v{status['version']}", fg=self.colors['text_secondary'])
             else:
-                self.byedpi_status.config(text="не установлен ❌", fg=self.colors['accent_red'])
+                self.byedpi_status.config(text="не установлен", fg=self.colors['accent_red'])
+
+    def safe_command(self, command):
+        try:
+            command()
+        except Exception as e:
+            self.log_to_diagnostic(f"Ошибка: {str(e)}")
+
+    def log_to_diagnostic(self, message):
+        self.diagnostic_text.insert(tk.END, message + "\n")
+        self.diagnostic_text.see(tk.END)
+        self.diagnostic_text.update()
+
+    def check_ping_google(self):
+        self.log_to_diagnostic("Проверка пинга до Google (8.8.8.8)...")
+        try:
+            result = subprocess.run(['ping', '-n', '4', '8.8.8.8'], 
+                                capture_output=True, text=True, encoding='cp866')
+            if result.returncode == 0:
+                lines = result.stdout.split('\n')
+                for line in lines:
+                    if "среднее" in line or "Average" in line:
+                        self.log_to_diagnostic(f"{line.strip()}")
+                        return
+                self.log_to_diagnostic("Пинг до Google успешен")
+            else:
+                self.log_to_diagnostic("Нет соединения с Google")
+        except Exception as e:
+            self.log_to_diagnostic(f"Ошибка: {str(e)}")
+
+    def check_ping_youtube(self):
+        self.log_to_diagnostic("Проверка пинга до YouTube...")
+        try:
+            result = subprocess.run(['ping', '-n', '4', 'youtube.com'], 
+                                capture_output=True, text=True, encoding='cp866')
+            if result.returncode == 0:
+                self.log_to_diagnostic("YouTube доступен")
+            else:
+                self.log_to_diagnostic("YouTube не отвечает (возможно заблокирован)")
+        except Exception as e:
+            self.log_to_diagnostic(f"Ошибка: {str(e)}")
+
+    def check_ping_discord(self):
+        self.log_to_diagnostic("Проверка пинга до Discord...")
+        try:
+            result = subprocess.run(['ping', '-n', '4', 'discord.com'], 
+                                capture_output=True, text=True, encoding='cp866')
+            if result.returncode == 0:
+                self.log_to_diagnostic("Discord доступен")
+            else:
+                self.log_to_diagnostic("Discord не отвечает (возможно заблокирован)")
+        except Exception as e:
+            self.log_to_diagnostic(f"Ошибка: {str(e)}")
+
+    def run_speedtest(self):
+        self.log_to_diagnostic("="*40)
+        self.log_to_diagnostic("ЗАПУСК ТЕСТА СКОРОСТИ")
+        self.log_to_diagnostic("="*40)
+        self.log_to_diagnostic("Тестирование загрузки...")
+        
+        try:
+            import urllib.request
+            import time
+            
+            test_url = "http://speedtest.tele2.net/100MB.zip"
+            start_time = time.time()
+            
+            urllib.request.urlretrieve(test_url, "speedtest_temp.bin")
+            
+            end_time = time.time()
+            download_time = end_time - start_time
+            file_size_mb = 100
+            speed_mbps = (file_size_mb * 8) / download_time
+            
+            os.remove("speedtest_temp.bin")
+            
+            self.log_to_diagnostic(f"Скорость загрузки: {speed_mbps:.2f} Мбит/с")
+            self.log_to_diagnostic(f"Время загрузки: {download_time:.2f} сек")
+            self.log_to_diagnostic("="*40)
+            
+        except Exception as e:
+            self.log_to_diagnostic(f"Ошибка теста: {str(e)}")
+            self.log_to_diagnostic("Попробуйте использовать speedtest.net в браузере")
+
+    def auto_select_strategy(self):
+        self.log_to_diagnostic("="*50)
+        self.log_to_diagnostic("АВТОМАТИЧЕСКИЙ ПОДБОР СТРАТЕГИИ")
+        self.log_to_diagnostic("="*50)
+        
+        strategies = self.zapret.available_strategies
+        if not strategies:
+            self.log_to_diagnostic("Нет доступных стратегий")
+            return None
+        
+        test_sites = [
+            ("youtube.com", "YouTube"),
+            ("google.com", "Google"),
+            ("discord.com", "Discord"),
+        ]
+        
+        was_connected = self.is_connected
+        
+        best_strategy = None
+        best_score = -1
+        best_success_count = 0
+        
+        for strategy in strategies:
+            self.log_to_diagnostic(f"\nТестируем: {strategy}")
+            
+            if was_connected:
+                self.disconnect()
+                time.sleep(1)
+            
+            success, msg = self.zapret.run_strategy(strategy)
+            
+            if not success:
+                self.log_to_diagnostic(f"  Не удалось запустить: {msg}")
+                continue
+            
+            self.log_to_diagnostic(f"  Запущена")
+            time.sleep(2)
+            
+            success_count = 0
+            for site, name in test_sites:
+                try:
+                    result = subprocess.run(['ping', '-n', '2', site], 
+                                          capture_output=True, timeout=5)
+                    if result.returncode == 0:
+                        self.log_to_diagnostic(f"    {name} доступен")
+                        success_count += 1
+                    else:
+                        self.log_to_diagnostic(f"    {name} недоступен")
+                except:
+                    self.log_to_diagnostic(f"    {name} ошибка проверки")
+            
+            self.zapret.stop_current_strategy()
+            
+            score = success_count
+            self.log_to_diagnostic(f"  Результат: {success_count}/{len(test_sites)}")
+            
+            if score > best_score:
+                best_score = score
+                best_strategy = strategy
+                best_success_count = success_count
+        
+        if best_strategy:
+            self.log_to_diagnostic(f"\nЛучшая стратегия: {best_strategy}")
+            self.log_to_diagnostic(f"Результат: {best_success_count}/{len(test_sites)}")
+            
+            self.strategy_var.set(best_strategy)
+            self.current_strategy = best_strategy
+            self.save_settings()
+            
+            if was_connected:
+                self.log_to_diagnostic("Восстанавливаем подключение...")
+                self.connect()
+        else:
+            self.log_to_diagnostic("\nНе найдена работающая стратегия")
+        
+        self.log_to_diagnostic("="*50)
+        return best_strategy
+
+    def check_zapret_status(self):
+        self.log_to_diagnostic("Проверка статуса Zapret...")
+        if self.zapret.is_winws_running():
+            self.log_to_diagnostic(f"Zapret запущен (стратегия: {self.current_strategy or 'неизвестно'})")
+        else:
+            self.log_to_diagnostic("Zapret не запущен")
+
+    def check_zapret_version(self):
+        self.log_to_diagnostic("Доступные стратегии:")
+        for s in self.zapret.available_strategies:
+            self.log_to_diagnostic(f"  • {s}")
+        self.log_to_diagnostic(f"Всего стратегий: {len(self.zapret.available_strategies)}")
+
+    def check_zapret_logs(self):
+        self.log_to_diagnostic("Поиск процессов winws.exe...")
+        found = False
+        for proc in psutil.process_iter(['pid', 'name', 'create_time']):
+            try:
+                if proc.info['name'] and proc.info['name'].lower() == 'winws.exe':
+                    create_time = time.strftime('%Y-%m-%d %H:%M:%S', 
+                                            time.localtime(proc.info['create_time']))
+                    self.log_to_diagnostic(f"  • PID: {proc.info['pid']}, запущен: {create_time}")
+                    found = True
+            except:
+                pass
+        if not found:
+            self.log_to_diagnostic("Процессы winws.exe не найдены")
+
+    def restart_zapret(self):
+        self.log_to_diagnostic("Перезапуск Zapret...")
+        if self.is_connected:
+            self.disconnect()
+            time.sleep(2)
+            self.connect()
+            self.log_to_diagnostic("Zapret перезапущен")
+        else:
+            self.log_to_diagnostic("Zapret не был запущен")
+
+    def check_byedpi_status(self):
+        self.log_to_diagnostic("Проверка статуса ByeDPI...")
+        status = self.byedpi.get_status()
+        if status['running']:
+            self.log_to_diagnostic(f"ByeDPI запущен (версия {status['version']}, провайдер: {self.current_provider})")
+        else:
+            if status['binary_exists']:
+                self.log_to_diagnostic("ByeDPI не запущен (файл есть)")
+            else:
+                self.log_to_diagnostic("ByeDPI не установлен (нет ciadpi.exe)")
+
+    def check_byedpi_port(self):
+        self.log_to_diagnostic("Проверка порта 10801...")
+        try:
+            result = subprocess.run(['netstat', '-an'], 
+                                capture_output=True, text=True, encoding='cp866')
+            if "127.0.0.1:10801" in result.stdout and "LISTENING" in result.stdout:
+                self.log_to_diagnostic("Порт 10801 открыт (ByeDPI слушает)")
+            else:
+                self.log_to_diagnostic("Порт 10801 не открыт")
+        except Exception as e:
+            self.log_to_diagnostic(f"Ошибка: {str(e)}")
+
+    def check_byedpi_version(self):
+        status = self.byedpi.get_status()
+        if status['binary_exists']:
+            self.log_to_diagnostic(f"Версия ByeDPI: {status['version']}")
+            self.log_to_diagnostic(f"Параметры: {status['params']}")
+        else:
+            self.log_to_diagnostic("ByeDPI не установлен")
+
+    def restart_byedpi(self):
+        self.log_to_diagnostic("Перезапуск ByeDPI...")
+        if self.byedpi_enabled:
+            self.byedpi.stop()
+            time.sleep(1)
+            self.byedpi.set_provider(self.current_provider)
+            success, msg = self.byedpi.start()
+            if success:
+                self.log_to_diagnostic("ByeDPI перезапущен")
+            else:
+                self.log_to_diagnostic(f"{msg}")
+        else:
+            self.log_to_diagnostic("ByeDPI не был включен")
+
+    def check_tgproxy_status(self):
+        self.log_to_diagnostic("Проверка статуса TGProxy...")
+        if hasattr(self, 'tg_proxy') and self.tg_proxy._running:
+            self.log_to_diagnostic("TGProxy запущен")
+        else:
+            self.log_to_diagnostic("TGProxy не запущен")
+
+    def check_tgproxy_port(self):
+        self.log_to_diagnostic("Проверка порта 1080...")
+        try:
+            result = subprocess.run(['netstat', '-an'], 
+                                capture_output=True, text=True, encoding='cp866')
+            if "127.0.0.1:1080" in result.stdout and "LISTENING" in result.stdout:
+                self.log_to_diagnostic("Порт 1080 открыт (TGProxy слушает)")
+            else:
+                self.log_to_diagnostic("Порт 1080 не открыт")
+        except Exception as e:
+            self.log_to_diagnostic(f"Ошибка: {str(e)}")
+
+    def check_telegram(self):
+        self.log_to_diagnostic("Проверка доступности Telegram...")
+        try:
+            result = subprocess.run(['ping', '-n', '2', 'web.telegram.org'], 
+                                capture_output=True, text=True, encoding='cp866')
+            if result.returncode == 0:
+                self.log_to_diagnostic("Telegram доступен")
+            else:
+                self.log_to_diagnostic("Telegram не отвечает, но может работать через приложение")
+        except Exception as e:
+            self.log_to_diagnostic(f"Ошибка: {str(e)}")
+
+    def restart_tgproxy(self):
+        self.log_to_diagnostic("Перезапуск TGProxy...")
+        if self.tg_proxy._running:
+            self.tg_proxy.stop()
+            time.sleep(1)
+            self.tg_proxy.start()
+            self.log_to_diagnostic("TGProxy перезапущен")
+        else:
+            self.log_to_diagnostic("TGProxy не был запущен")
+
+    def check_admin_rights(self):
+        self.log_to_diagnostic("Проверка прав администратора...")
+        if is_admin():
+            self.log_to_diagnostic("Программа запущена от имени администратора")
+        else:
+            self.log_to_diagnostic("Программа НЕ запущена от имени администратора")
+
+    def check_launcher_version(self):
+        self.log_to_diagnostic(f"Версия лаунчера: {CURRENT_VERSION}")
+
+    def open_appdata_folder(self):
+        self.log_to_diagnostic(f"Открытие папки: {APPDATA_DIR}")
+        try:
+            os.startfile(APPDATA_DIR)
+        except Exception as e:
+            self.log_to_diagnostic(f"Ошибка: {str(e)}")
+
+    def clear_cache(self):
+        self.log_to_diagnostic("Очистка кэша...")
+        try:
+            self.diagnostic_text.delete(1.0, tk.END)
+            self.log_to_diagnostic("Кэш диагностики очищен")
+        except Exception as e:
+            self.log_to_diagnostic(f"Ошибка: {str(e)}")
+
+    def run_full_diagnostic(self):
+        self.diagnostic_text.delete(1.0, tk.END)
+        self.log_to_diagnostic("="*50)
+        self.log_to_diagnostic("ПОЛНАЯ ДИАГНОСТИКА СИСТЕМЫ")
+        self.log_to_diagnostic("="*50)
+        
+        self.check_admin_rights()
+        self.check_launcher_version()
+        self.log_to_diagnostic("")
+        
+        self.check_ping_google()
+        self.check_ping_youtube()
+        self.log_to_diagnostic("")
+        
+        self.check_zapret_status()
+        self.check_zapret_logs()
+        self.log_to_diagnostic("")
+        
+        self.check_byedpi_status()
+        self.check_byedpi_port()
+        self.log_to_diagnostic("")
+        
+        self.check_tgproxy_status()
+        self.check_tgproxy_port()
+        self.log_to_diagnostic("")
+        
+        self.log_to_diagnostic("="*50)
+        self.log_to_diagnostic("Диагностика завершена")
+        self.log_to_diagnostic("="*50)
+
+    def save_diagnostic_report(self):
+        try:
+            report_path = APPDATA_DIR / f"diagnostic_{time.strftime('%Y%m%d_%H%M%S')}.txt"
+            with open(report_path, 'w', encoding='utf-8') as f:
+                f.write(self.diagnostic_text.get(1.0, tk.END))
+            self.log_to_diagnostic(f"Отчет сохранен: {report_path}")
+        except Exception as e:
+            self.log_to_diagnostic(f"Ошибка сохранения: {str(e)}")
 
     def create_service_page(self):
         self.service_page = tk.Frame(self.content_panel, bg=self.colors['bg_dark'])
@@ -857,6 +1305,81 @@ class ZapretLauncher:
                                        width=200, height=35, bg=self.colors['button_bg'],
                                        font=self.font_primary, corner_radius=8)
                 btn.pack(anchor='w', padx=15, pady=2)
+
+    def create_diagnostic_page(self):
+        self.diagnostic_page = tk.Frame(self.content_panel, bg=self.colors['bg_dark'])
+        
+        tk.Label(self.diagnostic_page, text="Диагностика", font=("Segoe UI", 32, "bold"),
+                fg=self.colors['text_primary'], bg=self.colors['bg_dark']).pack(anchor='w', pady=(30, 20), padx=30)
+        
+        cards_frame = tk.Frame(self.diagnostic_page, bg=self.colors['bg_dark'])
+        cards_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=10)
+        
+        left_column = tk.Frame(cards_frame, bg=self.colors['bg_dark'])
+        left_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+        
+        right_column = tk.Frame(cards_frame, bg=self.colors['bg_dark'])
+        right_column.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
+        
+        self.create_diagnostic_card(left_column, "Состояние интернета", [
+            ("Пинг до Google", self.check_ping_google),
+            ("Пинг до YouTube", self.check_ping_youtube),
+            ("Пинг до Discord", self.check_ping_discord),
+            ("Тест скорости", self.run_speedtest),
+        ])
+        
+        self.create_diagnostic_card(left_column, "Zapret", [
+            ("Проверить статус", self.check_zapret_status),
+            ("Версия стратегий", self.check_zapret_version),
+            ("Логи winws.exe", self.check_zapret_logs),
+            ("Перезапустить Zapret", self.restart_zapret),
+            ("Авто-подбор", self.auto_select_strategy),
+        ])
+        
+        self.create_diagnostic_card(left_column, "Общая диагностика", [
+            ("Полная проверка", self.run_full_diagnostic),
+            ("Сохранить отчет", self.save_diagnostic_report),
+        ])
+        
+        self.create_diagnostic_card(right_column, "ByeDPI", [
+            ("Проверить статус", self.check_byedpi_status),
+            ("Порт 10801", self.check_byedpi_port),
+            ("Версия", self.check_byedpi_version),
+            ("Перезапустить ByeDPI", self.restart_byedpi),
+        ])
+        
+        self.create_diagnostic_card(right_column, "TGProxy", [
+            ("Проверить статус", self.check_tgproxy_status),
+            ("Порт 1080", self.check_tgproxy_port),
+            ("Проверить Telegram", self.check_telegram),
+            ("Перезапустить TGProxy", self.restart_tgproxy),
+        ])
+        
+        self.create_diagnostic_card(right_column, "Система", [
+            ("Права администратора", self.check_admin_rights),
+            ("Версия лаунчера", self.check_launcher_version),
+            ("Папка AppData", self.open_appdata_folder),
+            ("Очистить кэш", self.clear_cache),
+            ("Автозапуск", self.toggle_autostart),
+        ])
+        
+        result_frame = tk.Frame(self.diagnostic_page, bg=self.colors['bg_medium'])
+        result_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=(10, 20))
+        
+        tk.Label(result_frame, text="Результаты диагностики:", font=("Segoe UI", 12, "bold"),
+                fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(anchor='w', padx=15, pady=(8, 5))
+        
+        text_frame = tk.Frame(result_frame, bg=self.colors['bg_medium'])
+        text_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 10))
+        
+        self.diagnostic_text = tk.Text(text_frame, height=8, bg=self.colors['bg_dark'],
+                                    fg=self.colors['text_primary'], font=("Consolas", 9),
+                                    wrap=tk.WORD, borderwidth=0)
+        scrollbar = tk.Scrollbar(text_frame, command=self.diagnostic_text.yview)
+        self.diagnostic_text.configure(yscrollcommand=scrollbar.set)
+        
+        self.diagnostic_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
     def create_help_page(self):
         self.help_page = tk.Frame(self.content_panel, bg=self.colors['bg_dark'])
@@ -907,11 +1430,10 @@ class ZapretLauncher:
         ])
         
         self.help_section(scrollable_frame, "ByeDPI Оптимизатор:", [
-            ("", "ByeDPI — это дополнительный инструмент для обхода DPI, особенно эффективный для ", "Ростелеком"),
+            ("", "ByeDPI — это дополнительный инструмент для обхода DPI"),
             ("•", "Включайте, если интернет тормозит или стандартные стратегии не помогают"),
             ("•", "Особенно полезен для ", "YouTube", " и ", "онлайн-игр"),
             ("•", "Создает локальный SOCKS5 прокси на порту ", "10801"),
-            ("", "Параметры для Ростелеком: ", "--split 1 --disorder -1"),
         ])
         
         self.help_section(scrollable_frame, "Что такое zapret_resources.zip:", [
@@ -991,6 +1513,38 @@ class ZapretLauncher:
         
         tk.Label(author_frame, text="by trimansberg", font=("Segoe UI", 10, "italic"),
                 fg=self.colors['text_secondary'], bg=self.colors['bg_dark']).pack()
+        
+    def create_diagnostic_card(self, parent, title, buttons):
+        card = tk.Frame(parent, bg=self.colors['bg_light'])
+        card.pack(fill=tk.X, pady=(0, 4))
+        
+        tk.Label(card, text=title, font=("Segoe UI", 11, "bold"),
+                fg=self.colors['text_primary'], bg=self.colors['bg_light']).pack(anchor='w', padx=5, pady=(2, 0))
+        
+        separator = tk.Frame(card, bg=self.colors['separator'], height=1)
+        separator.pack(fill=tk.X, padx=5, pady=(0, 2))
+        
+        container = tk.Frame(card, bg=self.colors['bg_light'])
+        container.pack(fill=tk.X, padx=5, pady=(0, 2))
+        
+        for i in range(0, len(buttons), 2):
+            row = tk.Frame(container, bg=self.colors['bg_light'])
+            row.pack(fill=tk.X, pady=1)
+            
+            btn1_text, btn1_cmd = buttons[i]
+            btn1 = RoundedButton(row, text=btn1_text, 
+                            command=lambda cmd=btn1_cmd: self.safe_command(cmd),
+                            width=180, height=22, bg=self.colors['button_bg'],
+                            font=("Segoe UI", 7), corner_radius=4)
+            btn1.pack(side=tk.LEFT, padx=(0, 2))
+            
+            if i + 1 < len(buttons):
+                btn2_text, btn2_cmd = buttons[i + 1]
+                btn2 = RoundedButton(row, text=btn2_text, 
+                                command=lambda cmd=btn2_cmd: self.safe_command(cmd),
+                                width=180, height=22, bg=self.colors['button_bg'],
+                                font=("Segoe UI", 7), corner_radius=4)
+                btn2.pack(side=tk.LEFT, padx=(2, 0))
 
     def help_section(self, parent, title, lines):
         tk.Label(parent, text=title, font=("Segoe UI", 14, "bold"),
@@ -1067,6 +1621,18 @@ class ZapretLauncher:
         lists_path = os.path.join(self.zapret.zapret_dir, "lists")
         file_path = os.path.join(lists_path, filename)
         ListEditor(self.root, file_path, filename)
+
+    def toggle_autostart(self):
+        current = self.check_autostart_status()
+        new_state = not current
+        
+        if self.set_autostart(new_state):
+            if new_state:
+                messagebox.showinfo("Автозапуск", "Программа будет запускаться при старте Windows")
+            else:
+                messagebox.showinfo("Автозапуск", "Автозапуск отключен")
+        else:
+            messagebox.showerror("Ошибка", "Не удалось изменить настройки автозапуска")
 
     def open_github(self):
         import webbrowser
@@ -1185,6 +1751,13 @@ class ZapretLauncher:
                     saved_strategy = data.get('current_strategy')
                     if saved_strategy and saved_strategy in self.zapret.available_strategies:
                         self.current_strategy = saved_strategy
+                    self.current_provider = data.get('byedpi_provider', 'Ростелеком')
+                    self.provider_var.set(self.current_provider)
+                    self.byedpi.set_provider(self.current_provider)
+                    
+                    autostart_enabled = data.get('autostart_enabled', False)
+                    if autostart_enabled != self.check_autostart_status():
+                        self.set_autostart(autostart_enabled)
         except:
             pass
 
@@ -1193,7 +1766,9 @@ class ZapretLauncher:
             settings = {
                 'tg_proxy_enabled': self.tg_proxy_enabled,
                 'current_strategy': self.current_strategy,
-                'byedpi_enabled': self.byedpi_enabled
+                'byedpi_enabled': self.byedpi_enabled,
+                'byedpi_provider': self.current_provider,
+                'autostart_enabled': self.check_autostart_status()
             }
             with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
                 json.dump(settings, f, indent=2)
@@ -1220,6 +1795,9 @@ class ZapretLauncher:
         
     def show_lists_page(self):
         self.show_page("lists")
+
+    def show_diagnostic_page(self):
+        self.show_page("diagnostic")
     
     def show_help_page(self):
         self.show_page("help")
