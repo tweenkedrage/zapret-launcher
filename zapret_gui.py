@@ -35,19 +35,14 @@ ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
 ZAPRET_API_URL = "https://api.github.com/repos/flowseal/zapret-discord-youtube/releases/latest"
-CURRENT_VERSION = "2.2b"
+CURRENT_VERSION = "2.2c"
 
 PROVIDER_PARAMS = {
-    "Ростелеком": ["--split", "1", "--disorder", "-1"],
-    "МГТС (МТС)": ["-7", "-e1", "-q"],
+    "Ростелеком/Дом.ru/Tele2/SamaraLan": ["--split", "1", "--disorder", "-1"],
+    "МГТС (МТС)/Yota": ["-7", "-e1", "-q"],
+    "Мегафон": ["-s0", "-o1", "-d1", "-r1+s", "-Ar", "-o1", "-At", "-f-1", "-r1+s", "-As"],
     "Билайн": ["--split", "1", "--disorder", "1", "--fake", "-1", "--ttl", "8"],
     "ТТК": ["-1", "-e1"],
-    "Дом.ru": ["--split", "1", "--disorder", "1"],
-    "Акадо": ["--fake", "-1", "--ttl", "8"],
-    "Мегафон": ["-s0", "-o1", "-d1", "-r1+s", "-Ar", "-o1", "-At", "-f-1", "-r1+s", "-As"],
-    "Tele2": ["--split", "1", "--disorder", "-1"],
-    "Yota": ["-7", "-e1", "-q"],
-    "SamaraLan": ["--split", "1", "--disorder", "-1"],
 }
 
 def is_admin():
@@ -86,17 +81,34 @@ def check_launcher_updates(parent, silent=False):
         with urllib.request.urlopen(LAUNCHER_API_URL, timeout=5) as response:
             data = json.loads(response.read().decode())
             latest_version = data.get('tag_name', '').replace('v', '')
+            download_url = None
+            
+            for asset in data.get('assets', []):
+                if asset['name'].endswith('.exe'):
+                    download_url = asset['browser_download_url']
+                    break
             
             if latest_version and latest_version > CURRENT_VERSION:
-                result = messagebox.askyesno(
-                    "Обновление лаунчера",
-                    f"Доступна новая версия лаунчера {latest_version}\n"
-                    f"Текущая версия: {CURRENT_VERSION}\n\n"
-                    "Хотите перейти на страницу загрузки?"
-                )
-                if result:
-                    import webbrowser
-                    webbrowser.open(data.get('html_url', 'https://github.com/tweenkedrage/zapret-launcher/releases'))
+                if silent:
+                    result = messagebox.askyesno(
+                        "Обновление лаунчера",
+                        f"Доступна новая версия {latest_version}\n"
+                        f"Текущая версия: {CURRENT_VERSION}\n\n"
+                        "Обновить сейчас? (Ваши настройки и списки будут сохранены)"
+                    )
+                else:
+                    result = messagebox.askyesno(
+                        "Обновление лаунчера",
+                        f"Доступна новая версия лаунчера {latest_version}\n"
+                        f"Текущая версия: {CURRENT_VERSION}\n\n"
+                        "Хотите обновить? (Ваши настройки и списки будут сохранены)"
+                    )
+                
+                if result and download_url:
+                    parent.update_status("Обновление лаунчера...", parent.colors['accent'])
+                    parent.root.update()
+                    
+                    threading.Thread(target=lambda: update_launcher(parent, download_url, latest_version), daemon=True).start()
                 return True
             else:
                 if not silent:
@@ -137,6 +149,56 @@ def check_zapret_updates(parent, silent=False):
         if not silent:
             messagebox.showerror("Ошибка", f"Не удалось проверить обновления Zapret: {str(e)}")
         return False
+    
+def update_launcher(parent, download_url, new_version):
+    try:
+        parent.log_to_diagnostic(f"Скачивание обновления v{new_version}...")
+        
+        temp_dir = tempfile.gettempdir()
+        new_exe_path = os.path.join(temp_dir, f"Zapret_Launcher_v{new_version}.exe")
+        updater_script = os.path.join(temp_dir, "update_launcher.bat")
+        
+        urllib.request.urlretrieve(download_url, new_exe_path)
+        
+        parent.log_to_diagnostic(f"Файл загружен: {new_exe_path}")
+        
+        current_exe = sys.executable if getattr(sys, 'frozen', False) else sys.argv[0]
+        
+        with open(updater_script, 'w', encoding='utf-8') as f:
+            f.write(f'''@echo off
+timeout /t 2 /nobreak > nul
+echo Обновление Zapret Launcher...
+echo.
+echo Закрываю старую версию...
+taskkill /F /IM "{os.path.basename(current_exe)}" 2>nul
+timeout /t 1 /nobreak > nul
+echo.
+echo Копирую новую версию...
+copy /Y "{new_exe_path}" "{current_exe}"
+if errorlevel 1 (
+    echo Ошибка копирования. Возможно, файл используется.
+    pause
+    exit /b 1
+)
+echo.
+echo Запускаю новую версию...
+start "" "{current_exe}"
+echo.
+echo Обновление завершено!
+timeout /t 2 /nobreak > nul
+del "%~f0"
+''')
+        
+        parent.log_to_diagnostic(f"Создан скрипт обновления: {updater_script}")
+        
+        parent.log_to_diagnostic("Запуск обновления...")
+        subprocess.Popen(['cmd', '/c', updater_script], shell=True)
+        
+        parent.root.after(500, parent.root.quit)
+        
+    except Exception as e:
+        parent.log_to_diagnostic(f"Ошибка обновления: {str(e)}")
+        messagebox.showerror("Ошибка", f"Не удалось обновить лаунчер: {str(e)}")
 
 def update_zapret_core(parent, version):
     try:
@@ -823,7 +885,7 @@ class ZapretLauncher:
         self.provider_var = tk.StringVar(value=self.current_provider)
         self.provider_combo = ttk.Combobox(provider_frame, textvariable=self.provider_var,
                                            values=list(PROVIDER_PARAMS.keys()),
-                                           width=20, font=self.font_primary)
+                                           width=30, font=self.font_primary)
         self.provider_combo.pack(side=tk.LEFT, padx=10)
         self.provider_combo.bind("<<ComboboxSelected>>", self.on_provider_change)
         
@@ -854,6 +916,156 @@ class ZapretLauncher:
                 self.byedpi_var.set(False)
                 self.byedpi_enabled = False
             self.update_byedpi_status()
+
+    def check_file_integrity(self):
+        self.log_to_diagnostic("="*50)
+        self.log_to_diagnostic("ПРОВЕРКА ЦЕЛОСТНОСТИ ФАЙЛОВ")
+        self.log_to_diagnostic("="*50)
+        
+        errors = []
+        
+        required_files = [
+            ("zapret_resources.zip", Path(__file__).parent / "zapret_resources.zip"),
+            ("bin/ciadpi.exe", Path(__file__).parent / "bin" / "ciadpi.exe"),
+        ]
+        
+        for name, path in required_files:
+            if path.exists():
+                size = path.stat().st_size
+                if size > 0:
+                    self.log_to_diagnostic(f"  {name} - {size} байт")
+                else:
+                    self.log_to_diagnostic(f"  {name} - файл пустой (0 байт)")
+                    errors.append(f"{name} пустой")
+            else:
+                self.log_to_diagnostic(f"  {name} - отсутствует")
+                errors.append(f"{name} отсутствует")
+        
+        if ZAPRET_CORE_DIR.exists():
+            zapret_files = [
+                "winws.exe",
+                "general.bat",
+                "WinDivert.dll",
+                "WinDivert64.sys"
+            ]
+            
+            bin_dir = ZAPRET_CORE_DIR / "bin"
+            for file in zapret_files:
+                file_path = bin_dir / file
+                if file_path.exists():
+                    size = file_path.stat().st_size
+                    self.log_to_diagnostic(f"  bin/{file} - {size} байт")
+                else:
+                    self.log_to_diagnostic(f"  bin/{file} - отсутствует")
+                    errors.append(f"bin/{file} отсутствует")
+            
+            strategies = list(ZAPRET_CORE_DIR.glob("general*.bat"))
+            self.log_to_diagnostic(f"  Стратегии: {len(strategies)} файлов")
+        else:
+            self.log_to_diagnostic(f"  Папка zapret_core отсутствует")
+            errors.append("zapret_core отсутствует")
+        
+        self.log_to_diagnostic("")
+        if errors:
+            self.log_to_diagnostic(f"Найдено проблем: {len(errors)}")
+            for err in errors:
+                self.log_to_diagnostic(f"  - {err}")
+        else:
+            self.log_to_diagnostic("Все файлы в порядке")
+        
+        self.log_to_diagnostic("="*50)
+    
+    def check_custom_site(self):
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Проверка сайта")
+        dialog.geometry("450x200")
+        dialog.resizable(False, False)
+        dialog.configure(bg=self.colors['bg_medium'])
+        
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 225
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 100
+        dialog.geometry(f"+{x}+{y}")
+        
+        tk.Label(dialog, text="Введите URL сайта:", font=("Segoe UI", 11),
+                fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(pady=(20, 5))
+        
+        url_entry = tk.Entry(dialog, width=50, font=("Segoe UI", 10),
+                            bg=self.colors['bg_light'], fg=self.colors['text_primary'],
+                            insertbackground=self.colors['text_primary'])
+        url_entry.pack(pady=5, padx=20, fill=tk.X)
+        url_entry.insert(0, "youtube.com")
+        
+        result_label = tk.Label(dialog, text="", font=("Segoe UI", 10),
+                                fg=self.colors['text_secondary'], bg=self.colors['bg_medium'])
+        result_label.pack(pady=5)
+        
+        def check():
+            url = url_entry.get().strip()
+            if not url:
+                result_label.config(text="Введите URL", fg=self.colors['accent_red'])
+                return
+            
+            result_label.config(text="Проверка...", fg=self.colors['accent'])
+            dialog.update()
+            
+            def check_thread():
+                try:
+                    import socket
+                    
+                    clean_url = url.replace("http://", "").replace("https://", "").replace("www.", "").split("/")[0]
+                    
+                    try:
+                        ip = socket.gethostbyname(clean_url)
+                        dns_ok = True
+                    except:
+                        ip = "не определяется"
+                        dns_ok = False
+                    
+                    if dns_ok:
+                        result = subprocess.run(['ping', '-n', '2', clean_url], 
+                                            capture_output=True, timeout=5)
+                        if result.returncode == 0:
+                            for line in result.stdout.decode('cp866', errors='ignore').split('\n'):
+                                if "среднее" in line or "Average" in line:
+                                    result_text = f"ДОСТУПЕН - {line.strip()}"
+                                    break
+                            else:
+                                result_text = f"ДОСТУПЕН (IP: {ip})"
+                            color = self.colors['accent_green']
+                        else:
+                            result_text = f"НЕ ДОСТУПЕН (IP: {ip})"
+                            color = self.colors['accent_red']
+                    else:
+                        result_text = f"DNS ОШИБКА - сайт не найден"
+                        color = self.colors['accent_red']
+                        
+                except subprocess.TimeoutExpired:
+                    result_text = "ТАЙМАУТ - сайт не отвечает"
+                    color = self.colors['accent_red']
+                except Exception as e:
+                    result_text = f"ОШИБКА: {str(e)}"
+                    color = self.colors['accent_red']
+                
+                dialog.after(0, lambda: result_label.config(text=result_text, fg=color))
+                dialog.after(0, lambda: check_btn.config(state="normal"))
+            
+            check_btn.config(state="disabled")
+            threading.Thread(target=check_thread, daemon=True).start()
+        
+        button_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
+        button_frame.pack(pady=15)
+        
+        check_btn = RoundedButton(button_frame, text="Проверить", command=check,
+                                width=120, height=32, bg=self.colors['accent'],
+                                font=("Segoe UI", 10))
+        check_btn.pack(side=tk.LEFT, padx=5)
+        
+        close_btn = RoundedButton(button_frame, text="Закрыть", command=dialog.destroy,
+                                width=80, height=32, bg=self.colors['button_bg'],
+                                font=("Segoe UI", 10))
+        close_btn.pack(side=tk.LEFT, padx=5)
+        
+        url_entry.bind("<Return>", lambda e: check())
 
     def set_autostart(self, enabled):
         try:
@@ -1326,6 +1538,7 @@ class ZapretLauncher:
             ("Пинг до YouTube", self.check_ping_youtube),
             ("Пинг до Discord", self.check_ping_discord),
             ("Тест скорости", self.run_speedtest),
+            ("Проверить сайт", self.check_custom_site),
         ])
         
         self.create_diagnostic_card(left_column, "Zapret", [
@@ -1339,6 +1552,7 @@ class ZapretLauncher:
         self.create_diagnostic_card(left_column, "Общая диагностика", [
             ("Полная проверка", self.run_full_diagnostic),
             ("Сохранить отчет", self.save_diagnostic_report),
+            ("Проверка файлов", self.check_file_integrity),
         ])
         
         self.create_diagnostic_card(right_column, "ByeDPI", [
