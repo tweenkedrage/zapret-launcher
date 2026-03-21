@@ -622,8 +622,8 @@ class ByeDPIWithProvider:
     
     def set_provider(self, provider):
         self.current_provider = provider
-        params = PROVIDER_PARAMS.get(provider, PROVIDER_PARAMS["Ростелеком"])
-        self.base.rostel_params = params + ["-i", "127.0.0.1", "-p", "10801"]
+        params = PROVIDER_PARAMS.get(provider, PROVIDER_PARAMS["Ростелеком/Дом.ru/Tele2/SamaraLan"])
+        self.base.set_params(params + ["-i", "127.0.0.1", "-p", "10801"])
     
     def start(self):
         return self.base.start()
