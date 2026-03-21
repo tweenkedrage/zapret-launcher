@@ -18,16 +18,14 @@ class ByeDPIOptimizer:
         self.is_running = False
         self.current_version = "17.3"
         
-        # Параметры для Ростелеком
         self.rostel_params = [
-            "--split", "1",           # Минимальное разделение
-            "-i", "127.0.0.1",        # Локальный адрес
-            "-p", "10801",             # Порт
-            "--disorder", "-1"         # Изменение порядка пакетов
+            "--split", "1",
+            "-i", "127.0.0.1",
+            "-p", "10801",
+            "--disorder", "-1"
         ]
         
         self.ensure_directories()
-        
         self.copy_binary_if_exists()
         
     def ensure_directories(self):
@@ -41,9 +39,11 @@ class ByeDPIOptimizer:
             if not target.exists():
                 try:
                     shutil.copy2(binary, target)
-                    print(f"ByeDPI скопирован в {target}")
                 except:
                     pass
+    
+    def set_params(self, params):
+        self.rostel_params = params
     
     def get_binary_path(self) -> Optional[Path]:
         app_binary = self.bin_dir / "ciadpi.exe"
@@ -82,9 +82,6 @@ class ByeDPIOptimizer:
     
         try:
             self.stop()
-            
-            print(f"Запуск ByeDPI: {binary}")
-            print(f"Параметры: {' '.join(self.rostel_params)}")
             
             args = [str(binary)] + self.rostel_params
             
