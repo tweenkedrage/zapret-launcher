@@ -37,7 +37,7 @@ from PIL import Image, ImageDraw
 from typing import Optional, List, Dict, Tuple
 import webbrowser
 
-from tg_proxy import run_proxy, parse_dc_ip_list
+from tg_proxy import run_proxy, parse_dc_ip_list, run_proxy_async
 from list_editor import ListEditor
 
 APPDATA_DIR = Path(os.getenv('LOCALAPPDATA')) / 'ZapretLauncher'
@@ -170,42 +170,55 @@ def update_launcher(parent, download_url, new_version):
         temp_dir = tempfile.gettempdir()
         new_exe_path = os.path.join(temp_dir, f"Zapret_Launcher_v{new_version}.exe")
         updater_script = os.path.join(temp_dir, "update_launcher.bat")
-        
+        current_exe = sys.executable if getattr(sys, 'frozen', False) else sys.argv[0]
+        current_exe_name = os.path.basename(current_exe)
         urllib.request.urlretrieve(download_url, new_exe_path)
         
-        parent.log_to_diagnostic(f"Файл загружен: {new_exe_path}")
+        if not os.path.exists(new_exe_path):
+            raise Exception("Файл не скачан")
         
-        current_exe = sys.executable if getattr(sys, 'frozen', False) else sys.argv[0]
+        file_size = os.path.getsize(new_exe_path)
+        if file_size < 102400:
+            raise Exception(f"Файл поврежден (размер: {file_size} байт, ожидалось > 100KB)")
+        
+        parent.log_to_diagnostic(f"Файл загружен: {new_exe_path} ({file_size} байт)")
         
         with open(updater_script, 'w', encoding='utf-8') as f:
             f.write(f'''@echo off
-timeout /t 2 /nobreak > nul
-echo Обновление Zapret Launcher...
+title Updater
+echo ========================================
+echo    Обновление Zapret Launcher
+echo ========================================
 echo.
-echo Закрываю старую версию...
-taskkill /F /IM "{os.path.basename(current_exe)}" 2>nul
-timeout /t 1 /nobreak > nul
+echo Закрытие программы...
+taskkill /F /IM "{current_exe_name}" 2>nul
+timeout /t 3 /nobreak > nul
 echo.
-echo Копирую новую версию...
-copy /Y "{new_exe_path}" "{current_exe}"
+echo Копирование новой версии...
+copy /Y "{new_exe_path}" "{current_exe}" > nul
 if errorlevel 1 (
-    echo Ошибка копирования. Возможно, файл используется.
+    echo ОШИБКА: Не удалось скопировать файл!
+    echo.
+    echo Возможно, файл используется.
+    echo Попробуйте закрыть программу вручную.
     pause
     exit /b 1
 )
 echo.
-echo Запускаю новую версию...
+echo Запуск новой версии...
 start "" "{current_exe}"
 echo.
 echo Обновление завершено!
 timeout /t 2 /nobreak > nul
-del "%~f0"
+del "{new_exe_path}" 2>nul
+del "%~f0" 2>nul
 ''')
         
         parent.log_to_diagnostic(f"Создан скрипт обновления: {updater_script}")
-        
         parent.log_to_diagnostic("Запуск обновления...")
-        subprocess.Popen(['cmd', '/c', updater_script], shell=True)
+        
+        subprocess.Popen(['cmd', '/c', updater_script], shell=True, 
+                        creationflags=subprocess.CREATE_NO_WINDOW)
         
         parent.root.after(500, parent.root.quit)
         
@@ -312,6 +325,129 @@ def update_zapret_core(parent, version):
         messagebox.showerror("Ошибка", f"Не удалось обновить Zapret: {str(e)}")
         parent.update_status("Готов к работе")
 
+class StatsMonitor:
+    def __init__(self):
+        self.session_start = None
+        self.total_up_bytes = 0
+        self.total_down_bytes = 0
+        self.connection_count = 0
+        self.disconnection_count = 0
+        self.is_monitoring = False
+        self._monitor_thread = None
+        self._stop_event = None
+        self.last_up = 0
+        self.last_down = 0
+        self.current_speed_up = 0
+        self.current_speed_down = 0
+        self.last_update_time = 0
+        
+    def start_session(self):
+        self.session_start = time.time()
+        self.connection_count += 1
+        self.is_monitoring = True
+        self.last_up, self.last_down = self._get_network_stats()
+        self.last_update_time = time.time()
+        
+    def end_session(self):
+        self.is_monitoring = False
+        self.disconnection_count += 1
+        
+    def _get_network_stats(self):
+        try:
+            result = subprocess.run(
+                ['netstat', '-e'],
+                capture_output=True, text=True, encoding='cp866',
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            lines = result.stdout.split('\n')
+            for line in lines:
+                if 'Байт' in line or 'Bytes' in line:
+                    parts = line.split()
+                    if len(parts) >= 3:
+                        try:
+                            recv = int(parts[1].replace(',', ''))
+                            sent = int(parts[2].replace(',', ''))
+                            return recv, sent
+                        except:
+                            pass
+            return 0, 0
+        except:
+            return 0, 0
+    
+    def update_speed(self):
+        if not self.is_monitoring:
+            return
+        try:
+            current_up, current_down = self._get_network_stats()
+            now = time.time()
+            time_diff = now - self.last_update_time
+            
+            if time_diff > 0.5:
+                self.current_speed_up = (current_up - self.last_up) / time_diff
+                self.current_speed_down = (current_down - self.last_down) / time_diff
+                self.last_update_time = now
+            
+            if current_up > self.last_up:
+                self.total_up_bytes += (current_up - self.last_up)
+            if current_down > self.last_down:
+                self.total_down_bytes += (current_down - self.last_down)
+            
+            self.last_up = current_up
+            self.last_down = current_down
+            
+            self.current_speed_up = max(0, self.current_speed_up)
+            self.current_speed_down = max(0, self.current_speed_down)
+        except:
+            pass
+    
+    def get_session_time(self):
+        if self.session_start:
+            return time.time() - self.session_start
+        return 0
+    
+    def format_time(self, seconds):
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    
+    def format_bytes(self, bytes_val):
+        if bytes_val < 1024:
+            return f"{bytes_val} B"
+        elif bytes_val < 1024 * 1024:
+            return f"{bytes_val / 1024:.1f} KB"
+        elif bytes_val < 1024 * 1024 * 1024:
+            return f"{bytes_val / (1024 * 1024):.1f} MB"
+        else:
+            return f"{bytes_val / (1024 * 1024 * 1024):.2f} GB"
+    
+    def format_speed(self, bytes_per_sec):
+        if bytes_per_sec < 1024:
+            return f"{bytes_per_sec:.0f} B/s"
+        elif bytes_per_sec < 1024 * 1024:
+            return f"{bytes_per_sec / 1024:.1f} KB/s"
+        else:
+            return f"{bytes_per_sec / (1024 * 1024):.1f} MB/s"
+    
+    def get_stats_dict(self):
+        self.update_speed()
+        return {
+            'session_time': self.get_session_time(),
+            'session_time_str': self.format_time(self.get_session_time()),
+            'up_bytes': self.total_up_bytes,
+            'up_str': self.format_bytes(self.total_up_bytes),
+            'down_bytes': self.total_down_bytes,
+            'down_str': self.format_bytes(self.total_down_bytes),
+            'total_bytes': self.total_up_bytes + self.total_down_bytes,
+            'total_str': self.format_bytes(self.total_up_bytes + self.total_down_bytes),
+            'connections': self.connection_count,
+            'disconnections': self.disconnection_count,
+            'speed_up': self.current_speed_up,
+            'speed_up_str': self.format_speed(self.current_speed_up),
+            'speed_down': self.current_speed_down,
+            'speed_down_str': self.format_speed(self.current_speed_down),
+        }
+
 class TGProxyServer:
     def __init__(self):
         self._thread = None
@@ -325,18 +461,27 @@ class TGProxyServer:
             return True
         try:
             self._stop_event = asyncio.Event()
-            dc_opt = {2: '149.154.167.220', 4: '149.154.167.220', 1: '149.154.175.50', 3: '149.154.175.100', 5: '91.108.56.100'}
-            def run_server():
-                try:
-                    asyncio.run(run_proxy(self._port, dc_opt, self._stop_event, self._host))
-                except:
-                    pass
-            self._thread = threading.Thread(target=run_server, daemon=True)
+            
+            dc_opt = {
+                1: '149.154.175.50',
+                2: '149.154.167.220',
+                3: '149.154.175.100',
+                4: '149.154.167.91',
+                5: '91.108.56.100',
+            }
+            
+            self._thread = threading.Thread(
+                target=run_proxy,
+                args=(self._port, dc_opt, self._stop_event, self._host),
+                daemon=True
+            )
             self._thread.start()
             self._running = True
-            time.sleep(1)
+            time.sleep(2)
             return True
-        except:
+                
+        except Exception as e:
+            print(f"TGProxy start error: {e}")
             return False
         
     def stop(self):
@@ -345,6 +490,7 @@ class TGProxyServer:
         if self._stop_event:
             self._stop_event.set()
         self._running = False
+        time.sleep(0.5)
 
 class ZapretCore:
     def __init__(self, parent):
@@ -659,6 +805,8 @@ class ZapretLauncher:
         self.root.title("Zapret Launcher")
         self.byedpi = ByeDPIWithProvider(APPDATA_DIR)
         self.byedpi_enabled = False
+        self.stats = StatsMonitor()
+        self.stats_update_id = None
         
         try:
             self.root.iconbitmap(default='icon.ico')
@@ -826,12 +974,53 @@ class ZapretLauncher:
                                     fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
         self.main_status.pack(side=tk.LEFT, padx=15, pady=10)
         
+        self.stats_frame = tk.Frame(self.main_page, bg=self.colors['bg_medium'])
+        self.stats_frame.pack(fill=tk.X, padx=30, pady=(0, 20), ipadx=20, ipady=15)
+        
+        tk.Label(self.stats_frame, text="Статистика сессии", font=("Segoe UI", 14, "bold"),
+                fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(anchor='w', padx=15, pady=(0, 10))
+        
+        stats_row1 = tk.Frame(self.stats_frame, bg=self.colors['bg_medium'])
+        stats_row1.pack(fill=tk.X, padx=15, pady=2)
+        
+        self.stats_time_label = tk.Label(stats_row1, text="00:00:00", font=("Segoe UI", 18, "bold"),
+                                        fg=self.colors['accent'], bg=self.colors['bg_medium'])
+        self.stats_time_label.pack(side=tk.LEFT)
+        
+        tk.Label(stats_row1, text="время работы", font=self.font_primary,
+                fg=self.colors['text_secondary'], bg=self.colors['bg_medium']).pack(side=tk.LEFT, padx=(5, 20))
+        
+        self.stats_traffic_label = tk.Label(stats_row1, text="⬇ 0 B  |  ⬆ 0 B", font=("Segoe UI", 12),
+                                            fg=self.colors['text_primary'], bg=self.colors['bg_medium'])
+        self.stats_traffic_label.pack(side=tk.LEFT, padx=(0, 20))
+        
+        self.stats_total_label = tk.Label(stats_row1, text="0 B", font=("Segoe UI", 12),
+                                        fg=self.colors['text_secondary'], bg=self.colors['bg_medium'])
+        self.stats_total_label.pack(side=tk.LEFT)
+        
+        stats_speed_frame = tk.Frame(self.stats_frame, bg=self.colors['bg_medium'])
+        stats_speed_frame.pack(fill=tk.X, padx=15, pady=(10, 5))
+        
+        tk.Label(stats_speed_frame, text="Скорость:", font=self.font_bold,
+                fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(anchor='w')
+        
+        speed_row = tk.Frame(stats_speed_frame, bg=self.colors['bg_medium'])
+        speed_row.pack(fill=tk.X, pady=5)
+        
+        self.stats_speed_up_label = tk.Label(speed_row, text="⬆ 0 B/s", font=self.font_primary,
+                                            fg=self.colors['accent_green'], bg=self.colors['bg_medium'])
+        self.stats_speed_up_label.pack(side=tk.LEFT, padx=(0, 20))
+        
+        self.stats_speed_down_label = tk.Label(speed_row, text="⬇ 0 B/s", font=self.font_primary,
+                                                fg=self.colors['accent'], bg=self.colors['bg_medium'])
+        self.stats_speed_down_label.pack(side=tk.LEFT)
+        
         quick_frame = tk.Frame(self.main_page, bg=self.colors['bg_medium'])
-        quick_frame.pack(fill=tk.X, padx=30, pady=20, ipadx=20, ipady=20)
+        quick_frame.pack(fill=tk.X, padx=30, pady=(30, 20), ipadx=20, ipady=20)
         
         tk.Label(quick_frame, text="Быстрый запуск", font=("Segoe UI", 16, "bold"),
                 fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(anchor='w', padx=15, pady=(10, 15))
-        
+            
         strategy_frame = tk.Frame(quick_frame, bg=self.colors['bg_medium'])
         strategy_frame.pack(fill=tk.X, padx=15, pady=5)
         
@@ -840,8 +1029,8 @@ class ZapretLauncher:
         
         self.strategy_var = tk.StringVar()
         self.strategy_combo = ttk.Combobox(strategy_frame, textvariable=self.strategy_var,
-                                      values=self.zapret.available_strategies,
-                                      width=40, font=self.font_primary)
+                                    values=self.zapret.available_strategies,
+                                    width=40, font=self.font_primary)
         self.strategy_combo.pack(side=tk.LEFT, padx=10)
         self.strategy_combo.bind("<Enter>", lambda e: self.strategy_combo.config(cursor="hand2"))
         self.strategy_combo.bind("<Leave>", lambda e: self.strategy_combo.config(cursor=""))
@@ -854,8 +1043,8 @@ class ZapretLauncher:
         
         self.tgws_var = tk.BooleanVar(value=False)
         tgws_check = tk.Checkbutton(tgws_frame, variable=self.tgws_var,
-                                   bg=self.colors['bg_medium'], activebackground=self.colors['bg_medium'],
-                                   cursor="hand2")
+                                bg=self.colors['bg_medium'], activebackground=self.colors['bg_medium'],
+                                cursor="hand2")
         tgws_check.pack(side=tk.LEFT)
         
         tk.Label(tgws_frame, text="Запустить вместе с Zapret", font=self.font_primary,
@@ -865,21 +1054,21 @@ class ZapretLauncher:
         byedpi_frame.pack(fill=tk.X, padx=15, pady=5)
         
         tk.Label(byedpi_frame, text="ByeDPI Оптимизатор:", 
-                 font=self.font_medium, fg=self.colors['text_secondary'], 
-                 bg=self.colors['bg_medium']).pack(side=tk.LEFT, padx=(0, 10))
+                font=self.font_medium, fg=self.colors['text_secondary'], 
+                bg=self.colors['bg_medium']).pack(side=tk.LEFT, padx=(0, 10))
         
         self.byedpi_var = tk.BooleanVar(value=self.byedpi_enabled)
         byedpi_check = tk.Checkbutton(byedpi_frame, variable=self.byedpi_var,
-                                      bg=self.colors['bg_medium'], 
-                                      activebackground=self.colors['bg_medium'],
-                                      cursor="hand2",
-                                      command=self.on_byedpi_change)
+                                    bg=self.colors['bg_medium'], 
+                                    activebackground=self.colors['bg_medium'],
+                                    cursor="hand2",
+                                    command=self.on_byedpi_change)
         byedpi_check.pack(side=tk.LEFT)
         
         self.byedpi_status = tk.Label(byedpi_frame, text="", 
-                                      font=self.font_primary, 
-                                      fg=self.colors['text_secondary'], 
-                                      bg=self.colors['bg_medium'])
+                                    font=self.font_primary, 
+                                    fg=self.colors['text_secondary'], 
+                                    bg=self.colors['bg_medium'])
         self.byedpi_status.pack(side=tk.LEFT, padx=5)
         
         provider_frame = tk.Frame(quick_frame, bg=self.colors['bg_medium'])
@@ -890,8 +1079,8 @@ class ZapretLauncher:
         
         self.provider_var = tk.StringVar(value=self.current_provider)
         self.provider_combo = ttk.Combobox(provider_frame, textvariable=self.provider_var,
-                                           values=list(PROVIDER_PARAMS.keys()),
-                                           width=30, font=self.font_primary)
+                                        values=list(PROVIDER_PARAMS.keys()),
+                                        width=30, font=self.font_primary)
         self.provider_combo.pack(side=tk.LEFT, padx=10)
         self.provider_combo.bind("<<ComboboxSelected>>", self.on_provider_change)
         
@@ -899,14 +1088,45 @@ class ZapretLauncher:
         button_frame.pack(fill=tk.X, padx=15, pady=(15, 10))
         
         self.connect_btn = RoundedButton(button_frame, text="ПОДКЛЮЧИТЬСЯ", command=self.toggle_connection,
-                                       width=300, height=55, bg=self.colors['accent'], 
-                                       font=("Segoe UI", 16, "bold"), corner_radius=12)
+                                    width=300, height=55, bg=self.colors['accent'], 
+                                    font=("Segoe UI", 16, "bold"), corner_radius=12)
         self.connect_btn.pack()
         
         if self.current_strategy and self.current_strategy in self.zapret.available_strategies:
             self.strategy_var.set(self.current_strategy)
         
         self.update_byedpi_status()
+
+    def update_stats_display(self):
+        if not hasattr(self, 'stats_frame'):
+            return
+        
+        stats = self.stats.get_stats_dict()
+        
+        if hasattr(self, 'stats_time_label'):
+            self.stats_time_label.config(text=stats['session_time_str'])
+        
+        if hasattr(self, 'stats_traffic_label'):
+            self.stats_traffic_label.config(text=f"⬇ {stats['down_str']}  |  ⬆ {stats['up_str']}")
+        
+        if hasattr(self, 'stats_total_label'):
+            self.stats_total_label.config(text=stats['total_str'])
+        
+        if hasattr(self, 'stats_speed_up_label'):
+            self.stats_speed_up_label.config(text=f"⬆ {stats['speed_up_str']}")
+        if hasattr(self, 'stats_speed_down_label'):
+            self.stats_speed_down_label.config(text=f"⬇ {stats['speed_down_str']}")
+            
+    def start_stats_monitoring(self):
+        def monitor_loop():
+            while self.is_connected:
+                time.sleep(0.5)
+                if self.is_connected:
+                    self.stats.update_speed()
+                    self.root.after(0, self.update_stats_display)
+        
+        if self.is_connected:
+            threading.Thread(target=monitor_loop, daemon=True).start()
 
     def on_provider_change(self, event):
         self.current_provider = self.provider_var.get()
@@ -1833,65 +2053,66 @@ class ZapretLauncher:
                 fg=self.colors['text_primary'], bg=self.colors['bg_dark']).pack(anchor='w', pady=(0, 20))
         
         self.help_section(scrollable_frame, "Установка:", [
-            ("1.", "Скачивайте архив и распаковывайте в любое место 2 файла: ", "Zapret_Launcher.exe", " и ", "zapret_resources.zip"),
-            ("2.", "Запускайте ", "Zapret_Launcher.exe", " от ", "имени администратора"),
-            ("3.", "Выбирайте любой метод использования Zapret и подключайтесь к ", "стабильной сети", " находясь под ", "ограничениями РКН"),
-            ("4.", "После всех 3-х действий ", "Zapret_Launcher.exe", " можно запускать в любой папке/в любом месте на компьютере ", "без файла zapret_resources.zip")
+            ("1.", "Скачивайте архив и распаковывайте в любое место 2 файла: ", "Zapret_Launcher.exe", " и ", "zapret_resources.zip", ";"),
+            ("2.", "Запускайте ", "Zapret_Launcher.exe", " от ", "имени администратора", ";"),
+            ("3.", "Выбирайте любой метод использования Zapret и подключайтесь к ", "стабильной сети", " находясь под ", "ограничениями РКН", ";"),
+            ("4.", "После всех 3-х действий ", "Zapret_Launcher.exe", " можно запускать в любой папке/в любом месте на компьютере ", "без файла zapret_resources.zip", "."),
         ])
         
         self.help_section(scrollable_frame, "Telegram Proxy:", [
-            ("1.", "Ставим галочку ", "Запустить вместе с Zapret", " в лаунчере"),
-            ("2.", "Запускаем ", "Telegram", " на ПК"),
-            ("3.", "Переходим в ", "настройки"),
-            ("4.", "Продвинутые настройки"),
-            ("5.", "Тип соединения"),
-            ("6.", "Использовать собственное прокси (", "SOCKS5", ", Хост: ", "127.0.0.1", ", Порт: ", "1080", ")")
+            ("1.", "Ставим галочку ", '"Запустить вместе с Zapret"', " в лаунчере", ";"),
+            ("2.", "Запускаем ", "Telegram", " на ПК", ";"),
+            ("3.", "Переходим в ", "настройки", ";"),
+            ("4.", "Продвинутые настройки", ""),
+            ("5.", "Тип соединения", ""),
+            ("6.", "Использовать собственное прокси (", "SOCKS5", ", Хост: ", "127.0.0.1", ", Порт: ", "1080", ")."),
         ])
         
         self.help_section(scrollable_frame, "ByeDPI Оптимизатор:", [
-            ("", "ByeDPI — это дополнительный инструмент для обхода DPI"),
-            ("•", "Включайте, если интернет тормозит или стандартные стратегии не помогают"),
-            ("•", "Особенно полезен для ", "YouTube", " и ", "онлайн-игр"),
-            ("•", "Создает локальный SOCKS5 прокси на порту ", "10801"),
+            ("", "ByeDPI", " — это дополнительный инструмент для обхода DPI;"),
+            ("1.", "Включайте только если тормозит интернет или стандартные стратегии не помогают", ";"),
+            ("2.", "Особенно полезен для ", "YouTube", " и ", "онлайн-игр", ";"),
+            ("3.", "Создает локальный SOCKS5 прокси на порту ", "10801", ";"),
         ])
         
         self.help_section(scrollable_frame, "Что такое zapret_resources.zip:", [
-            ("", "Это архив со всеми файлами Zapret, которые необходимы для работы лаунчера"),
-            ("", "При первом запуске лаунчер распаковывает ", "zapret_resources.zip", " в ", "%APPDATA%/ZapretLauncher/zapret_core/"),
-            ("", "Все файлы извлекаются в эту папку"),
-            ("", "Стратегии запускаются оттуда"),
-            ("", "Пользовательские списки (", "*-user.txt", ") сохраняются там же"),
+            ("1.", "Это архив со всеми файлами Zapret, которые необходимы для работы лаунчера", ";"),
+            ("2.", "При первом запуске лаунчер распаковывает ", "zapret_resources.zip", " в ", "%APPDATA%/ZapretLauncher/zapret_core/", ";"),
+            ("3.", "Все файлы извлекаются в эту папку", ";"),
+            ("4.", "Стратегии запускаются оттуда", ";"),
+            ("5.", "Пользовательские списки (", "*-user.txt", ") сохраняются там же", "."),
         ])
         
         self.help_section(scrollable_frame, "В каких случаях можно удалить zapret_resources.zip:", [
-            ("", "После успешной распаковки — если папка ", "zapret_core", " уже существует и полная"),
-            ("", "Если ты обновляешь лаунчер — новый .exe уже содержит свежий архив"),
-            ("", "Если ты хочешь сбросить Zapret — удали папку ", "zapret_core", " и при следующем запуске архив распакуется заново"),
+            ("1.", "После успешной распаковки — если папка ", "zapret_core", " в appdata/local уже существует и полная", ";"),
+            ("2.", "Если вы обновляете лаунчер — новый .exe yaже содержит свежий архив", ";"),
+            ("3.", "Если вы хотите сбросить Zapret — удали папку ", "zapret_core", ", и при следующем запуске архив распакуется заново", "."),
         ])
         
-        self.help_section(scrollable_frame, "НЕ УДАЛЯЙ, если:", [
-            ("", "Папка ", "zapret_core", " отсутствует или повреждена"),
-            ("", "Ты хочешь сохранить возможность переустановки без скачивания"),
-            ("", "Ты распространяешь программу — архив должен быть рядом с .exe"),
+        self.help_section(scrollable_frame, "НЕ УДАЛЯЙТЕ, если:", [
+            ("1.", "Папка ", "zapret_core", " отсутствует или повреждена", ";"),
+            ("2.", "Вы хотите сохранить возможность переустановки без скачивания", ";"),
+            ("3.", "Вы делитесь программой — архив (", "zapret_resources.zip", ") должен быть рядом с .exe", "."),
         ])
         
         self.help_section(scrollable_frame, "Антивирус и WinDivert:", [
-        ("", "Некоторые антивирусы могут реагировать на программу из-за использования компонента ", "WinDivert"),
-        ("", " — это легальный драйвер с открытым исходным кодом, используемый для фильтрации сетевых пакетов. Это ", "НОРМАЛЬНО"),
+            ("", "Некоторые антивирусы могут реагировать на программу из-за использования компонента ", "WinDivert", ". ", "Это НОРМАЛЬНО", "."),
+            ("", "WinDivert", " — это легальный драйвер с открытым исходным кодом, используемый для фильтрации сетевых пакетов.", ""),
         ])
         
         self.help_section(scrollable_frame, "Если антивирус ругается:", [
-            ("1.", "Добавь папку с программой в ", "исключения"),
-            ("2.", "Или скомпилируй программу сам из исходников или временно отключи антивирус при запуске"),
+            ("1.", "Добавьте папку с программой в ", "исключения", ";"),
+            ("2.", "Или скомпилируйте программу сам из исходников или временно отключите антивирус при запуске", "."),
         ])
         
         self.help_section(scrollable_frame, "Возможные конфликты:", [
-            ("", "Zapret и ByeDPI работают на разных уровнях и ", "в большинстве случаев не конфликтуют"),
-            ("", "Если после включения всего интернет работает нестабильно:"),
-            ("  •", "Отключай по одной галочке, чтобы найти виновника"),
-            ("  •", "Для YouTube иногда помогает ", "отключение QUIC", " в браузере (chrome://flags/#enable-quic)"),
-            ("  •", "Если пинг в играх вырос, отключи ", "TGProxy", " (он для игр не нужен)"),
-            ("  •", "Разные стратегии Zapret могут вести себя по-разному с ByeDPI — экспериментируй"),
+            ("", "Zapret", " и ", "ByeDPI", " работают на разных уровнях и ", "в большинстве случаев не конфликтуют", "."),
+            ("", "", ""),
+            ("", "Если после включения всего интернет работает нестабильно:", ""),
+            ("  •", "Отключайте по одной галочке, чтобы найти виновника", ""),
+            ("  •", "Для YouTube иногда помогает ", "отключение QUIC", " в браузере (chrome://flags/#enable-quic)", ""),
+            ("  •", "Если пинг в играх вырос, отключите ", "TGProxy", " (он для игр не нужен)", ""),
+            ("  •", "Разные стратегии Zapret могут вести себя по-разному с ByeDPI — экспериментируйте", ""),
         ])
         
         links_frame = tk.Frame(scrollable_frame, bg=self.colors['bg_dark'])
@@ -2107,10 +2328,17 @@ class ZapretLauncher:
         if success:
             self.current_strategy = strategy
             self.is_connected = True
+            
+            self.stats.start_session()
+            
             self.update_status(f"Подключено: {self.zapret.get_strategy_display_name(strategy)}", 
-                              self.colors['accent_green'])
+                            self.colors['accent_green'])
             self.update_ui_state()
             self.save_settings()
+            
+            self.start_stats_monitoring()
+            
+            self.root.after(100, self.update_stats_display)
             
             if self.tgws_var.get():
                 self.tg_proxy.start()
@@ -2133,6 +2361,9 @@ class ZapretLauncher:
             self.tg_proxy.stop()
             if self.byedpi_enabled:
                 self.byedpi.stop()
+            
+            self.stats.end_session()
+            
             time.sleep(1)
             self.root.after(0, self.finish_disconnect)
         
@@ -2225,4 +2456,3 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = ZapretLauncher(root)
     root.mainloop()
-    
