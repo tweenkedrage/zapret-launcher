@@ -1,6 +1,18 @@
 import tkinter as tk
 from tkinter import messagebox, filedialog, ttk
 from byedpi_optimizer import ByeDPIOptimizer
+from theme import get_theme
+from network_optimizer import (
+    optimize_network_latency,
+    find_best_dns,
+    set_dns_windows,
+    flush_dns_cache,
+    restore_network_defaults,
+    get_current_dns,
+    DNS_SERVERS,
+    list_network_adapters,
+    set_dns_manual
+)
 import subprocess
 import os
 import json
@@ -35,7 +47,7 @@ ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
 ZAPRET_API_URL = "https://api.github.com/repos/flowseal/zapret-discord-youtube/releases/latest"
-CURRENT_VERSION = "2.2c"
+CURRENT_VERSION = "2.3"
 
 PROVIDER_PARAMS = {
     "Ростелеком/Дом.ru/Tele2/SamaraLan": ["--split", "1", "--disorder", "-1"],
@@ -43,6 +55,7 @@ PROVIDER_PARAMS = {
     "Мегафон": ["-s0", "-o1", "-d1", "-r1+s", "-Ar", "-o1", "-At", "-f-1", "-r1+s", "-As"],
     "Билайн": ["--split", "1", "--disorder", "1", "--fake", "-1", "--ttl", "8"],
     "ТТК": ["-1", "-e1"],
+    "SkyNet (Киргизия)": ["--split", "1", "--disorder", "1", "--fake", "-1", "--ttl", "8"],
 }
 
 def is_admin():
@@ -550,6 +563,12 @@ class RoundedButton(tk.Canvas):
         color = self.normal_color if enabled else '#666666'
         self.itemconfig(self.rect, fill=color)
 
+    def update_colors(self, bg_color, fg_color, hover_color):
+        self.normal_color = bg_color
+        self.hover_color = hover_color
+        self.itemconfig(self.rect, fill=bg_color)
+        self.itemconfig(self.text_id, fill=fg_color)
+
 class SystemTrayIcon:
     def __init__(self, app):
         self.app = app
@@ -657,27 +676,14 @@ class ZapretLauncher:
         self.root.resizable(False, False)
         
         self.root.protocol("WM_DELETE_WINDOW", self.hide_window)
-            
-        self.colors = {
-            'bg_dark': '#0F0F12', 
-            'bg_medium': '#1A1A1F', 
-            'bg_light': '#25252B',
-            'accent': '#4361ee', 
-            'accent_hover': '#5a7aff', 
-            'accent_green': '#10b981',
-            'accent_red': '#ef4444', 
-            'text_primary': '#FFFFFF', 
-            'text_secondary': '#9CA3AF',
-            'border': '#2D2D35', 
-            'button_bg': '#33333D',
-            'separator': '#2D2D35',
-        }
-        self.root.configure(bg=self.colors['bg_dark'])
         
         self.font_primary = ("Segoe UI", 10)
         self.font_medium = ("Segoe UI", 12)
         self.font_title = ("Segoe UI", 28, "bold")
         self.font_bold = ("Segoe UI", 12, "bold")
+        
+        self.colors = get_theme('dark')
+        self.root.configure(bg=self.colors['bg_dark'])
         
         if not is_admin():
             result = messagebox.askyesno(
@@ -916,6 +922,159 @@ class ZapretLauncher:
                 self.byedpi_var.set(False)
                 self.byedpi_enabled = False
             self.update_byedpi_status()
+
+    def optimize_network_latency(self):
+        self.log_to_diagnostic("="*50)
+        self.log_to_diagnostic("ОПТИМИЗАЦИЯ СЕТИ (УБИРАНИЕ INPUT LAG)")
+        self.log_to_diagnostic("="*50)
+        
+        if not is_admin():
+            self.log_to_diagnostic("ОШИБКА: Требуются права администратора!")
+            messagebox.showerror("Ошибка", "Для оптимизации сети требуются права администратора!")
+            return
+        
+        self.log_to_diagnostic("Настройка TCP параметров...")
+        success, msg = optimize_network_latency()
+        
+        if success:
+            self.log_to_diagnostic(msg)
+            self.log_to_diagnostic("Оптимизация завершена")
+            messagebox.showinfo("Успех", "Сетевые параметры оптимизированы!\n\nПерезагрузите компьютер для применения изменений.")
+        else:
+            self.log_to_diagnostic(f"Ошибка: {msg}")
+            messagebox.showerror("Ошибка", msg)
+        
+        self.log_to_diagnostic("="*50)
+
+
+    def find_and_set_best_dns(self):
+        self.log_to_diagnostic("="*50)
+        self.log_to_diagnostic("ПОИСК ЛУЧШЕГО DNS СЕРВЕРА")
+        self.log_to_diagnostic("="*50)
+        
+        self.log_to_diagnostic("Тестирование DNS серверов...")
+        self.update_status("Поиск DNS...", self.colors['accent'])
+        self.root.update()
+        
+        def find_dns_thread():
+            try:
+                primary, secondary, latency, name = find_best_dns()
+                
+                self.log_to_diagnostic(f"Лучший DNS: {name}")
+                self.log_to_diagnostic(f"Primary: {primary} (задержка: {latency:.1f} мс)")
+                self.log_to_diagnostic(f"Secondary: {secondary}")
+                
+                if not is_admin():
+                    self.log_to_diagnostic("ОШИБКА: Требуются права администратора!")
+                    self.root.after(0, lambda: messagebox.showerror("Ошибка", "Для установки DNS требуются права администратора!"))
+                    self.root.after(0, lambda: self.update_status("Готов к работе"))
+                    return
+                
+                success, msg = set_dns_windows(primary, secondary)
+                
+                if not success:
+                    adapters = list_network_adapters()
+                    if adapters:
+                        self.root.after(0, lambda: self.show_adapter_selector(primary, secondary, name, adapters))
+                    else:
+                        self.log_to_diagnostic(f"❌ {msg}")
+                        self.root.after(0, lambda: messagebox.showerror("Ошибка", msg))
+                else:
+                    self.log_to_diagnostic(f"✅ {msg}")
+                    self.root.after(0, lambda: messagebox.showinfo("Успех", 
+                        f"Установлен DNS: {name}\n\n"
+                        f"Primary: {primary}\n"
+                        f"Secondary: {secondary}\n"
+                        f"Задержка: {latency:.1f} мс"))
+                
+                self.root.after(0, lambda: self.update_status("Готов к работе"))
+                self.log_to_diagnostic("="*50)
+                
+            except Exception as e:
+                self.log_to_diagnostic(f"Ошибка: {str(e)}")
+                self.root.after(0, lambda: self.update_status("Готов к работе"))
+        
+        threading.Thread(target=find_dns_thread, daemon=True).start()
+
+
+    def show_adapter_selector(self, primary, secondary, dns_name, adapters):
+        from network_optimizer import set_dns_manual
+        
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Выбор сетевого адаптера")
+        dialog.geometry("400x300")
+        dialog.resizable(False, False)
+        dialog.configure(bg=self.colors['bg_medium'])
+        
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 200
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 150
+        dialog.geometry(f"+{x}+{y}")
+        
+        tk.Label(dialog, text="Выберите сетевой адаптер:", font=("Segoe UI", 12),
+                fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(pady=(15, 10))
+        
+        listbox = tk.Listbox(dialog, height=8, font=("Segoe UI", 10),
+                            bg=self.colors['bg_light'], fg=self.colors['text_primary'],
+                            selectbackground=self.colors['accent'])
+        listbox.pack(padx=20, pady=5, fill=tk.BOTH, expand=True)
+        
+        for adapter in adapters:
+            listbox.insert(tk.END, adapter)
+        
+        def apply():
+            selection = listbox.curselection()
+            if not selection:
+                return
+            adapter = adapters[selection[0]]
+            
+            success, msg = set_dns_manual(primary, secondary, adapter)
+            if success:
+                messagebox.showinfo("Успех", f"DNS установлен для адаптера {adapter}")
+                self.log_to_diagnostic(f"DNS установлен для адаптера {adapter}")
+            else:
+                messagebox.showerror("Ошибка", msg)
+                self.log_to_diagnostic(f"{msg}")
+            
+            dialog.destroy()
+        
+        button_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
+        button_frame.pack(pady=15)
+        
+        apply_btn = RoundedButton(button_frame, text="Применить", command=apply,
+                                width=120, height=35, bg=self.colors['accent'],
+                                font=("Segoe UI", 10))
+        apply_btn.pack(side=tk.LEFT, padx=5)
+        
+        cancel_btn = RoundedButton(button_frame, text="Отмена", command=dialog.destroy,
+                                width=80, height=35, bg=self.colors['button_bg'],
+                                font=("Segoe UI", 10))
+        cancel_btn.pack(side=tk.LEFT, padx=5)
+
+
+    def flush_dns_cache_command(self):
+        self.log_to_diagnostic("Очистка DNS кэша...")
+        success, msg = flush_dns_cache()
+        if success:
+            self.log_to_diagnostic(f"{msg}")
+            messagebox.showinfo("Успех", msg)
+        else:
+            self.log_to_diagnostic(f"{msg}")
+            messagebox.showerror("Ошибка", msg)
+
+
+    def restore_network_defaults_command(self):
+        self.log_to_diagnostic("Восстановление стандартных настроек сети...")
+        if not is_admin():
+            messagebox.showerror("Ошибка", "Требуются права администратора!")
+            return
+        
+        success, msg = restore_network_defaults()
+        if success:
+            self.log_to_diagnostic(f"{msg}")
+            messagebox.showinfo("Успех", msg)
+        else:
+            self.log_to_diagnostic(f"{msg}")
+            messagebox.showerror("Ошибка", msg)
 
     def check_file_integrity(self):
         self.log_to_diagnostic("="*50)
@@ -1190,7 +1349,7 @@ class ZapretLauncher:
             import urllib.request
             import time
             
-            test_url = "http://speedtest.tele2.net/100MB.zip"
+            test_url = "https://proof.ovh.net/files/100Mb.dat"
             start_time = time.time()
             
             urllib.request.urlretrieve(test_url, "speedtest_temp.bin")
@@ -1476,6 +1635,48 @@ class ZapretLauncher:
         except Exception as e:
             self.log_to_diagnostic(f"Ошибка сохранения: {str(e)}")
 
+    def refresh_page(self, page_name):
+        page = getattr(self, f"{page_name}_page")
+        page.configure(bg=self.colors['bg_dark'])
+        
+        for widget in page.winfo_children():
+            self.update_widget_colors(widget)
+        
+        if page_name == 'diagnostic' and hasattr(self, 'diagnostic_text'):
+            self.diagnostic_text.configure(bg=self.colors['bg_dark'], fg=self.colors['text_primary'])
+
+    def update_widget_colors(self, widget):
+        try:
+            widget_type = type(widget)
+            
+            if widget_type == tk.Frame:
+                widget.configure(bg=self.colors['bg_dark'])
+            elif widget_type == tk.Label:
+                current_fg = widget.cget('fg')
+                accent_colors = [self.colors['accent'], self.colors['accent_green'], 
+                            self.colors['accent_red'], self.colors['accent_hover']]
+                if current_fg and current_fg not in accent_colors:
+                    widget.configure(fg=self.colors['text_secondary'])
+                widget.configure(bg=self.colors['bg_dark'])
+            elif widget_type == tk.Canvas:
+                widget.configure(bg=self.colors['bg_dark'])
+            elif widget_type == ttk.Combobox:
+                widget.configure(background=self.colors['bg_light'])
+            elif widget_type == tk.Text:
+                widget.configure(bg=self.colors['bg_dark'], fg=self.colors['text_primary'])
+            elif hasattr(widget, 'update_colors'):
+                widget.update_colors(self.colors['button_bg'], self.colors['text_secondary'], self.colors['accent_hover'])
+            elif hasattr(widget, 'configure') and 'bg' in widget.keys():
+                try:
+                    widget.configure(bg=self.colors['bg_dark'])
+                except:
+                    pass
+            
+            for child in widget.winfo_children():
+                self.update_widget_colors(child)
+        except Exception as e:
+            pass
+
     def create_service_page(self):
         self.service_page = tk.Frame(self.content_panel, bg=self.colors['bg_dark'])
         
@@ -1575,15 +1776,19 @@ class ZapretLauncher:
             ("Папка AppData", self.open_appdata_folder),
             ("Очистить кэш", self.clear_cache),
             ("Автозапуск", self.toggle_autostart),
+            ("Оптимизация сети", self.optimize_network_latency),
+            ("Найти лучший DNS", self.find_and_set_best_dns),
+            ("Очистить DNS кэш", self.flush_dns_cache_command),
+            ("Сбросить настройки", self.restore_network_defaults_command),
         ])
         
-        result_frame = tk.Frame(self.diagnostic_page, bg=self.colors['bg_medium'])
+        result_frame = tk.Frame(self.diagnostic_page, bg=self.colors['bg_light'])
         result_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=(10, 20))
         
         tk.Label(result_frame, text="Результаты диагностики:", font=("Segoe UI", 12, "bold"),
-                fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(anchor='w', padx=15, pady=(8, 5))
+                fg=self.colors['text_primary'], bg=self.colors['bg_light']).pack(anchor='w', padx=15, pady=(8, 5))
         
-        text_frame = tk.Frame(result_frame, bg=self.colors['bg_medium'])
+        text_frame = tk.Frame(result_frame, bg=self.colors['bg_light'])
         text_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 10))
         
         self.diagnostic_text = tk.Text(text_frame, height=8, bg=self.colors['bg_dark'],
