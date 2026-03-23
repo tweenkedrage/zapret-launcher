@@ -73,13 +73,13 @@ try:
     os.unlink(temp_zip)
     
     if os.path.exists(ZIP_FILENAME):
-        print(f"\n✅ Готово! Создан файл: {ZIP_FILENAME}")
+        print(f"\nГотово! Создан файл: {ZIP_FILENAME}")
         print(f"Размер: {os.path.getsize(ZIP_FILENAME)} байт")
         print(f"Путь: {os.path.abspath(ZIP_FILENAME)}")
     else:
-        print("\n❌ Ошибка: файл не создан")
+        print("\nОшибка: файл не создан")
 
 except Exception as e:
-    print(f"\n❌ Ошибка: {e}")
+    print(f"\nОшибка: {e}")
 
 input("\nНажми Enter для выхода...")
