@@ -15,6 +15,8 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 
 DEFAULT_PORT = 1080
+import logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 log = logging.getLogger('tg-ws-proxy')
 
 _TCP_NODELAY = True
@@ -54,6 +56,14 @@ _IP_TO_DC: Dict[str, Tuple[int, bool]] = {
     '149.154.171.5':  (5, False),
     '91.108.56.102': (5, True), '91.108.56.128': (5, True),
     '91.108.56.151': (5, True),
+}
+
+FULL_DC_OPT = {
+    1: ['149.154.175.50', '149.154.175.52', '149.154.175.53'],
+    2: ['149.154.167.220', '149.154.167.151', '149.154.167.51'],
+    3: ['149.154.175.100', '149.154.175.102'],
+    4: ['149.154.167.91', '149.154.167.118', '149.154.167.92'],
+    5: ['91.108.56.100', '91.108.56.102', '91.108.56.126'],
 }
 
 _dc_opt: Dict[int, Optional[str]] = {}
@@ -891,6 +901,23 @@ def main():
         asyncio.run(_run(args.port, dc_opt, host=args.host))
     except KeyboardInterrupt:
         log.info("Shutting down. Final stats: %s", _stats.summary())
+
+async def _run_async(port: int, dc_opt: Dict[int, Optional[str]],
+                      stop_event: Optional[asyncio.Event] = None,
+                      host: str = '127.0.0.1'):
+    await _run(port, dc_opt, stop_event, host)
+
+def run_proxy_async(port: int, dc_opt: Dict[int, str],
+                     stop_event: Optional[asyncio.Event] = None,
+                     host: str = '127.0.0.1'):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(_run_async(port, dc_opt, stop_event, host))
+    except Exception as e:
+        print(f"TGProxy error: {e}")
+    finally:
+        loop.close()
 
 if __name__ == '__main__':
     main()
