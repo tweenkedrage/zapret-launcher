@@ -19,15 +19,6 @@ from pathlib import Path
 
 APPDATA_DIR = Path(os.getenv('LOCALAPPDATA')) / 'ZapretLauncher'
 ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
-CURRENT_VERSION = "2.3c"
-
-PROVIDER_PARAMS = {
-    "Ростелеком/Дом.ru/Tele2": ["--split", "1", "--disorder", "-1"],
-    "МГТС (МТС)/Yota": ["-7", "-e1", "-q"],
-    "Мегафон": ["-s0", "-o1", "-d1", "-r1+s", "-Ar", "-o1", "-At", "-f-1", "-r1+s", "-As"],
-    "Билайн": ["--split", "1", "--disorder", "1", "--fake", "-1", "--ttl", "8"],
-    "ТТК": ["-1", "-e1"],
-}
 
 def check_zapret_folder():
     if not ZAPRET_CORE_DIR.exists():
@@ -47,7 +38,6 @@ def open_zapret_folder():
         os.startfile(ZAPRET_CORE_DIR)
     except Exception as e:
         messagebox.showerror("Ошибка", f"Не удалось открыть папку: {str(e)}")
-
 
 class Pages:
     def __init__(self, app: 'ZapretLauncher'):
@@ -147,6 +137,23 @@ class Pages:
         self.app.stats_speed_down_label = tk.Label(speed_row, text="⬇ 0 B/s", font=self.font_primary,
                                                 fg=self.colors['accent'], bg=self.colors['bg_medium'])
         self.app.stats_speed_down_label.pack(side=tk.LEFT)
+
+        interval_frame = tk.Frame(stats_speed_frame, bg=self.colors['bg_medium'])
+        interval_frame.pack(fill=tk.X, pady=(5, 0))
+
+        self.app.interval_label = tk.Label(
+        interval_frame, 
+        text=self._get_interval_text(), 
+        font=self.font_primary,
+        fg=self.colors['text_secondary'], 
+        bg=self.colors['bg_medium'],
+        cursor="hand2"
+        )
+        self.app.interval_label.pack(anchor='w')
+        
+        self.app.interval_label.bind("<Enter>", self._on_interval_hover_enter)
+        self.app.interval_label.bind("<Leave>", self._on_interval_hover_leave)
+        self.app.interval_label.bind("<Button-1>", self._on_interval_click)
         
         button_frame = tk.Frame(self.main_page, bg=self.colors['bg_dark'])
         button_frame.pack(fill=tk.X, padx=30, pady=30)
@@ -246,6 +253,34 @@ class Pages:
         lists_path = os.path.join(self.app.zapret.zapret_dir, "lists")
         file_path = os.path.join(lists_path, filename)
         ListEditor(self.app.root, file_path, filename)
+
+    def _get_interval_text(self):
+        if self.app.update_interval == 0:
+            return "Обновление: моментально"
+        else:
+            return f"Обновление: каждые {self.app.update_interval} сек"
+
+    def _on_interval_hover_enter(self, event):
+        event.widget.config(fg=self.colors['accent_hover'])
+
+    def _on_interval_hover_leave(self, event):
+        event.widget.config(fg=self.colors['text_secondary'])
+
+    def _on_interval_click(self, event):
+        self.app.update_interval_index = (self.app.update_interval_index + 1) % len(self.app.update_intervals)
+        self.app.update_interval = self.app.update_intervals[self.app.update_interval_index]
+        
+        self.app.interval_label.config(text=self._get_interval_text())
+        self.app.save_interval_setting()
+        self.app.stop_stats_monitoring()
+        self.app.start_stats_monitoring()
+        
+        if self.app.update_interval == 0:
+            msg = "Обновление статистики: моментально"
+        else:
+            msg = f"Обновление статистики установлено на {self.app.update_interval} сек"
+        
+        self.app.show_notification(msg)
     
     def create_diagnostic_page(self):
         self.diagnostic_page = tk.Frame(self.content_panel, bg=self.colors['bg_dark'])
@@ -271,7 +306,7 @@ class Pages:
         
         self.create_diagnostic_card(left_column, "Zapret", [
             ("Проверить статус", self.app.check_zapret_status),
-            ("Версия стратегий", self.app.check_zapret_version),
+            ("Все стратегии", self.app.check_zapret_version),
             ("Логи winws.exe", self.app.check_zapret_logs),
             ("Перезапустить Zapret", self.app.restart_zapret),
             ("Авто-подбор", self.app.auto_select_strategy),
@@ -285,21 +320,15 @@ class Pages:
         
         self.create_diagnostic_card(right_column, "ByeDPI", [
             ("Проверить статус", self.app.check_byedpi_status),
-            ("Порт 10801", self.app.check_byedpi_port),
-            ("Версия", self.app.check_byedpi_version),
             ("Перезапустить ByeDPI", self.app.restart_byedpi),
         ])
         
         self.create_diagnostic_card(right_column, "TGProxy", [
             ("Проверить статус", self.app.check_tgproxy_status),
-            ("Порт 1080", self.app.check_tgproxy_port),
-            ("Проверить Telegram", self.app.check_telegram),
             ("Перезапустить TGProxy", self.app.restart_tgproxy),
         ])
         
         self.create_diagnostic_card(right_column, "Система", [
-            ("Права администратора", self.app.check_admin_rights),
-            ("Версия лаунчера", self.app.check_launcher_version),
             ("Папка AppData", self.app.open_appdata_folder),
             ("Очистить кэш", self.app.clear_cache),
             ("Автозапуск", self.app.toggle_autostart),
