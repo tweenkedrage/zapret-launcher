@@ -74,6 +74,7 @@ class ByeDPIOptimizer:
             return False, f"Файл не существует: {binary}"
 
         try:
+            self.stop()
             self._kill_process_on_port(10801)
             
             args = [str(binary)] + self.rostel_params
