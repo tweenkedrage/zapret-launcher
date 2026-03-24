@@ -2,20 +2,36 @@ import os
 import zipfile
 import urllib.request
 import tempfile
+import json
 from pathlib import Path
 
 print("Создание zapret_resources.zip...")
 
 ZIP_FILENAME = "zapret_resources.zip"
 GITHUB_URL = "https://github.com/Flowseal/zapret-discord-youtube/archive/refs/heads/master.zip"
+VERSION_URL = "https://api.github.com/repos/flowseal/zapret-discord-youtube/releases/latest"
+
+def get_latest_version():
+    try:
+        with urllib.request.urlopen(VERSION_URL, timeout=10) as response:
+            data = json.loads(response.read().decode())
+            return data.get('tag_name', 'unknown').replace('v', '')
+    except:
+        return "1.9.7b"
 
 try:
+    current_version = get_latest_version()
+    print(f"Версия Zapret: {current_version}")
+    
     print(f"Загрузка Zapret с GitHub...")
     with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_file:
         urllib.request.urlretrieve(GITHUB_URL, tmp_file.name)
         temp_zip = tmp_file.name
-    
-    print(f"Загружено, размер: {os.path.getsize(temp_zip)} байт")
+        file_size = os.path.getsize(temp_zip)
+        print(f"Загружено, размер: {file_size} байт")
+        
+        if file_size < 100000:
+            raise Exception(f"Файл слишком маленький ({file_size} байт)")
     
     with tempfile.TemporaryDirectory() as temp_dir:
         print(f"Распаковка Zapret...")
@@ -31,6 +47,7 @@ try:
         print(f"Найдена папка: {extracted_dirs[0]}")
         
         print(f"Создание {ZIP_FILENAME}...")
+        
         with zipfile.ZipFile(ZIP_FILENAME, 'w', zipfile.ZIP_DEFLATED) as new_zip:
             bin_path = os.path.join(source_dir, "bin")
             if os.path.exists(bin_path):
@@ -69,17 +86,24 @@ try:
                     full_path = os.path.join(source_dir, file)
                     new_zip.write(full_path, file)
                     print(f"  Добавлен {file}")
+            
+            version_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt')
+            version_file.write(current_version)
+            version_file.close()
+            new_zip.write(version_file.name, "version.txt")
+            os.unlink(version_file.name)
+            print("  Добавлен version.txt")
     
     os.unlink(temp_zip)
     
     if os.path.exists(ZIP_FILENAME):
-        print(f"\nГотово! Создан файл: {ZIP_FILENAME}")
+        print(f"Готово! Создан файл: {ZIP_FILENAME}")
         print(f"Размер: {os.path.getsize(ZIP_FILENAME)} байт")
         print(f"Путь: {os.path.abspath(ZIP_FILENAME)}")
     else:
-        print("\nОшибка: файл не создан")
+        print("Ошибка: файл не создан")
 
 except Exception as e:
-    print(f"\nОшибка: {e}")
+    print(f"Ошибка: {e}")
 
-input("\nНажми Enter для выхода...")
+input("Нажми Enter для выхода...")
