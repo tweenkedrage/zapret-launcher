@@ -86,32 +86,32 @@ def check_launcher_updates(parent, silent=False):
             if latest_version and latest_version > CURRENT_VERSION:
                 if silent:
                     result = messagebox.askyesno(
-                        "Обновление лаунчера",
-                        f"Доступна новая версия {latest_version}\n"
-                        f"Текущая версия: {CURRENT_VERSION}\n\n"
-                        "Обновить сейчас? (Ваши настройки и списки будут сохранены)"
-                    )
-                else:
-                    result = messagebox.askyesno(
-                        "Обновление лаунчера",
+                        "Обновление Zapret Launcher",
                         f"Доступна новая версия лаунчера {latest_version}\n"
                         f"Текущая версия: {CURRENT_VERSION}\n\n"
-                        "Хотите обновить? (Ваши настройки и списки будут сохранены)"
+                        f"Перейти на страницу загрузки?"
                     )
-                
-                if result and download_url:
-                    parent.update_status("Обновление лаунчера...", parent.colors['accent'])
-                    parent.root.update()
-                    
-                    threading.Thread(target=lambda: update_launcher(parent, download_url, latest_version), daemon=True).start()
-                return True
+                    if result:
+                        webbrowser.open("https://github.com/tweenkedrage/zapret-launcher/releases/latest")
+                    return True
+                else:
+                    result = messagebox.askyesno(
+                        "Обновление Zapret Launcher",
+                        f"Доступна новая версия {latest_version}\n"
+                        f"Текущая версия: {CURRENT_VERSION}\n\n"
+                        f"Перейти на страницу загрузки?"
+                    )
+                    if result and download_url:
+                        webbrowser.open("https://github.com/tweenkedrage/zapret-launcher/releases/latest")
+                    return True
             else:
                 if not silent:
                     messagebox.showinfo("Обновления", "У вас установлена последняя версия лаунчера")
                 return False
+                
     except Exception as e:
         if not silent:
-            messagebox.showerror("Ошибка", f"Не удалось проверить обновления лаунчера: {str(e)}")
+            messagebox.showerror("Ошибка", f"Не удалось проверить обновления: {str(e)}")
         return False
 
 def check_zapret_updates(parent, silent=False):
@@ -144,69 +144,6 @@ def check_zapret_updates(parent, silent=False):
         if not silent:
             messagebox.showerror("Ошибка", f"Не удалось проверить обновления Zapret: {str(e)}")
         return False
-    
-def update_launcher(parent, download_url, new_version):
-    try:
-        parent.log_to_diagnostic(f"Скачивание обновления v{new_version}...")
-        
-        temp_dir = tempfile.gettempdir()
-        new_exe_path = os.path.join(temp_dir, f"Zapret_Launcher_v{new_version}.exe")
-        updater_script = os.path.join(temp_dir, "update_launcher.bat")
-        current_exe = sys.executable if getattr(sys, 'frozen', False) else sys.argv[0]
-        current_exe_name = os.path.basename(current_exe)
-        urllib.request.urlretrieve(download_url, new_exe_path)
-        
-        if not os.path.exists(new_exe_path):
-            raise Exception("Файл не скачан")
-        
-        file_size = os.path.getsize(new_exe_path)
-        if file_size < 102400:
-            raise Exception(f"Файл поврежден (размер: {file_size} байт, ожидалось > 100KB)")
-        
-        parent.log_to_diagnostic(f"Файл загружен: {new_exe_path} ({file_size} байт)")
-        
-        with open(updater_script, 'w', encoding='utf-8') as f:
-            f.write(f'''@echo off
-title Updater
-echo ========================================
-echo    Обновление Zapret Launcher
-echo ========================================
-echo.
-echo Закрытие программы...
-taskkill /F /IM "{current_exe_name}" 2>nul
-timeout /t 3 /nobreak > nul
-echo.
-echo Копирование новой версии...
-copy /Y "{new_exe_path}" "{current_exe}" > nul
-if errorlevel 1 (
-    echo ОШИБКА: Не удалось скопировать файл!
-    echo.
-    echo Возможно, файл используется.
-    echo Попробуйте закрыть программу вручную.
-    pause
-    exit /b 1
-)
-echo.
-echo Запуск новой версии...
-start "" "{current_exe}"
-echo.
-echo Обновление завершено!
-timeout /t 2 /nobreak > nul
-del "{new_exe_path}" 2>nul
-del "%~f0" 2>nul
-''')
-        
-        parent.log_to_diagnostic(f"Создан скрипт обновления: {updater_script}")
-        parent.log_to_diagnostic("Запуск обновления...")
-        
-        subprocess.Popen(['cmd', '/c', updater_script], shell=True, 
-                        creationflags=subprocess.CREATE_NO_WINDOW)
-        
-        parent.root.after(500, parent.root.quit)
-        
-    except Exception as e:
-        parent.log_to_diagnostic(f"Ошибка обновления: {str(e)}")
-        messagebox.showerror("Ошибка", f"Не удалось обновить лаунчер: {str(e)}")
 
 def update_zapret_core(parent, version):
     try:
