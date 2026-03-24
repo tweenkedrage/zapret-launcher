@@ -65,6 +65,6 @@
 - **Оригинальный ByeDPI**: https://github.com/hufrea/byedpi
 
 ***Контакты:***
-- Discord: @uyolookatme
+- Discord: `@uyolookatme`
 
 ***by trimansberg***
