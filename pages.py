@@ -19,7 +19,7 @@ from pathlib import Path
 
 APPDATA_DIR = Path(os.getenv('LOCALAPPDATA')) / 'ZapretLauncher'
 ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
-CURRENT_VERSION = "2.3b"
+CURRENT_VERSION = "2.3c"
 
 PROVIDER_PARAMS = {
     "Ростелеком/Дом.ru/Tele2": ["--split", "1", "--disorder", "-1"],
