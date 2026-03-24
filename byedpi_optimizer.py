@@ -8,7 +8,6 @@ import sys
 from typing import Optional, Tuple
 
 class ByeDPIOptimizer:
-    
     def __init__(self, app_data_dir: Path):
         self.app_data_dir = app_data_dir
         self.byedpi_dir = app_data_dir / "byedpi"
@@ -69,59 +68,96 @@ class ByeDPIOptimizer:
     def start(self) -> Tuple[bool, str]:
         binary = self.get_binary_path()
         if not binary:
-            paths_checked = []
-            if getattr(sys, 'frozen', False):
-                paths_checked.append(str(Path(sys._MEIPASS) / "bin" / "ciadpi.exe"))
-            paths_checked.append(str(Path(__file__).parent / "bin" / "ciadpi.exe"))
-            paths_checked.append(str(Path(__file__).parent / "ciadpi.exe"))
-            
-            return False, f"ByeDPI не найден. Проверены пути: {', '.join(paths_checked)}"
+            return False, "ByeDPI не найден"
         
         if not binary.exists():
-            return False, f"Файл найден но не существует: {binary}"
-    
+            return False, f"Файл не существует: {binary}"
+
         try:
-            self.stop()
+            self._kill_process_on_port(10801)
             
             args = [str(binary)] + self.rostel_params
             
+            print(f"Запуск ByeDPI: {' '.join(args)}")
+            
             self.process = subprocess.Popen(
                 args,
-                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
+                creationflags=subprocess.CREATE_NO_WINDOW,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
             )
             
-            time.sleep(1)
+            time.sleep(2)
             
             if self.process.poll() is None:
-                self.is_running = True
-                return True, "Оптимизатор запущен"
+                time.sleep(1)
+                
+                import socket
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                result = sock.connect_ex(('127.0.0.1', 10801))
+                sock.close()
+                
+                if result == 0:
+                    self.is_running = True
+                    return True, "ByeDPI запущен"
+                else:
+                    return False, "ByeDPI запущен, но порт 10801 не открыт"
             else:
-                stdout, stderr = self.process.communicate(timeout=1)
-                error_msg = stderr.decode('cp1251', errors='ignore') if stderr else "Неизвестная ошибка"
-                return False, f"Не удалось запустить ByeDPI: {error_msg}"
-                    
+                return False, "Процесс завершился сразу"
+                            
         except Exception as e:
             return False, f"Ошибка запуска: {str(e)}"
-    
+        
     def stop(self) -> Tuple[bool, str]:
+        result = False
+        msg = "Не был запущен"
+        
         if self.process:
             try:
                 self.process.terminate()
                 self.process.wait(timeout=3)
                 self.process = None
                 self.is_running = False
-                return True, "Остановлен"
+                result = True
+                msg = "Остановлен"
             except:
                 try:
                     self.process.kill()
                     self.process = None
                     self.is_running = False
-                    return True, "Принудительно остановлен"
+                    result = True
+                    msg = "Принудительно остановлен"
                 except:
                     pass
-        return False, "Не был запущен"
+        
+        self._kill_process_on_port(10801)
+        return result, msg
+
+    def _kill_process_on_port(self, port):
+        try:
+            result = subprocess.run(
+                f'netstat -ano | findstr :{port} | findstr LISTENING',
+                shell=True, capture_output=True, text=True
+            )
+            pids = set()
+            for line in result.stdout.split('\n'):
+                if line.strip():
+                    parts = line.split()
+                    if len(parts) >= 5:
+                        pid = parts[-1]
+                        pids.add(pid)
+            
+            for pid in pids:
+                try:
+                    subprocess.run(f'taskkill /F /PID {pid}', shell=True, capture_output=True)
+                except:
+                    pass
+            
+            if port == 10801:
+                subprocess.run('taskkill /F /IM ciadpi.exe', shell=True, capture_output=True)
+                
+        except Exception as e:
+            print(f"Ошибка при очистке порта {port}: {e}")
     
     def get_status(self) -> dict:
         binary_exists = self.get_binary_path() is not None
