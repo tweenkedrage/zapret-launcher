@@ -1,3 +1,5 @@
+from widgets import RoundedButton
+
 DARK_THEME = {
     'name': 'Темная',
     'bg_dark': '#0F0F12',
