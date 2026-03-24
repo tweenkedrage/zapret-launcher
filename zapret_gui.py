@@ -48,15 +48,14 @@ ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
 ZAPRET_API_URL = "https://api.github.com/repos/flowseal/zapret-discord-youtube/releases/latest"
-CURRENT_VERSION = "2.3b"
+CURRENT_VERSION = "2.3c"
 
 PROVIDER_PARAMS = {
-    "Ростелеком/Дом.ru/Tele2/SamaraLan": ["--split", "1", "--disorder", "-1"],
+    "Ростелеком/Дом.ru/Tele2": ["--split", "1", "--disorder", "-1"],
     "МГТС (МТС)/Yota": ["-7", "-e1", "-q"],
     "Мегафон": ["-s0", "-o1", "-d1", "-r1+s", "-Ar", "-o1", "-At", "-f-1", "-r1+s", "-As"],
     "Билайн": ["--split", "1", "--disorder", "1", "--fake", "-1", "--ttl", "8"],
     "ТТК": ["-1", "-e1"],
-    "SkyNet (Киргизия)": ["--split", "1", "--disorder", "1", "--fake", "-1", "--ttl", "8"],
 }
 
 def is_admin():
@@ -374,11 +373,38 @@ class TGProxyServer:
         self._running = False
         self._port = 1080
         self._host = '127.0.0.1'
+        self._process = None
         
+    def _kill_process_on_port(self, port):
+        try:
+            result = subprocess.run(
+                f'netstat -ano | findstr :{port} | findstr LISTENING',
+                shell=True, capture_output=True, text=True
+            )
+            pids = set()
+            for line in result.stdout.split('\n'):
+                if line.strip():
+                    parts = line.split()
+                    if len(parts) >= 5:
+                        pid = parts[-1]
+                        pids.add(pid)
+            
+            for pid in pids:
+                try:
+                    subprocess.run(f'taskkill /F /PID {pid}', shell=True, capture_output=True)
+                except:
+                    pass
+            
+            subprocess.run('taskkill /F /IM python.exe /FI "STATUS eq running"', shell=True, capture_output=True)
+        except:
+            pass
+    
     def start(self):
         if self._running:
             return True
         try:
+            self._kill_process_on_port(1080)
+            
             self._stop_event = asyncio.Event()
             
             dc_opt = {
@@ -390,7 +416,7 @@ class TGProxyServer:
             }
             
             self._thread = threading.Thread(
-                target=run_proxy,
+                target=self._run_proxy,
                 args=(self._port, dc_opt, self._stop_event, self._host),
                 daemon=True
             )
@@ -402,14 +428,29 @@ class TGProxyServer:
         except Exception as e:
             print(f"TGProxy start error: {e}")
             return False
-        
+    
+    def _run_proxy(self, port, dc_opt, stop_event, host):
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(run_proxy(port, dc_opt, stop_event, host))
+        except Exception as e:
+            print(f"TGProxy run error: {e}")
+        finally:
+            loop.close()
+    
     def stop(self):
         if not self._running:
             return
+        
         if self._stop_event:
             self._stop_event.set()
+        
         self._running = False
-        time.sleep(0.5)
+        time.sleep(2)
+        
+        self._kill_process_on_port(1080)
 
 class ZapretCore:
     def __init__(self, parent):
@@ -558,18 +599,36 @@ class SystemTrayIcon:
 
     def create_icon(self):
         try:
-            image = Image.open("icon.ico")
+            image = None
+            
+            icon_paths = [
+                Path(__file__).parent / "icon.ico",
+                Path(sys.executable).parent / "icon.ico" if getattr(sys, 'frozen', False) else None,
+                Path("icon.ico"),
+                Path(__file__).parent / "icon.png",
+                Path("icon.png")
+            ]
+            
+            for path in icon_paths:
+                if path and path.exists():
+                    try:
+                        image = Image.open(str(path))
+                        break
+                    except:
+                        continue
+            
+            if image is None:
+                raise Exception("Иконка не найдена")
             
             if image.mode != 'RGBA':
                 image = image.convert('RGBA')
             
-            image = image.resize((64, 64), Image.Resampling.LANCZOS)
+            image = image.resize((256, 256), Image.Resampling.LANCZOS)
             
         except Exception as e:
             print(f"Не удалось загрузить иконку для трея: {e}")
-            image = Image.new('RGBA', (64, 64), '#4361ee')
+            image = Image.new('RGBA', (64, 64), color='#d0a2e9')
             draw = ImageDraw.Draw(image)
-            draw.rectangle([0, 0, 64, 64], fill='#4361ee', outline='#5a7aff', width=2)
             draw.text((20, 20), "Z", fill='white', font=None)
         
         self.update_menu(image)
@@ -592,9 +651,8 @@ class SystemTrayIcon:
                 self.icon.icon = image
         else:
             if image is None:
-                image = Image.new('RGBA', (64, 64), '#4361ee')
+                image = Image.new('RGBA', (64, 64), color='#d0a2e9')
                 draw = ImageDraw.Draw(image)
-                draw.rectangle([0, 0, 64, 64], fill='#4361ee', outline='#5a7aff', width=2)
                 draw.text((20, 20), "Z", fill='white', font=None)
             
             self.icon = pystray.Icon("zapret_launcher", image, "Zapret Launcher", menu)
@@ -625,8 +683,10 @@ class ByeDPIWithProvider:
     
     def set_provider(self, provider):
         self.current_provider = provider
-        params = PROVIDER_PARAMS.get(provider, PROVIDER_PARAMS["Ростелеком/Дом.ru/Tele2/SamaraLan"])
-        self.base.set_params(params + ["-i", "127.0.0.1", "-p", "10801"])
+        params = PROVIDER_PARAMS.get(provider, PROVIDER_PARAMS["Ростелеком/Дом.ru/Tele2"])
+        full_params = params + ["-i", "127.0.0.1", "-p", "10801"]
+        print(f"Параметры ByeDPI для {provider}: {full_params}")
+        self.base.set_params(full_params)
     
     def start(self):
         return self.base.start()
@@ -653,16 +713,37 @@ class ZapretLauncher:
         self.byedpi_var = tk.BooleanVar(value=False)
         
         self.byedpi_status = tk.Label()
+
+        try:
+            icon_paths = [
+                Path(__file__).parent / "icon.ico",
+                Path(sys.executable).parent / "icon.ico" if getattr(sys, 'frozen', False) else None,
+                Path("icon.ico"),
+                Path(__file__).parent / "icon.png",
+                Path("icon.png")
+            ]
             
-        try:
-            self.root.iconbitmap(default='icon.ico')
+            icon_loaded = False
+            for path in icon_paths:
+                if path and path.exists():
+                    try:
+                        if path.suffix.lower() == '.ico':
+                            self.root.iconbitmap(default=str(path))
+                            icon_loaded = True
+                            break
+                        elif path.suffix.lower() == '.png':
+                            icon_img = tk.PhotoImage(file=str(path))
+                            self.root.iconphoto(True, icon_img)
+                            icon_loaded = True
+                            break
+                    except:
+                        continue
+            
+            if not icon_loaded:
+                print("Иконка не загружена")
+                
         except Exception as e:
-            pass
-        try:
-            icon = tk.PhotoImage(file='icon.ico')
-            self.root.iconphoto(True, icon)
-        except Exception as e2:
-            pass
+            print(f"Ошибка загрузки иконки: {e}")
         
         self.window_width = 1200
         self.window_height = 800
@@ -725,6 +806,26 @@ class ZapretLauncher:
             self.tg_proxy.stop()
             if self.byedpi_enabled:
                 self.byedpi.stop()
+            
+            time.sleep(2)
+            
+            for port in [1080, 10801]:
+                try:
+                    result = subprocess.run(
+                        f'netstat -ano | findstr :{port} | findstr LISTENING',
+                        shell=True, capture_output=True, text=True
+                    )
+                    for line in result.stdout.split('\n'):
+                        if line.strip():
+                            parts = line.split()
+                            if len(parts) >= 5:
+                                pid = parts[-1]
+                                try:
+                                    subprocess.run(f'taskkill /F /PID {pid}', shell=True, capture_output=True)
+                                except:
+                                    pass
+                except:
+                    pass
         except:
             pass
         self.root.destroy()
@@ -753,21 +854,43 @@ class ZapretLauncher:
         left_panel.pack(side=tk.LEFT, fill=tk.Y)
         left_panel.pack_propagate(False)
         
-        logo_frame = tk.Frame(left_panel, bg=self.colors['bg_medium'], height=120)
-        logo_frame.pack(fill=tk.X, pady=(40, 30))
+        logo_frame = tk.Frame(left_panel, bg=self.colors['bg_medium'], height=140)
+        logo_frame.pack(fill=tk.X, pady=(40, 20))
         logo_frame.pack_propagate(False)
         
-        tk.Label(logo_frame, text="ZAPRET", font=("Segoe UI", 28, "bold"), 
-                fg=self.colors['accent'], bg=self.colors['bg_medium']).pack(expand=True)
-        tk.Label(logo_frame, text="LAUNCHER", font=("Segoe UI", 11), 
-                fg=self.colors['text_secondary'], bg=self.colors['bg_medium']).pack()
-        
+        try:
+            icon_paths = [
+                Path(__file__).parent / "icon.png",
+                Path(sys.executable).parent / "icon.png" if getattr(sys, 'frozen', False) else None,
+                Path("icon.png")
+            ]
+            
+            icon_image = None
+            for path in icon_paths:
+                if path and path.exists():
+                    icon_image = tk.PhotoImage(file=str(path))
+                    break
+            
+            if icon_image:
+                icon_image = icon_image.subsample(icon_image.width() // 120, icon_image.height() // 120)
+                icon_label = tk.Label(logo_frame, image=icon_image, bg=self.colors['bg_medium'])
+                icon_label.image = icon_image
+                icon_label.pack(expand=True, pady=10)
+            else:
+                raise Exception("Иконка не найдена")
+                
+        except Exception as e:
+            print(f"Не удалось загрузить иконку: {e}")
+            tk.Label(logo_frame, text="ZAPRET", font=("Segoe UI", 24, "bold"), 
+                    fg=self.colors['accent'], bg=self.colors['bg_medium']).pack(expand=True)
+            tk.Label(logo_frame, text="LAUNCHER", font=("Segoe UI", 10), 
+                    fg=self.colors['text_secondary'], bg=self.colors['bg_medium']).pack()
+
         nav_buttons = [
             ("Главная", self.show_main_page),
             ("Сервис", self.show_service_page),
             ("Редактор", self.show_lists_page),
             ("Диагностика", self.show_diagnostic_page),
-            ("Помощь", self.show_help_page),
         ]
         
         for text, command in nav_buttons:
@@ -886,6 +1009,10 @@ class ZapretLauncher:
             
             self._pending_mode = mode
             self.select_strategy_for_mode(mode["name"])
+            return
+        
+        if mode["name"] == "ByeDPI":
+            self.show_provider_selector(mode)
             return
         
         if mode["name"] == "Кастомный":
@@ -1049,15 +1176,122 @@ class ZapretLauncher:
     def _apply_game_mode(self):
         self.log_to_diagnostic("Игровой режим активирован")
 
-    def show_custom_selector(self):
+    def show_provider_selector(self, mode):
         dialog = tk.Toplevel(self.root)
-        dialog.title("Кастомный режим")
-        dialog.geometry("400x400")
+        dialog.title("Выбор провайдера для ByeDPI")
+        dialog.geometry("400x350")
         dialog.resizable(False, False)
         dialog.configure(bg=self.colors['bg_medium'])
         
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 200
-        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 200
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 175
+        dialog.geometry(f"+{x}+{y}")
+        
+        tk.Label(dialog, text="Выберите вашего провайдера", 
+                font=("Segoe UI", 14, "bold"),
+                fg=self.colors['text_primary'], 
+                bg=self.colors['bg_medium']).pack(pady=(20, 10))
+        
+        tk.Label(dialog, text="Это поможет подобрать оптимальные параметры", 
+                font=("Segoe UI", 10),
+                fg=self.colors['text_secondary'], 
+                bg=self.colors['bg_medium']).pack(pady=(0, 15))
+        
+        providers = list(PROVIDER_PARAMS.keys())
+        
+        listbox_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
+        listbox_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
+        
+        scrollbar = tk.Scrollbar(listbox_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        provider_listbox = tk.Listbox(listbox_frame, height=6, font=("Segoe UI", 10),
+                                    bg=self.colors['bg_light'], 
+                                    fg=self.colors['text_primary'],
+                                    selectbackground=self.colors['accent'],
+                                    yscrollcommand=scrollbar.set)
+        provider_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=provider_listbox.yview)
+        
+        for provider in providers:
+            provider_listbox.insert(tk.END, provider)
+        
+        try:
+            idx = providers.index(self.current_provider)
+            provider_listbox.selection_set(idx)
+            provider_listbox.see(idx)
+        except:
+            pass
+        
+        def start_with_provider():
+            selection = provider_listbox.curselection()
+            if selection:
+                provider = providers[selection[0]]
+                self.current_provider = provider
+                self.provider_var.set(provider)
+                self.byedpi.set_provider(provider)
+            
+            dialog.destroy()
+            
+            if hasattr(self, 'connect_btn'):
+                self.connect_btn.set_enabled(False)
+            
+            self.update_status("Запуск ByeDPI...", self.colors['accent'])
+            self.root.update()
+            
+            def run_byedpi():
+                success, msg = self.byedpi.start()
+                self.root.after(0, lambda: on_byedpi_result(success, msg))
+            
+            def on_byedpi_result(success, msg):
+                if not success:
+                    self.update_status("Ошибка запуска", self.colors['accent_red'])
+                    messagebox.showerror("Ошибка ByeDPI", msg)
+                    if hasattr(self, 'connect_btn'):
+                        self.connect_btn.set_enabled(True)
+                    return
+                
+                self.byedpi_enabled = True
+                self.byedpi_var.set(True)
+                self.is_connected = True
+                
+                self.stats.start_session()
+                self.start_stats_monitoring()
+                
+                mode_name = f"ByeDPI ({self.current_provider})"
+                self.mode_label.config(text=mode_name, fg=self.colors['accent_green'])
+                self.update_status(f"Подключено: {mode_name}", self.colors['accent_green'])
+                self.update_ui_state()
+                self.save_settings()
+                self.root.after(100, self.update_stats_display)
+                
+                if hasattr(self, 'connect_btn'):
+                    self.connect_btn.set_enabled(True)
+            
+            threading.Thread(target=run_byedpi, daemon=True).start()
+        
+        btn_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
+        btn_frame.pack(pady=15)
+        
+        start_btn = RoundedButton(btn_frame, text="Запустить", command=start_with_provider,
+                                width=120, height=35, bg=self.colors['accent'],
+                                font=("Segoe UI", 10), corner_radius=8)
+        start_btn.pack(side=tk.LEFT, padx=5)
+        
+        cancel_btn = RoundedButton(btn_frame, text="Отмена", command=dialog.destroy,
+                                width=80, height=35, bg=self.colors['button_bg'],
+                                font=("Segoe UI", 10), corner_radius=8)
+        cancel_btn.pack(side=tk.LEFT, padx=5)
+
+    def show_custom_selector(self):
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Кастомный режим")
+        dialog.geometry("450x500")
+        dialog.resizable(False, False)
+        dialog.configure(bg=self.colors['bg_medium'])
+        
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 225
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 250
         dialog.geometry(f"+{x}+{y}")
         
         tk.Label(dialog, text="Выберите компоненты для запуска", font=("Segoe UI", 14, "bold"),
@@ -1066,6 +1300,7 @@ class ZapretLauncher:
         custom_zapret = tk.IntVar(value=1)
         custom_tgproxy = tk.IntVar(value=0)
         custom_byedpi = tk.IntVar(value=0)
+        custom_byedpi_provider = tk.StringVar(value=self.current_provider)
         
         zapret_frame = tk.Frame(dialog, bg=self.colors['bg_light'])
         zapret_frame.pack(fill=tk.X, padx=20, pady=5, ipady=5)
@@ -1096,10 +1331,31 @@ class ZapretLauncher:
         
         byedpi_frame = tk.Frame(dialog, bg=self.colors['bg_light'])
         byedpi_frame.pack(fill=tk.X, padx=20, pady=5, ipady=5)
+        
         byedpi_cb = tk.Checkbutton(byedpi_frame, text="ByeDPI Оптимизатор", variable=custom_byedpi,
                                     bg=self.colors['bg_light'], activebackground=self.colors['bg_light'],
-                                    fg=self.colors['text_primary'], selectcolor=self.colors['bg_light'])
+                                    fg=self.colors['text_primary'], selectcolor=self.colors['bg_light'],
+                                    command=lambda: toggle_byedpi_provider())
         byedpi_cb.pack(side=tk.LEFT, padx=10)
+        
+        provider_container = tk.Frame(byedpi_frame, bg=self.colors['bg_light'])
+        
+        def toggle_byedpi_provider():
+            if custom_byedpi.get() == 1:
+                provider_container.pack(side=tk.RIGHT, padx=10)
+            else:
+                provider_container.pack_forget()
+        
+        tk.Label(provider_container, text="Провайдер:", font=self.font_primary,
+                fg=self.colors['text_secondary'], bg=self.colors['bg_light']).pack(side=tk.LEFT)
+        
+        provider_combo = ttk.Combobox(provider_container, values=list(PROVIDER_PARAMS.keys()),
+                                    width=18, font=self.font_primary)
+        provider_combo.set(self.current_provider)
+        provider_combo.pack(side=tk.LEFT, padx=5)
+        
+        if custom_byedpi.get() == 1:
+            provider_container.pack(side=tk.RIGHT, padx=10)
         
         btn_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
         btn_frame.pack(pady=20)
@@ -1111,7 +1367,8 @@ class ZapretLauncher:
                 "tgproxy": custom_tgproxy.get() == 1,
                 "byedpi": custom_byedpi.get() == 1,
                 "game": False,
-                "strategy": strategy_combo.get() if custom_zapret.get() == 1 else None
+                "strategy": strategy_combo.get() if custom_zapret.get() == 1 else None,
+                "byedpi_provider": provider_combo.get() if custom_byedpi.get() == 1 else None
             }
             
             dialog.destroy()
@@ -1135,56 +1392,70 @@ class ZapretLauncher:
         self.connect_btn.set_enabled(False)
         self.root.update()
         
-        success = True
-        msg = ""
+        def run_all():
+            success = True
+            msg = ""
+            
+            if mode.get("byedpi", False):
+                provider = mode.get("byedpi_provider")
+                if provider:
+                    self.current_provider = provider
+                    self.provider_var.set(provider)
+                    self.byedpi.set_provider(provider)
+                
+                success, msg = self.byedpi.start()
+                if not success:
+                    self.root.after(0, lambda: on_error("ByeDPI", msg))
+                    return
+                self.byedpi_enabled = True
+                self.byedpi_var.set(True)
+            
+            if mode.get("zapret", False):
+                strategy = mode.get("strategy")
+                if not strategy:
+                    self.root.after(0, lambda: on_error("Zapret", "Выберите стратегию"))
+                    return
+                success, msg = self.zapret.run_strategy(strategy)
+                if not success:
+                    self.root.after(0, lambda: on_error("Zapret", msg))
+                    return
+                self.current_strategy = strategy
+                self.strategy_var.set(strategy)
+            
+            if mode.get("tgproxy", False):
+                self.tg_proxy.start()
+            
+            self.is_connected = True
+            self.stats.start_session()
+            self.start_stats_monitoring()
+            
+            components = []
+            if mode.get("zapret", False):
+                components.append("Zapret")
+            if mode.get("tgproxy", False):
+                components.append("TGProxy")
+            if mode.get("byedpi", False):
+                provider_str = f" ({self.current_provider})" if mode.get("byedpi_provider") else ""
+                components.append(f"ByeDPI{provider_str}")
+            
+            mode_name = "Кастомный (" + ", ".join(components) + ")"
+            
+            self.root.after(0, lambda: on_success(mode_name))
         
-        if mode.get("zapret", False):
-            strategy = mode.get("strategy")
-            if not strategy:
-                messagebox.showerror("Ошибка", "Выберите стратегию для Zapret")
-                self.connect_btn.set_enabled(True)
-                return
-            success, msg = self.zapret.run_strategy(strategy)
-            if not success:
-                self.update_status("Ошибка запуска", self.colors['accent_red'])
-                messagebox.showerror("Ошибка", msg)
-                self.connect_btn.set_enabled(True)
-                return
-            self.current_strategy = strategy
-            self.strategy_var.set(strategy)
+        def on_error(component, error_msg):
+            self.update_status("Ошибка запуска", self.colors['accent_red'])
+            messagebox.showerror(f"Ошибка {component}", error_msg)
+            self.connect_btn.set_enabled(True)
         
-        if mode.get("tgproxy", False):
-            self.tg_proxy.start()
+        def on_success(mode_name):
+            self.mode_label.config(text=mode_name, fg=self.colors['accent_green'])
+            self.update_status(f"Подключено: {mode_name}", self.colors['accent_green'])
+            self.update_ui_state()
+            self.save_settings()
+            self.root.after(100, self.update_stats_display)
+            self.connect_btn.set_enabled(True)
         
-        if mode.get("byedpi", False):
-            self.byedpi.set_provider(self.current_provider)
-            success, msg = self.byedpi.start()
-            if not success:
-                messagebox.showerror("Ошибка ByeDPI", msg)
-                self.connect_btn.set_enabled(True)
-                return
-            self.byedpi_enabled = True
-            self.byedpi_var.set(True)
-        
-        self.is_connected = True
-        self.stats.start_session()
-        self.start_stats_monitoring()
-        
-        components = []
-        if mode.get("zapret", False):
-            components.append("Zapret")
-        if mode.get("tgproxy", False):
-            components.append("TGProxy")
-        if mode.get("byedpi", False):
-            components.append("ByeDPI")
-        
-        mode_name = "Кастомный (" + ", ".join(components) + ")"
-        self.mode_label.config(text=mode_name, fg=self.colors['accent_green'])
-        self.update_status(f"Подключено: {mode_name}", self.colors['accent_green'])
-        self.update_ui_state()
-        self.save_settings()
-        self.root.after(100, self.update_stats_display)
-        self.connect_btn.set_enabled(True)
+        threading.Thread(target=run_all, daemon=True).start()
 
     def update_stats_display(self):
         if not hasattr(self, 'stats_frame'):
@@ -1996,11 +2267,13 @@ class ZapretLauncher:
         if self.is_connected:
             self.connect_btn.set_text("ОТКЛЮЧИТЬСЯ")
             self.connect_btn.normal_color = self.colors['bg_light']
+            self.connect_btn.hover_color = '#6c5579'
             self.connect_btn.itemconfig(self.connect_btn.rect, fill=self.colors['bg_light'])
         else:
             self.connect_btn.set_text("ПОДКЛЮЧИТЬСЯ")
-            self.connect_btn.normal_color = self.colors['accent']
-            self.connect_btn.itemconfig(self.connect_btn.rect, fill=self.colors['accent'])
+            self.connect_btn.normal_color = '#6c5579'
+            self.connect_btn.hover_color = '#3D3D45'
+            self.connect_btn.itemconfig(self.connect_btn.rect, fill='#6c5579')
         
         if hasattr(self, 'tray_icon'):
             self.tray_icon.update_menu()
@@ -2058,13 +2331,24 @@ class ZapretLauncher:
         
         def stop_all():
             self.zapret.stop_current_strategy()
+            
             self.tg_proxy.stop()
+            
             if self.byedpi_enabled:
                 self.byedpi.stop()
+                self.byedpi_enabled = False
+                self.byedpi_var.set(False)
+            
+            time.sleep(2)
+            
+            self.tg_proxy._kill_process_on_port(1080)
+            
+            from byedpi_optimizer import ByeDPIOptimizer
+            optimizer = ByeDPIOptimizer(APPDATA_DIR)
+            optimizer._kill_process_on_port(10801)
             
             self.stats.end_session()
             
-            time.sleep(1)
             self.root.after(0, self.finish_disconnect)
         
         threading.Thread(target=stop_all, daemon=True).start()
