@@ -68,7 +68,6 @@ class Pages:
         self.create_service_page()
         self.create_lists_page()
         self.create_diagnostic_page()
-        self.create_help_page()
         
     def show_page(self, page_name):
         if page_name == self.current_page:
@@ -154,8 +153,9 @@ class Pages:
         button_frame.pack(fill=tk.X, padx=30, pady=30)
         
         self.app.connect_btn = RoundedButton(button_frame, text="ПОДКЛЮЧИТЬСЯ", command=self.app.toggle_connection,
-                                    width=350, height=60, bg=self.colors['accent'], 
+                                    width=350, height=60, bg='#6c5579', 
                                     font=("Segoe UI", 18, "bold"), corner_radius=15)
+        self.app.connect_btn.hover_color = '#3D3D45'
         self.app.connect_btn.pack()
     
     def create_service_page(self):
@@ -359,168 +359,3 @@ class Pages:
                                     width=180, height=22, bg=self.colors['button_bg'],
                                     font=("Segoe UI", 7), corner_radius=4)
                 btn2.pack(side=tk.LEFT, padx=(2, 0))
-    
-    def create_help_page(self):
-        self.help_page = tk.Frame(self.content_panel, bg=self.colors['bg_dark'])
-        
-        container = tk.Frame(self.help_page, bg=self.colors['bg_dark'])
-        container.pack(fill=tk.BOTH, expand=True)
-        
-        canvas_frame = tk.Frame(container, bg=self.colors['bg_dark'])
-        canvas_frame.pack(fill=tk.BOTH, expand=True)
-        
-        canvas = tk.Canvas(canvas_frame, bg=self.colors['bg_dark'], highlightthickness=0)
-        scrollbar = tk.Scrollbar(canvas_frame, orient="vertical", command=canvas.yview)
-        
-        scrollable_frame = tk.Frame(canvas, bg=self.colors['bg_dark'])
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        
-        canvas.create_window((20, 0), window=scrollable_frame, anchor="nw", width=880)
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        
-        def _on_mousewheel(event):
-            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        
-        self.help_page.bind("<Enter>", lambda e: self.help_page.bind_all("<MouseWheel>", _on_mousewheel))
-        self.help_page.bind("<Leave>", lambda e: self.help_page.unbind_all("<MouseWheel>"))
-            
-        tk.Label(scrollable_frame, text="Помощь", font=("Segoe UI", 28, "bold"),
-                fg=self.colors['text_primary'], bg=self.colors['bg_dark']).pack(anchor='w', pady=(0, 20))
-        
-        self.help_section(scrollable_frame, "Установка:", [
-            ("1.", "Скачивайте архив и распаковывайте в любое место 2 файла: ", "Zapret_Launcher.exe", " и ", "zapret_resources.zip", ";"),
-            ("2.", "Запускайте ", "Zapret_Launcher.exe", " от ", "имени администратора", ";"),
-            ("3.", "Выбирайте любой метод использования Zapret и подключайтесь к ", "стабильной сети", " находясь под ", "ограничениями РКН", ";"),
-            ("4.", "После всех 3-х действий ", "Zapret_Launcher.exe", " можно запускать в любой папке/в любом месте на компьютере ", "без файла zapret_resources.zip", "."),
-        ])
-        
-        self.help_section(scrollable_frame, "Telegram Proxy:", [
-            ("1.", "Ставим галочку ", '"Запустить вместе с Zapret"', " в лаунчере", ";"),
-            ("2.", "Запускаем ", "Telegram", " на ПК", ";"),
-            ("3.", "Переходим в ", "настройки", ";"),
-            ("4.", "Продвинутые настройки", ""),
-            ("5.", "Тип соединения", ""),
-            ("6.", "Использовать собственное прокси (", "SOCKS5", ", Хост: ", "127.0.0.1", ", Порт: ", "1080", ")."),
-        ])
-        
-        self.help_section(scrollable_frame, "ByeDPI Оптимизатор:", [
-            ("", "ByeDPI", " — это дополнительный инструмент для обхода DPI;"),
-            ("1.", "Включайте только если тормозит интернет или стандартные стратегии не помогают", ";"),
-            ("2.", "Особенно полезен для ", "YouTube", " и ", "онлайн-игр", ";"),
-            ("3.", "Создает локальный SOCKS5 прокси на порту ", "10801", ";"),
-        ])
-        
-        self.help_section(scrollable_frame, "Что такое zapret_resources.zip:", [
-            ("1.", "Это архив со всеми файлами Zapret, которые необходимы для работы лаунчера", ";"),
-            ("2.", "При первом запуске лаунчер распаковывает ", "zapret_resources.zip", " в ", "%APPDATA%/ZapretLauncher/zapret_core/", ";"),
-            ("3.", "Все файлы извлекаются в эту папку", ";"),
-            ("4.", "Стратегии запускаются оттуда", ";"),
-            ("5.", "Пользовательские списки (", "*-user.txt", ") сохраняются там же", "."),
-        ])
-        
-        self.help_section(scrollable_frame, "В каких случаях можно удалить zapret_resources.zip:", [
-            ("1.", "После успешной распаковки — если папка ", "zapret_core", " в appdata/local уже существует и полная", ";"),
-            ("2.", "Если вы обновляете лаунчер — новый .exe уже содержит свежий архив", ";"),
-            ("3.", "Если вы хотите сбросить Zapret — удали папку ", "zapret_core", ", и при следующем запуске архив распакуется заново", "."),
-        ])
-        
-        self.help_section(scrollable_frame, "НЕ УДАЛЯЙТЕ, если:", [
-            ("1.", "Папка ", "zapret_core", " отсутствует или повреждена", ";"),
-            ("2.", "Вы хотите сохранить возможность переустановки без скачивания", ";"),
-            ("3.", "Вы делитесь программой — архив (", "zapret_resources.zip", ") должен быть рядом с .exe", "."),
-        ])
-        
-        self.help_section(scrollable_frame, "Антивирус и WinDivert:", [
-            ("", "Некоторые антивирусы могут реагировать на программу из-за использования компонента ", "WinDivert", ". ", "Это НОРМАЛЬНО", "."),
-            ("", "WinDivert", " — это легальный драйвер с открытым исходным кодом, используемый для фильтрации сетевых пакетов.", ""),
-        ])
-        
-        self.help_section(scrollable_frame, "Если антивирус ругается:", [
-            ("1.", "Добавьте папку с программой в ", "исключения", ";"),
-            ("2.", "Или скомпилируйте программу сам из исходников или временно отключите антивирус при запуске", "."),
-        ])
-        
-        self.help_section(scrollable_frame, "Возможные конфликты:", [
-            ("", "Zapret", " и ", "ByeDPI", " работают на разных уровнях и ", "в большинстве случаев не конфликтуют", "."),
-            ("", "", ""),
-            ("", "Если после включения всего интернет работает нестабильно:", ""),
-            ("  •", "Отключайте по одной галочке, чтобы найти виновника", ""),
-            ("  •", "Для YouTube иногда помогает ", "отключение QUIC", " в браузере (chrome://flags/#enable-quic)", ""),
-            ("  •", "Если пинг в играх вырос, отключите ", "TGProxy", " (он для игр не нужен)", ""),
-            ("  •", "Разные стратегии Zapret могут вести себя по-разному с ByeDPI — экспериментируйте", ""),
-        ])
-        
-        links_frame = tk.Frame(scrollable_frame, bg=self.colors['bg_dark'])
-        links_frame.pack(fill=tk.X, pady=(20, 10))
-        
-        tk.Label(links_frame, text="Полезные ссылки:", font=("Segoe UI", 12, "bold"),
-                fg=self.colors['text_primary'], bg=self.colors['bg_dark']).pack(anchor='w', pady=(0, 10))
-        
-        def on_enter(e):
-            e.widget.config(fg=self.colors['accent_hover'])
-        
-        def on_leave(e):
-            e.widget.config(fg=self.colors['accent'])
-        
-        link1 = tk.Label(links_frame, text="Оригинальный Zapret", font=("Segoe UI", 9),
-                        fg=self.colors['accent'], bg=self.colors['bg_dark'], cursor="hand2")
-        link1.pack(anchor='w', pady=2)
-        link1.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/flowseal/zapret-discord-youtube"))
-        link1.bind("<Enter>", on_enter)
-        link1.bind("<Leave>", on_leave)
-        
-        link2 = tk.Label(links_frame, text="Оригинальный TG Proxy", font=("Segoe UI", 9),
-                        fg=self.colors['accent'], bg=self.colors['bg_dark'], cursor="hand2")
-        link2.pack(anchor='w', pady=2)
-        link2.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/Flowseal/tg-ws-proxy"))
-        link2.bind("<Enter>", on_enter)
-        link2.bind("<Leave>", on_leave)
-        
-        link3 = tk.Label(links_frame, text="Оригинальный ByeDPI", font=("Segoe UI", 9),
-                        fg=self.colors['accent'], bg=self.colors['bg_dark'], cursor="hand2")
-        link3.pack(anchor='w', pady=2)
-        link3.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/hufrea/byedpi"))
-        link3.bind("<Enter>", on_enter)
-        link3.bind("<Leave>", on_leave)
-        
-        author_frame = tk.Frame(scrollable_frame, bg=self.colors['bg_dark'])
-        author_frame.pack(fill=tk.X, pady=(30, 30))
-        
-        tk.Label(author_frame, text="by trimansberg", font=("Segoe UI", 10, "italic"),
-                fg=self.colors['text_secondary'], bg=self.colors['bg_dark']).pack()
-    
-    def help_section(self, parent, title, lines):
-        tk.Label(parent, text=title, font=("Segoe UI", 14, "bold"),
-                fg=self.colors['accent'], bg=self.colors['bg_dark']).pack(anchor='w', pady=(15, 5))
-        
-        section_frame = tk.Frame(parent, bg=self.colors['bg_dark'])
-        section_frame.pack(fill=tk.X, pady=2)
-        
-        for line in lines:
-            if len(line) == 2:
-                tk.Label(section_frame, text=line[0] + " " + line[1], 
-                        font=("Segoe UI", 9),
-                        fg=self.colors['text_secondary'], 
-                        bg=self.colors['bg_dark'], wraplength=850, justify=tk.LEFT).pack(anchor='w', pady=1)
-            
-            elif len(line) >= 3:
-                frame = tk.Frame(section_frame, bg=self.colors['bg_dark'])
-                frame.pack(anchor='w', pady=1, fill=tk.X)
-                
-                if line[0]:
-                    tk.Label(frame, text=line[0], font=("Segoe UI", 9),
-                            fg=self.colors['text_secondary'], bg=self.colors['bg_dark']).pack(side=tk.LEFT)
-                
-                for i in range(1, len(line)):
-                    if i % 2 == 1:
-                        tk.Label(frame, text=line[i], font=("Segoe UI", 9, "bold"),
-                                fg=self.colors['accent'], bg=self.colors['bg_dark']).pack(side=tk.LEFT)
-                    else:
-                        tk.Label(frame, text=line[i], font=("Segoe UI", 9),
-                                fg=self.colors['text_secondary'], bg=self.colors['bg_dark']).pack(side=tk.LEFT)
