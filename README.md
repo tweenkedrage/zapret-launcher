@@ -3,8 +3,6 @@
 
 На **GitHub`e** имеются **zapret-discord-youtube** и **tg-ws-proxy**, и мне надоело их по отдельности включать, поэтому я решил сделать общий лаунчер куда я объединил всё в одно.
 
-<img width="1196" height="824" alt="image" src="https://github.com/user-attachments/assets/611acb60-2f20-4666-ba81-9b030b71c612" />
-
 ***Установка:***
 1. Скачивайте архив и распаковывайте в любое место 2 файла: **Zapret_Launcher.exe** и **zapret_resources.zip**;
 2. Запускайте **Zapret_Launcher.exe** от **имени администратора**;
