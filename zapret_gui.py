@@ -48,7 +48,7 @@ ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
 ZAPRET_API_URL = "https://api.github.com/repos/flowseal/zapret-discord-youtube/releases/latest"
-CURRENT_VERSION = "2.3c"
+CURRENT_VERSION = "2.3d"
 
 PROVIDER_PARAMS = {
     "Ростелеком/Дом.ru/Tele2": ["--split", "1", "--disorder", "-1"],
@@ -394,8 +394,6 @@ class TGProxyServer:
                     subprocess.run(f'taskkill /F /PID {pid}', shell=True, capture_output=True)
                 except:
                     pass
-            
-            subprocess.run('taskkill /F /IM python.exe /FI "STATUS eq running"', shell=True, capture_output=True)
         except:
             pass
     
@@ -421,13 +419,24 @@ class TGProxyServer:
                 daemon=True
             )
             self._thread.start()
-            self._running = True
-            time.sleep(2)
-            return True
+            for _ in range(10):
+                time.sleep(0.5)
+                if self._is_port_open(1080):
+                    self._running = True
+                    return True
+            return False
                 
         except Exception as e:
             print(f"TGProxy start error: {e}")
             return False
+        
+    def _is_port_open(self, port):
+        import socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        result = sock.connect_ex(('127.0.0.1', port))
+        sock.close()
+        return result == 0
     
     def _run_proxy(self, port, dc_opt, stop_event, host):
         import asyncio
@@ -448,6 +457,8 @@ class TGProxyServer:
             self._stop_event.set()
         
         self._running = False
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=3)
         time.sleep(2)
         
         self._kill_process_on_port(1080)
@@ -708,9 +719,14 @@ class ZapretLauncher:
         self._pending_mode = None
 
         self.strategy_var = tk.StringVar()
-        self.provider_var = tk.StringVar(value="Ростелеком/Дом.ru/Tele2/SamaraLan")
+        self.provider_var = tk.StringVar(value="Ростелеком/Дом.ru/Tele2")
         self.tgws_var = tk.BooleanVar(value=False)
         self.byedpi_var = tk.BooleanVar(value=False)
+
+        self.update_intervals = [0, 5, 10, 30, 60]
+        self.update_interval_index = 0
+        self.update_interval = self.update_intervals[self.update_interval_index]
+        self.update_timer_id = None
         
         self.byedpi_status = tk.Label()
 
@@ -1476,17 +1492,83 @@ class ZapretLauncher:
             self.stats_speed_up_label.config(text=f"⬆ {stats['speed_up_str']}")
         if hasattr(self, 'stats_speed_down_label'):
             self.stats_speed_down_label.config(text=f"⬇ {stats['speed_down_str']}")
-            
+
     def start_stats_monitoring(self):
-        def monitor_loop():
-            while self.is_connected:
-                time.sleep(0.5)
-                if self.is_connected:
-                    self.stats.update_speed()
-                    self.root.after(0, self.update_stats_display)
+        self.stop_stats_monitoring()
         
         if self.is_connected:
-            threading.Thread(target=monitor_loop, daemon=True).start()
+            self._schedule_stats_update()
+
+    def stop_stats_monitoring(self):
+        if self.update_timer_id:
+            self.root.after_cancel(self.update_timer_id)
+            self.update_timer_id = None
+
+    def _schedule_stats_update(self):
+        if not self.is_connected:
+            return
+        
+        self.stats.update_speed()
+        self.update_stats_display()
+        
+        if self.update_interval > 0:
+            self.update_timer_id = self.root.after(int(self.update_interval * 1000), self._schedule_stats_update)
+        else:
+            self.update_timer_id = self.root.after(500, self._schedule_stats_update)
+
+    def show_notification(self, message, duration=2000):
+        notification = tk.Toplevel(self.root)
+        notification.overrideredirect(True)
+        notification.configure(bg=self.colors['bg_medium'])
+        
+        x = self.root.winfo_x() + self.root.winfo_width() - 300
+        y = self.root.winfo_y() + 50
+        notification.geometry(f"280x40+{x}+{y}")
+        
+        label = tk.Label(notification, text=message, 
+                        font=("Segoe UI", 10),
+                        fg=self.colors['text_primary'], 
+                        bg=self.colors['bg_medium'],
+                        padx=10, pady=8)
+        label.pack()
+        
+        notification.attributes('-alpha', 0.0)
+        
+        def fade_in(alpha=0.0):
+            if alpha < 1.0:
+                alpha += 0.1
+                notification.attributes('-alpha', alpha)
+                notification.after(30, lambda: fade_in(alpha))
+            else:
+                notification.after(duration, fade_out)
+        
+        def fade_out(alpha=1.0):
+            if alpha > 0.0:
+                alpha -= 0.1
+                notification.attributes('-alpha', alpha)
+                notification.after(30, lambda: fade_out(alpha))
+            else:
+                notification.destroy()
+        
+        fade_in()
+
+    def save_interval_setting(self):
+        try:
+            settings = self.load_settings_data()
+            settings['update_interval'] = self.update_interval_index
+            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+                json.dump(settings, f, indent=2)
+        except:
+            pass
+
+    def load_settings_data(self):
+        try:
+            if CONFIG_FILE.exists():
+                with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        except:
+            pass
+        return {}
 
     def on_provider_change(self, event):
         self.current_provider = self.provider_var.get()
@@ -2049,26 +2131,6 @@ class ZapretLauncher:
             else:
                 self.log_to_diagnostic("ByeDPI не установлен (нет ciadpi.exe)")
 
-    def check_byedpi_port(self):
-        self.log_to_diagnostic("Проверка порта 10801...")
-        try:
-            result = subprocess.run(['netstat', '-an'], 
-                                capture_output=True, text=True, encoding='cp866')
-            if "127.0.0.1:10801" in result.stdout and "LISTENING" in result.stdout:
-                self.log_to_diagnostic("Порт 10801 открыт (ByeDPI слушает)")
-            else:
-                self.log_to_diagnostic("Порт 10801 не открыт")
-        except Exception as e:
-            self.log_to_diagnostic(f"Ошибка: {str(e)}")
-
-    def check_byedpi_version(self):
-        status = self.byedpi.get_status()
-        if status['binary_exists']:
-            self.log_to_diagnostic(f"Версия ByeDPI: {status['version']}")
-            self.log_to_diagnostic(f"Параметры: {status['params']}")
-        else:
-            self.log_to_diagnostic("ByeDPI не установлен")
-
     def restart_byedpi(self):
         self.log_to_diagnostic("Перезапуск ByeDPI...")
         if self.byedpi_enabled:
@@ -2090,30 +2152,6 @@ class ZapretLauncher:
         else:
             self.log_to_diagnostic("TGProxy не запущен")
 
-    def check_tgproxy_port(self):
-        self.log_to_diagnostic("Проверка порта 1080...")
-        try:
-            result = subprocess.run(['netstat', '-an'], 
-                                capture_output=True, text=True, encoding='cp866')
-            if "127.0.0.1:1080" in result.stdout and "LISTENING" in result.stdout:
-                self.log_to_diagnostic("Порт 1080 открыт (TGProxy слушает)")
-            else:
-                self.log_to_diagnostic("Порт 1080 не открыт")
-        except Exception as e:
-            self.log_to_diagnostic(f"Ошибка: {str(e)}")
-
-    def check_telegram(self):
-        self.log_to_diagnostic("Проверка доступности Telegram...")
-        try:
-            result = subprocess.run(['ping', '-n', '2', 'web.telegram.org'], 
-                                capture_output=True, text=True, encoding='cp866')
-            if result.returncode == 0:
-                self.log_to_diagnostic("Telegram доступен")
-            else:
-                self.log_to_diagnostic("Telegram не отвечает, но может работать через приложение")
-        except Exception as e:
-            self.log_to_diagnostic(f"Ошибка: {str(e)}")
-
     def restart_tgproxy(self):
         self.log_to_diagnostic("Перезапуск TGProxy...")
         if self.tg_proxy._running:
@@ -2123,16 +2161,6 @@ class ZapretLauncher:
             self.log_to_diagnostic("TGProxy перезапущен")
         else:
             self.log_to_diagnostic("TGProxy не был запущен")
-
-    def check_admin_rights(self):
-        self.log_to_diagnostic("Проверка прав администратора...")
-        if is_admin():
-            self.log_to_diagnostic("Программа запущена от имени администратора")
-        else:
-            self.log_to_diagnostic("Программа НЕ запущена от имени администратора")
-
-    def check_launcher_version(self):
-        self.log_to_diagnostic(f"Версия лаунчера: {CURRENT_VERSION}")
 
     def open_appdata_folder(self):
         self.log_to_diagnostic(f"Открытие папки: {APPDATA_DIR}")
@@ -2155,8 +2183,6 @@ class ZapretLauncher:
         self.log_to_diagnostic("ПОЛНАЯ ДИАГНОСТИКА СИСТЕМЫ")
         self.log_to_diagnostic("="*50)
         
-        self.check_admin_rights()
-        self.check_launcher_version()
         self.log_to_diagnostic("")
         
         self.check_ping_google()
@@ -2168,11 +2194,9 @@ class ZapretLauncher:
         self.log_to_diagnostic("")
         
         self.check_byedpi_status()
-        self.check_byedpi_port()
         self.log_to_diagnostic("")
         
         self.check_tgproxy_status()
-        self.check_tgproxy_port()
         self.log_to_diagnostic("")
         
         self.log_to_diagnostic("="*50)
@@ -2343,9 +2367,7 @@ class ZapretLauncher:
             
             self.tg_proxy._kill_process_on_port(1080)
             
-            from byedpi_optimizer import ByeDPIOptimizer
-            optimizer = ByeDPIOptimizer(APPDATA_DIR)
-            optimizer._kill_process_on_port(10801)
+            self.byedpi.base._kill_process_on_port(10801)
             
             self.stats.end_session()
             
@@ -2393,6 +2415,11 @@ class ZapretLauncher:
                     autostart_enabled = data.get('autostart_enabled', False)
                     if autostart_enabled != self.check_autostart_status():
                         self.set_autostart(autostart_enabled)
+
+                    interval_index = data.get('update_interval', 0)
+                    if 0 <= interval_index < len(self.update_intervals):
+                        self.update_interval_index = interval_index
+                        self.update_interval = self.update_intervals[self.update_interval_index]
         except:
             pass
 
@@ -2403,7 +2430,8 @@ class ZapretLauncher:
                 'current_strategy': self.current_strategy,
                 'byedpi_enabled': self.byedpi_enabled,
                 'byedpi_provider': self.current_provider,
-                'autostart_enabled': self.check_autostart_status()
+                'autostart_enabled': self.check_autostart_status(),
+                'update_interval': self.update_interval_index
             }
             with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
                 json.dump(settings, f, indent=2)
