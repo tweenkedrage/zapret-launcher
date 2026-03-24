@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox, filedialog, ttk
 from byedpi_optimizer import ByeDPIOptimizer
+from pages import Pages, check_zapret_folder, open_zapret_folder
 from theme import get_theme
 from network_optimizer import (
     optimize_network_latency,
@@ -13,6 +14,7 @@ from network_optimizer import (
     list_network_adapters,
     set_dns_manual
 )
+from widgets import ModernSwitch, RoundedButton
 import subprocess
 import os
 import json
@@ -36,7 +38,6 @@ import pystray
 from PIL import Image, ImageDraw
 from typing import Optional, List, Dict, Tuple
 import webbrowser
-
 from tg_proxy import run_proxy, parse_dc_ip_list, run_proxy_async
 from list_editor import ListEditor
 
@@ -47,7 +48,7 @@ ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
 ZAPRET_API_URL = "https://api.github.com/repos/flowseal/zapret-discord-youtube/releases/latest"
-CURRENT_VERSION = "2.3"
+CURRENT_VERSION = "2.3b"
 
 PROVIDER_PARAMS = {
     "Ростелеком/Дом.ru/Tele2/SamaraLan": ["--split", "1", "--disorder", "-1"],
@@ -69,25 +70,6 @@ def run_as_admin():
         None, "runas", sys.executable, " ".join(sys.argv), None, 1
     )
     sys.exit()
-
-def check_zapret_folder():
-    if not ZAPRET_CORE_DIR.exists():
-        messagebox.showerror(
-            "Ошибка", 
-            "Папка с Zapret не найдена!\n\n"
-            f"Ожидаемая папка: {ZAPRET_CORE_DIR}\n\n"
-            "Запустите программу заново для распаковки ресурсов."
-        )
-        return False
-    return True
-
-def open_zapret_folder():
-    if not check_zapret_folder():
-        return
-    try:
-        os.startfile(ZAPRET_CORE_DIR)
-    except Exception as e:
-        messagebox.showerror("Ошибка", f"Не удалось открыть папку: {str(e)}")
 
 def check_launcher_updates(parent, silent=False):
     try:
@@ -631,90 +613,6 @@ class ZapretCore:
             
         return False, f"Неизвестная команда: {command}"
 
-class ModernSwitch(tk.Canvas):
-    def __init__(self, parent, width=50, height=24, bg_color='#25252B', 
-                 active_color='#4361ee', command=None, initial=False):
-        super().__init__(parent, width=width, height=height, highlightthickness=0, bg=parent['bg'])
-        self.active_color = active_color
-        self.inactive_color = bg_color
-        self.state = initial
-        self.command = command
-        self.width = width
-        self.height = height
-        
-        self.bg_rect = self.create_oval(2, 2, width-2, height-2, fill=self.inactive_color, outline='#2D2D35', width=1)
-        self.slider = self.create_oval(4, 4, height-4, height-4, fill='#ffffff', outline='', tags=('slider',))
-        
-        if self.state:
-            self.coords(self.slider, width-height+4, 4, width-4, height-4)
-            self.itemconfig(self.bg_rect, fill=self.active_color)
-        
-        self.tag_bind(self.bg_rect, "<Button-1>", self.on_click)
-        self.tag_bind("slider", "<Button-1>", self.on_click)
-
-    def on_click(self, event):
-        self.state = not self.state
-        if self.state:
-            self.coords(self.slider, self.width-self.height+4, 4, self.width-4, self.height-4)
-            self.itemconfig(self.bg_rect, fill=self.active_color)
-        else:
-            self.coords(self.slider, 4, 4, self.height-4, self.height-4)
-            self.itemconfig(self.bg_rect, fill=self.inactive_color)
-        if self.command:
-            self.command(self.state)
-
-class RoundedButton(tk.Canvas):
-    def __init__(self, parent, text, command, width=200, height=40, 
-                 bg='#4361ee', fg='white', font=("Segoe UI", 11, "bold"), corner_radius=8):
-        super().__init__(parent, width=width, height=height, highlightthickness=0, bg=parent['bg'], cursor="hand2")
-        self.command = command
-        self.bg = bg
-        self.fg = fg
-        self.font = font
-        self.enabled = True
-        self.normal_color = bg
-        self.hover_color = '#5a7aff'
-        self.corner_radius = corner_radius
-        
-        points = []
-        points.extend([corner_radius, 0, width-corner_radius, 0])
-        points.extend([width, 0, width, corner_radius, width, height-corner_radius, width, height])
-        points.extend([width-corner_radius, height, corner_radius, height])
-        points.extend([0, height, 0, height-corner_radius, 0, corner_radius, 0, 0])
-        self.rect = self.create_polygon(points, smooth=True, fill=bg, outline='')
-        self.text_id = self.create_text(width//2, height//2, text=text, fill=fg, font=font)
-        
-        for item in [self.rect, self.text_id]:
-            self.tag_bind(item, "<Button-1>", self.on_click)
-            self.tag_bind(item, "<Enter>", self.on_enter)
-            self.tag_bind(item, "<Leave>", self.on_leave)
-
-    def on_click(self, event):
-        if self.enabled and self.command:
-            self.command()
-
-    def on_enter(self, event):
-        if self.enabled:
-            self.itemconfig(self.rect, fill=self.hover_color)
-
-    def on_leave(self, event):
-        if self.enabled:
-            self.itemconfig(self.rect, fill=self.normal_color)
-
-    def set_text(self, text):
-        self.itemconfig(self.text_id, text=text)
-
-    def set_enabled(self, enabled):
-        self.enabled = enabled
-        color = self.normal_color if enabled else '#666666'
-        self.itemconfig(self.rect, fill=color)
-
-    def update_colors(self, bg_color, fg_color, hover_color):
-        self.normal_color = bg_color
-        self.hover_color = hover_color
-        self.itemconfig(self.rect, fill=bg_color)
-        self.itemconfig(self.text_id, fill=fg_color)
-
 class SystemTrayIcon:
     def __init__(self, app):
         self.app = app
@@ -746,7 +644,7 @@ class SystemTrayIcon:
             connection_text = "Подключиться"
         
         menu = pystray.Menu(
-            pystray.MenuItem("Открыть лаунчер", self.show_window),
+            pystray.MenuItem("Открыть лаунчер", self.show_window, default=True),
             pystray.MenuItem(connection_text, self.toggle_connection),
             pystray.MenuItem("Выход", self.quit_app)
         )
@@ -770,7 +668,10 @@ class SystemTrayIcon:
         self.app.root.focus_force()
 
     def toggle_connection(self):
-        self.app.toggle_connection()
+        if self.app.is_connected:
+            self.app.disconnect()
+        else:
+            self.app.show_mode_selector()
         self.update_menu()
 
     def quit_app(self):
@@ -807,7 +708,15 @@ class ZapretLauncher:
         self.byedpi_enabled = False
         self.stats = StatsMonitor()
         self.stats_update_id = None
+        self._pending_mode = None
+
+        self.strategy_var = tk.StringVar()
+        self.provider_var = tk.StringVar(value="Ростелеком/Дом.ru/Tele2/SamaraLan")
+        self.tgws_var = tk.BooleanVar(value=False)
+        self.byedpi_var = tk.BooleanVar(value=False)
         
+        self.byedpi_status = tk.Label()
+            
         try:
             self.root.iconbitmap(default='icon.ico')
         except Exception as e:
@@ -898,11 +807,9 @@ class ZapretLauncher:
         self.content_panel = tk.Frame(self.main_container, bg=self.colors['bg_dark'])
         self.content_panel.place(x=250, y=0, width=950, height=800)
         
-        self.create_main_page()
-        self.create_service_page()
-        self.create_lists_page()
-        self.create_diagnostic_page()
-        self.create_help_page()
+        from pages import Pages
+        self.pages = Pages(self)
+        self.pages.create_all_pages(self.content_panel)
 
     def create_left_panel(self):
         left_panel = tk.Frame(self.main_container, bg=self.colors['bg_medium'], width=250)
@@ -957,145 +864,390 @@ class ZapretLauncher:
         self.credit_label.bind("<Leave>", lambda e: self.credit_label.config(fg=self.colors['text_secondary']))
         self.credit_label.bind("<Button-1>", lambda e: self.open_github())
 
-    def create_main_page(self):
-        self.main_page = tk.Frame(self.content_panel, bg=self.colors['bg_dark'])
-        self.main_page.place(x=0, y=0, width=950, height=800)
+    def show_mode_selector(self):
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Выбор режима запуска")
+        dialog.geometry("500x500")
+        dialog.resizable(False, False)
+        dialog.configure(bg=self.colors['bg_medium'])
         
-        tk.Label(self.main_page, text="Главная", font=("Segoe UI", 32, "bold"), 
-                fg=self.colors['text_primary'], bg=self.colors['bg_dark']).pack(anchor='w', pady=(30, 20), padx=30)
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 250
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 250
+        dialog.geometry(f"+{x}+{y}")
         
-        status_frame = tk.Frame(self.main_page, bg=self.colors['bg_light'])
-        status_frame.pack(fill=tk.X, padx=30, pady=(0, 20))
+        tk.Label(dialog, text="Выберите режим запуска", font=("Segoe UI", 16, "bold"),
+                fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(pady=(20, 10))
         
-        tk.Label(status_frame, text="Статус:", font=self.font_bold, 
-                fg=self.colors['text_primary'], bg=self.colors['bg_light']).pack(side=tk.LEFT, padx=15, pady=10)
+        main_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
         
-        self.main_status = tk.Label(status_frame, text="Готов к работе", font=self.font_medium,
-                                    fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
-        self.main_status.pack(side=tk.LEFT, padx=15, pady=10)
+        canvas = tk.Canvas(main_frame, bg=self.colors['bg_medium'], highlightthickness=0)
+        scrollbar = tk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg=self.colors['bg_medium'])
         
-        self.stats_frame = tk.Frame(self.main_page, bg=self.colors['bg_medium'])
-        self.stats_frame.pack(fill=tk.X, padx=30, pady=(0, 20), ipadx=20, ipady=15)
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
         
-        tk.Label(self.stats_frame, text="Статистика сессии", font=("Segoe UI", 14, "bold"),
-                fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(anchor='w', padx=15, pady=(0, 10))
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw", width=440)
+        canvas.configure(yscrollcommand=scrollbar.set)
         
-        stats_row1 = tk.Frame(self.stats_frame, bg=self.colors['bg_medium'])
-        stats_row1.pack(fill=tk.X, padx=15, pady=2)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
         
-        self.stats_time_label = tk.Label(stats_row1, text="00:00:00", font=("Segoe UI", 18, "bold"),
-                                        fg=self.colors['accent'], bg=self.colors['bg_medium'])
-        self.stats_time_label.pack(side=tk.LEFT)
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
         
-        tk.Label(stats_row1, text="время работы", font=self.font_primary,
-                fg=self.colors['text_secondary'], bg=self.colors['bg_medium']).pack(side=tk.LEFT, padx=(5, 20))
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
         
-        self.stats_traffic_label = tk.Label(stats_row1, text="⬇ 0 B  |  ⬆ 0 B", font=("Segoe UI", 12),
-                                            fg=self.colors['text_primary'], bg=self.colors['bg_medium'])
-        self.stats_traffic_label.pack(side=tk.LEFT, padx=(0, 20))
+        modes = [
+            {"name": "Стандартный", "desc": "Обход блокировок через Zapret", "zapret": True, "tgproxy": False, "byedpi": False, "game": False},
+            {"name": "TG Proxy", "desc": "Ускорение работы Telegram", "zapret": False, "tgproxy": True, "byedpi": False, "game": False},
+            {"name": "ByeDPI", "desc": "Оптимизация игр, снижение задержки", "zapret": False, "tgproxy": False, "byedpi": True, "game": False},
+            {"name": "Игровой", "desc": "Максимальная производительность для игр", "zapret": True, "tgproxy": False, "byedpi": False, "game": True},
+            {"name": "Кастомный", "desc": "Выберите что включить самостоятельно", "zapret": False, "tgproxy": False, "byedpi": False, "game": False, "custom": True}
+        ]
         
-        self.stats_total_label = tk.Label(stats_row1, text="0 B", font=("Segoe UI", 12),
-                                        fg=self.colors['text_secondary'], bg=self.colors['bg_medium'])
-        self.stats_total_label.pack(side=tk.LEFT)
+        selected_mode = [None]
         
-        stats_speed_frame = tk.Frame(self.stats_frame, bg=self.colors['bg_medium'])
-        stats_speed_frame.pack(fill=tk.X, padx=15, pady=(10, 5))
-        
-        tk.Label(stats_speed_frame, text="Скорость:", font=self.font_bold,
-                fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(anchor='w')
-        
-        speed_row = tk.Frame(stats_speed_frame, bg=self.colors['bg_medium'])
-        speed_row.pack(fill=tk.X, pady=5)
-        
-        self.stats_speed_up_label = tk.Label(speed_row, text="⬆ 0 B/s", font=self.font_primary,
-                                            fg=self.colors['accent_green'], bg=self.colors['bg_medium'])
-        self.stats_speed_up_label.pack(side=tk.LEFT, padx=(0, 20))
-        
-        self.stats_speed_down_label = tk.Label(speed_row, text="⬇ 0 B/s", font=self.font_primary,
-                                                fg=self.colors['accent'], bg=self.colors['bg_medium'])
-        self.stats_speed_down_label.pack(side=tk.LEFT)
-        
-        quick_frame = tk.Frame(self.main_page, bg=self.colors['bg_medium'])
-        quick_frame.pack(fill=tk.X, padx=30, pady=(30, 20), ipadx=20, ipady=20)
-        
-        tk.Label(quick_frame, text="Быстрый запуск", font=("Segoe UI", 16, "bold"),
-                fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(anchor='w', padx=15, pady=(10, 15))
+        for mode in modes:
+            mode_frame = tk.Frame(scrollable_frame, bg=self.colors['bg_light'], relief=tk.FLAT, bd=1)
+            mode_frame.pack(fill=tk.X, padx=10, pady=5, ipady=5)
             
-        strategy_frame = tk.Frame(quick_frame, bg=self.colors['bg_medium'])
-        strategy_frame.pack(fill=tk.X, padx=15, pady=5)
+            name_label = tk.Label(mode_frame, text=mode["name"], font=("Segoe UI", 12, "bold"),
+                                fg=self.colors['accent'], bg=self.colors['bg_light'])
+            name_label.pack(anchor='w', padx=10, pady=(5, 0))
+            
+            desc_label = tk.Label(mode_frame, text=mode["desc"], font=("Segoe UI", 9),
+                                fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
+            desc_label.pack(anchor='w', padx=10, pady=(0, 5))
+            
+            def make_select(m):
+                return lambda: select_mode(m)
+            
+            select_btn = RoundedButton(mode_frame, text="Выбрать", command=make_select(mode),
+                                    width=80, height=28, bg=self.colors['button_bg'],
+                                    font=("Segoe UI", 9), corner_radius=6)
+            select_btn.pack(side=tk.RIGHT, padx=10, pady=5)
         
-        tk.Label(strategy_frame, text="Стратегия:", font=self.font_medium,
-                fg=self.colors['text_secondary'], bg=self.colors['bg_medium']).pack(side=tk.LEFT, padx=(0, 10))
+        def select_mode(mode):
+            selected_mode[0] = mode
+            dialog.destroy()
+            self.start_with_mode(mode)
         
-        self.strategy_var = tk.StringVar()
-        self.strategy_combo = ttk.Combobox(strategy_frame, textvariable=self.strategy_var,
-                                    values=self.zapret.available_strategies,
-                                    width=40, font=self.font_primary)
-        self.strategy_combo.pack(side=tk.LEFT, padx=10)
-        self.strategy_combo.bind("<Enter>", lambda e: self.strategy_combo.config(cursor="hand2"))
-        self.strategy_combo.bind("<Leave>", lambda e: self.strategy_combo.config(cursor=""))
+        cancel_btn = RoundedButton(dialog, text="Отмена", command=dialog.destroy,
+                                width=100, height=35, bg=self.colors['button_bg'],
+                                font=("Segoe UI", 10), corner_radius=8)
+        cancel_btn.pack(pady=15)
+
+    def start_with_mode(self, mode):
+        if mode["name"] == "Стандартный" or mode["name"] == "Игровой":
+            if not self.zapret.available_strategies:
+                messagebox.showerror("Ошибка", "Нет доступных стратегий Zapret")
+                return
+            
+            self._pending_mode = mode
+            self.select_strategy_for_mode(mode["name"])
+            return
         
-        tgws_frame = tk.Frame(quick_frame, bg=self.colors['bg_medium'])
-        tgws_frame.pack(fill=tk.X, padx=15, pady=5)
+        if mode["name"] == "Кастомный":
+            self.show_custom_selector()
+            return
         
-        tk.Label(tgws_frame, text="TGProxy:", font=self.font_medium,
-                fg=self.colors['text_secondary'], bg=self.colors['bg_medium']).pack(side=tk.LEFT, padx=(0, 10))
+        self.update_status("Запуск...", self.colors['accent'])
+        self.connect_btn.set_enabled(False)
+        self.root.update()
         
-        self.tgws_var = tk.BooleanVar(value=False)
-        tgws_check = tk.Checkbutton(tgws_frame, variable=self.tgws_var,
-                                bg=self.colors['bg_medium'], activebackground=self.colors['bg_medium'],
-                                cursor="hand2")
-        tgws_check.pack(side=tk.LEFT)
+        success = True
+        msg = ""
         
-        tk.Label(tgws_frame, text="Запустить вместе с Zapret", font=self.font_primary,
-                fg=self.colors['text_secondary'], bg=self.colors['bg_medium']).pack(side=tk.LEFT, padx=5)
+        if mode.get("tgproxy", False):
+            self.tg_proxy.start()
         
-        byedpi_frame = tk.Frame(quick_frame, bg=self.colors['bg_medium'])
-        byedpi_frame.pack(fill=tk.X, padx=15, pady=5)
+        if mode.get("byedpi", False):
+            self.byedpi.set_provider(self.current_provider)
+            success, msg = self.byedpi.start()
+            if not success:
+                messagebox.showerror("Ошибка ByeDPI", msg)
+                self.connect_btn.set_enabled(True)
+                return
+            self.byedpi_enabled = True
+            self.byedpi_var.set(True)
         
-        tk.Label(byedpi_frame, text="ByeDPI Оптимизатор:", 
-                font=self.font_medium, fg=self.colors['text_secondary'], 
-                bg=self.colors['bg_medium']).pack(side=tk.LEFT, padx=(0, 10))
+        if mode.get("game", False):
+            self._apply_game_mode()
         
-        self.byedpi_var = tk.BooleanVar(value=self.byedpi_enabled)
-        byedpi_check = tk.Checkbutton(byedpi_frame, variable=self.byedpi_var,
-                                    bg=self.colors['bg_medium'], 
-                                    activebackground=self.colors['bg_medium'],
-                                    cursor="hand2",
-                                    command=self.on_byedpi_change)
-        byedpi_check.pack(side=tk.LEFT)
+        self.is_connected = True
+        self.stats.start_session()
+        self.start_stats_monitoring()
         
-        self.byedpi_status = tk.Label(byedpi_frame, text="", 
-                                    font=self.font_primary, 
-                                    fg=self.colors['text_secondary'], 
-                                    bg=self.colors['bg_medium'])
-        self.byedpi_status.pack(side=tk.LEFT, padx=5)
+        mode_name = mode["name"]
+        self.mode_label.config(text=mode_name, fg=self.colors['accent_green'])
+        self.update_status(f"Подключено: {mode_name}", self.colors['accent_green'])
+        self.update_ui_state()
+        self.save_settings()
+        self.root.after(100, self.update_stats_display)
+        self.connect_btn.set_enabled(True)
+
+    def select_strategy_for_mode(self, mode_name):
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f"Выбор стратегии для режима {mode_name}")
+        dialog.geometry("450x450")
+        dialog.resizable(False, False)
+        dialog.configure(bg=self.colors['bg_medium'])
         
-        provider_frame = tk.Frame(quick_frame, bg=self.colors['bg_medium'])
-        provider_frame.pack(fill=tk.X, padx=15, pady=5)
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 225
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 225
+        dialog.geometry(f"+{x}+{y}")
         
-        tk.Label(provider_frame, text="Провайдер:", font=self.font_medium,
-                fg=self.colors['text_secondary'], bg=self.colors['bg_medium']).pack(side=tk.LEFT, padx=(0, 10))
+        tk.Label(dialog, text=f"Выберите стратегию Zapret для режима {mode_name}", 
+                font=("Segoe UI", 12, "bold"),
+                fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(pady=(20, 10))
         
-        self.provider_var = tk.StringVar(value=self.current_provider)
-        self.provider_combo = ttk.Combobox(provider_frame, textvariable=self.provider_var,
-                                        values=list(PROVIDER_PARAMS.keys()),
-                                        width=30, font=self.font_primary)
-        self.provider_combo.pack(side=tk.LEFT, padx=10)
-        self.provider_combo.bind("<<ComboboxSelected>>", self.on_provider_change)
+        list_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
         
-        button_frame = tk.Frame(quick_frame, bg=self.colors['bg_medium'])
-        button_frame.pack(fill=tk.X, padx=15, pady=(15, 10))
+        scrollbar = tk.Scrollbar(list_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
-        self.connect_btn = RoundedButton(button_frame, text="ПОДКЛЮЧИТЬСЯ", command=self.toggle_connection,
-                                    width=300, height=55, bg=self.colors['accent'], 
-                                    font=("Segoe UI", 16, "bold"), corner_radius=12)
-        self.connect_btn.pack()
+        strategy_listbox = tk.Listbox(list_frame, height=10, font=("Segoe UI", 10),
+                                    bg=self.colors['bg_light'], fg=self.colors['text_primary'],
+                                    selectbackground=self.colors['accent'],
+                                    yscrollcommand=scrollbar.set)
+        strategy_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=strategy_listbox.yview)
         
-        if self.current_strategy and self.current_strategy in self.zapret.available_strategies:
-            self.strategy_var.set(self.current_strategy)
+        for s in self.zapret.available_strategies:
+            strategy_listbox.insert(tk.END, s)
         
-        self.update_byedpi_status()
+        desc_label = tk.Label(dialog, text="", font=("Segoe UI", 9),
+                            fg=self.colors['text_secondary'], bg=self.colors['bg_medium'],
+                            wraplength=400, justify=tk.LEFT)
+        desc_label.pack(pady=5, padx=20)
+        
+        def on_select(event):
+            selection = strategy_listbox.curselection()
+            if selection:
+                strategy = self.zapret.available_strategies[selection[0]]
+                desc_label.config(text=f"Выбрано: {strategy}")
+        
+        strategy_listbox.bind("<<ListboxSelect>>", on_select)
+        
+        if self.current_strategy:
+            try:
+                idx = self.zapret.available_strategies.index(self.current_strategy)
+                strategy_listbox.selection_set(idx)
+                strategy_listbox.see(idx)
+                desc_label.config(text=f"Выбрано: {self.current_strategy}")
+            except:
+                pass
+        
+        def start_with_strategy():
+            selection = strategy_listbox.curselection()
+            if not selection:
+                messagebox.showerror("Ошибка", "Выберите стратегию")
+                return
+            selected_strategy = self.zapret.available_strategies[selection[0]]
+            self.strategy_var.set(selected_strategy)
+            dialog.destroy()
+            
+            mode = self._pending_mode
+            self.update_status(f"Запуск {mode['name']} режима...", self.colors['accent'])
+            self.connect_btn.set_enabled(False)
+            self.root.update()
+            
+            success, msg = self.zapret.run_strategy(selected_strategy)
+            if not success:
+                self.update_status("Ошибка запуска", self.colors['accent_red'])
+                messagebox.showerror("Ошибка", msg)
+                self.connect_btn.set_enabled(True)
+                return
+            
+            self.current_strategy = selected_strategy
+            
+            if mode.get("tgproxy", False):
+                self.tg_proxy.start()
+            
+            if mode.get("byedpi", False):
+                self.byedpi.set_provider(self.current_provider)
+                success, msg = self.byedpi.start()
+                if not success:
+                    messagebox.showerror("Ошибка ByeDPI", msg)
+                    self.zapret.stop_current_strategy()
+                    self.connect_btn.set_enabled(True)
+                    return
+                self.byedpi_enabled = True
+                self.byedpi_var.set(True)
+            
+            if mode.get("game", False):
+                self._apply_game_mode()
+            
+            self.is_connected = True
+            self.stats.start_session()
+            self.start_stats_monitoring()
+            
+            mode_display = mode["name"]
+            strategy_display = self.zapret.get_strategy_display_name(selected_strategy)
+            self.mode_label.config(text=mode_display, fg=self.colors['accent_green'])
+            self.update_status(f"Подключено: {mode_display} ({strategy_display})", self.colors['accent_green'])
+            self.update_ui_state()
+            self.save_settings()
+            self.root.after(100, self.update_stats_display)
+            self.connect_btn.set_enabled(True)
+        
+        btn_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
+        btn_frame.pack(pady=15)
+        
+        start_btn = RoundedButton(btn_frame, text="Запустить", command=start_with_strategy,
+                                width=120, height=35, bg=self.colors['accent'],
+                                font=("Segoe UI", 10), corner_radius=8)
+        start_btn.pack(side=tk.LEFT, padx=5)
+        
+        cancel_btn = RoundedButton(btn_frame, text="Отмена", command=dialog.destroy,
+                                width=80, height=35, bg=self.colors['button_bg'],
+                                font=("Segoe UI", 10), corner_radius=8)
+        cancel_btn.pack(side=tk.LEFT, padx=5)
+
+    def _apply_game_mode(self):
+        self.log_to_diagnostic("Игровой режим активирован")
+
+    def show_custom_selector(self):
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Кастомный режим")
+        dialog.geometry("400x400")
+        dialog.resizable(False, False)
+        dialog.configure(bg=self.colors['bg_medium'])
+        
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 200
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 200
+        dialog.geometry(f"+{x}+{y}")
+        
+        tk.Label(dialog, text="Выберите компоненты для запуска", font=("Segoe UI", 14, "bold"),
+                fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(pady=(20, 10))
+        
+        custom_zapret = tk.IntVar(value=1)
+        custom_tgproxy = tk.IntVar(value=0)
+        custom_byedpi = tk.IntVar(value=0)
+        
+        zapret_frame = tk.Frame(dialog, bg=self.colors['bg_light'])
+        zapret_frame.pack(fill=tk.X, padx=20, pady=5, ipady=5)
+        
+        zapret_cb = tk.Checkbutton(zapret_frame, text="Zapret", variable=custom_zapret,
+                                    bg=self.colors['bg_light'], activebackground=self.colors['bg_light'],
+                                    fg=self.colors['text_primary'], selectcolor=self.colors['bg_light'])
+        zapret_cb.pack(side=tk.LEFT, padx=10)
+        
+        strategy_frame = tk.Frame(zapret_frame, bg=self.colors['bg_light'])
+        strategy_frame.pack(side=tk.RIGHT, padx=10)
+        tk.Label(strategy_frame, text="Стратегия:", font=self.font_primary,
+                fg=self.colors['text_secondary'], bg=self.colors['bg_light']).pack(side=tk.LEFT)
+        strategy_combo = ttk.Combobox(strategy_frame, values=self.zapret.available_strategies,
+                                    width=25, font=self.font_primary)
+        strategy_combo.pack(side=tk.LEFT, padx=5)
+        if self.current_strategy:
+            strategy_combo.set(self.current_strategy)
+        elif self.zapret.available_strategies:
+            strategy_combo.set(self.zapret.available_strategies[0])
+        
+        tg_frame = tk.Frame(dialog, bg=self.colors['bg_light'])
+        tg_frame.pack(fill=tk.X, padx=20, pady=5, ipady=5)
+        tg_cb = tk.Checkbutton(tg_frame, text="TG Proxy (Telegram)", variable=custom_tgproxy,
+                                bg=self.colors['bg_light'], activebackground=self.colors['bg_light'],
+                                fg=self.colors['text_primary'], selectcolor=self.colors['bg_light'])
+        tg_cb.pack(side=tk.LEFT, padx=10)
+        
+        byedpi_frame = tk.Frame(dialog, bg=self.colors['bg_light'])
+        byedpi_frame.pack(fill=tk.X, padx=20, pady=5, ipady=5)
+        byedpi_cb = tk.Checkbutton(byedpi_frame, text="ByeDPI Оптимизатор", variable=custom_byedpi,
+                                    bg=self.colors['bg_light'], activebackground=self.colors['bg_light'],
+                                    fg=self.colors['text_primary'], selectcolor=self.colors['bg_light'])
+        byedpi_cb.pack(side=tk.LEFT, padx=10)
+        
+        btn_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
+        btn_frame.pack(pady=20)
+        
+        def apply_custom():
+            mode = {
+                "name": "Кастомный",
+                "zapret": custom_zapret.get() == 1,
+                "tgproxy": custom_tgproxy.get() == 1,
+                "byedpi": custom_byedpi.get() == 1,
+                "game": False,
+                "strategy": strategy_combo.get() if custom_zapret.get() == 1 else None
+            }
+            
+            dialog.destroy()
+            self.start_custom_mode(mode)
+        
+        def cancel():
+            dialog.destroy()
+        
+        apply_btn = RoundedButton(btn_frame, text="Запустить", command=apply_custom,
+                                width=120, height=35, bg=self.colors['accent'],
+                                font=("Segoe UI", 10), corner_radius=8)
+        apply_btn.pack(side=tk.LEFT, padx=5)
+        
+        cancel_btn = RoundedButton(btn_frame, text="Отмена", command=cancel,
+                                width=80, height=35, bg=self.colors['button_bg'],
+                                font=("Segoe UI", 10), corner_radius=8)
+        cancel_btn.pack(side=tk.LEFT, padx=5)
+
+    def start_custom_mode(self, mode):
+        self.update_status("Запуск...", self.colors['accent'])
+        self.connect_btn.set_enabled(False)
+        self.root.update()
+        
+        success = True
+        msg = ""
+        
+        if mode.get("zapret", False):
+            strategy = mode.get("strategy")
+            if not strategy:
+                messagebox.showerror("Ошибка", "Выберите стратегию для Zapret")
+                self.connect_btn.set_enabled(True)
+                return
+            success, msg = self.zapret.run_strategy(strategy)
+            if not success:
+                self.update_status("Ошибка запуска", self.colors['accent_red'])
+                messagebox.showerror("Ошибка", msg)
+                self.connect_btn.set_enabled(True)
+                return
+            self.current_strategy = strategy
+            self.strategy_var.set(strategy)
+        
+        if mode.get("tgproxy", False):
+            self.tg_proxy.start()
+        
+        if mode.get("byedpi", False):
+            self.byedpi.set_provider(self.current_provider)
+            success, msg = self.byedpi.start()
+            if not success:
+                messagebox.showerror("Ошибка ByeDPI", msg)
+                self.connect_btn.set_enabled(True)
+                return
+            self.byedpi_enabled = True
+            self.byedpi_var.set(True)
+        
+        self.is_connected = True
+        self.stats.start_session()
+        self.start_stats_monitoring()
+        
+        components = []
+        if mode.get("zapret", False):
+            components.append("Zapret")
+        if mode.get("tgproxy", False):
+            components.append("TGProxy")
+        if mode.get("byedpi", False):
+            components.append("ByeDPI")
+        
+        mode_name = "Кастомный (" + ", ".join(components) + ")"
+        self.mode_label.config(text=mode_name, fg=self.colors['accent_green'])
+        self.update_status(f"Подключено: {mode_name}", self.colors['accent_green'])
+        self.update_ui_state()
+        self.save_settings()
+        self.root.after(100, self.update_stats_display)
+        self.connect_btn.set_enabled(True)
 
     def update_stats_display(self):
         if not hasattr(self, 'stats_frame'):
@@ -1197,10 +1349,10 @@ class ZapretLauncher:
                     if adapters:
                         self.root.after(0, lambda: self.show_adapter_selector(primary, secondary, name, adapters))
                     else:
-                        self.log_to_diagnostic(f"❌ {msg}")
+                        self.log_to_diagnostic(f"{msg}")
                         self.root.after(0, lambda: messagebox.showerror("Ошибка", msg))
                 else:
-                    self.log_to_diagnostic(f"✅ {msg}")
+                    self.log_to_diagnostic(f"{msg}")
                     self.root.after(0, lambda: messagebox.showinfo("Успех", 
                         f"Установлен DNS: {name}\n\n"
                         f"Primary: {primary}\n"
@@ -1270,7 +1422,6 @@ class ZapretLauncher:
                                 font=("Segoe UI", 10))
         cancel_btn.pack(side=tk.LEFT, padx=5)
 
-
     def flush_dns_cache_command(self):
         self.log_to_diagnostic("Очистка DNS кэша...")
         success, msg = flush_dns_cache()
@@ -1323,20 +1474,24 @@ class ZapretLauncher:
         if ZAPRET_CORE_DIR.exists():
             zapret_files = [
                 "winws.exe",
-                "general.bat",
                 "WinDivert.dll",
-                "WinDivert64.sys"
+                "WinDivert64.sys",
+                "general.bat"
             ]
             
             bin_dir = ZAPRET_CORE_DIR / "bin"
             for file in zapret_files:
-                file_path = bin_dir / file
+                if file == "general.bat":
+                    file_path = ZAPRET_CORE_DIR / file
+                else:
+                    file_path = bin_dir / file
+                
                 if file_path.exists():
                     size = file_path.stat().st_size
-                    self.log_to_diagnostic(f"  bin/{file} - {size} байт")
+                    self.log_to_diagnostic(f"  {file} - {size} байт")
                 else:
-                    self.log_to_diagnostic(f"  bin/{file} - отсутствует")
-                    errors.append(f"bin/{file} отсутствует")
+                    self.log_to_diagnostic(f"  {file} - отсутствует")
+                    errors.append(f"{file} отсутствует")
             
             strategies = list(ZAPRET_CORE_DIR.glob("general*.bat"))
             self.log_to_diagnostic(f"  Стратегии: {len(strategies)} файлов")
@@ -1558,36 +1713,6 @@ class ZapretLauncher:
                 self.log_to_diagnostic("Discord не отвечает (возможно заблокирован)")
         except Exception as e:
             self.log_to_diagnostic(f"Ошибка: {str(e)}")
-
-    def run_speedtest(self):
-        self.log_to_diagnostic("="*40)
-        self.log_to_diagnostic("ЗАПУСК ТЕСТА СКОРОСТИ")
-        self.log_to_diagnostic("="*40)
-        self.log_to_diagnostic("Тестирование загрузки...")
-        
-        try:
-            import urllib.request
-            import time
-            
-            test_url = "https://proof.ovh.net/files/100Mb.dat"
-            start_time = time.time()
-            
-            urllib.request.urlretrieve(test_url, "speedtest_temp.bin")
-            
-            end_time = time.time()
-            download_time = end_time - start_time
-            file_size_mb = 100
-            speed_mbps = (file_size_mb * 8) / download_time
-            
-            os.remove("speedtest_temp.bin")
-            
-            self.log_to_diagnostic(f"Скорость загрузки: {speed_mbps:.2f} Мбит/с")
-            self.log_to_diagnostic(f"Время загрузки: {download_time:.2f} сек")
-            self.log_to_diagnostic("="*40)
-            
-        except Exception as e:
-            self.log_to_diagnostic(f"Ошибка теста: {str(e)}")
-            self.log_to_diagnostic("Попробуйте использовать speedtest.net в браузере")
 
     def auto_select_strategy(self):
         self.log_to_diagnostic("="*50)
@@ -1897,371 +2022,6 @@ class ZapretLauncher:
         except Exception as e:
             pass
 
-    def create_service_page(self):
-        self.service_page = tk.Frame(self.content_panel, bg=self.colors['bg_dark'])
-        
-        tk.Label(self.service_page, text="Сервис", font=("Segoe UI", 32, "bold"),
-                fg=self.colors['text_primary'], bg=self.colors['bg_dark']).pack(anchor='w', pady=(30, 20), padx=30)
-        
-        functions = [
-            ("Фильтры", [
-                ("Game Filter", "game_filter"),
-                ("IPSet Filter", "ipset_filter"),
-            ]),
-            ("Обновление", [
-                ("Проверить обновление лаунчера", "check_launcher"),
-                ("Проверить обновление Zapret", "check_zapret"),
-            ]),
-        ]
-        
-        for title, items in functions:
-            card = tk.Frame(self.service_page, bg=self.colors['bg_medium'])
-            card.pack(fill=tk.X, padx=30, pady=10, ipadx=20, ipady=10)
-            
-            tk.Label(card, text=title, font=("Segoe UI", 14, "bold"),
-                    fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(anchor='w', padx=15, pady=(10, 5))
-            
-            for btn_text, cmd in items:
-                if cmd == "check_launcher":
-                    btn = RoundedButton(card, text=btn_text, 
-                                       command=lambda: check_launcher_updates(self, silent=False),
-                                       width=220, height=35, bg=self.colors['button_bg'],
-                                       font=self.font_primary, corner_radius=8)
-                elif cmd == "check_zapret":
-                    btn = RoundedButton(card, text=btn_text, 
-                                       command=lambda: check_zapret_updates(self, silent=False),
-                                       width=220, height=35, bg=self.colors['button_bg'],
-                                       font=self.font_primary, corner_radius=8)
-                else:
-                    btn = RoundedButton(card, text=btn_text, 
-                                       command=lambda c=cmd: self.run_service_command(c),
-                                       width=200, height=35, bg=self.colors['button_bg'],
-                                       font=self.font_primary, corner_radius=8)
-                btn.pack(anchor='w', padx=15, pady=2)
-
-    def create_diagnostic_page(self):
-        self.diagnostic_page = tk.Frame(self.content_panel, bg=self.colors['bg_dark'])
-        
-        tk.Label(self.diagnostic_page, text="Диагностика", font=("Segoe UI", 32, "bold"),
-                fg=self.colors['text_primary'], bg=self.colors['bg_dark']).pack(anchor='w', pady=(30, 20), padx=30)
-        
-        cards_frame = tk.Frame(self.diagnostic_page, bg=self.colors['bg_dark'])
-        cards_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=10)
-        
-        left_column = tk.Frame(cards_frame, bg=self.colors['bg_dark'])
-        left_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
-        
-        right_column = tk.Frame(cards_frame, bg=self.colors['bg_dark'])
-        right_column.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
-        
-        self.create_diagnostic_card(left_column, "Состояние интернета", [
-            ("Пинг до Google", self.check_ping_google),
-            ("Пинг до YouTube", self.check_ping_youtube),
-            ("Пинг до Discord", self.check_ping_discord),
-            ("Тест скорости", self.run_speedtest),
-            ("Проверить сайт", self.check_custom_site),
-        ])
-        
-        self.create_diagnostic_card(left_column, "Zapret", [
-            ("Проверить статус", self.check_zapret_status),
-            ("Версия стратегий", self.check_zapret_version),
-            ("Логи winws.exe", self.check_zapret_logs),
-            ("Перезапустить Zapret", self.restart_zapret),
-            ("Авто-подбор", self.auto_select_strategy),
-        ])
-        
-        self.create_diagnostic_card(left_column, "Общая диагностика", [
-            ("Полная проверка", self.run_full_diagnostic),
-            ("Сохранить отчет", self.save_diagnostic_report),
-            ("Проверка файлов", self.check_file_integrity),
-        ])
-        
-        self.create_diagnostic_card(right_column, "ByeDPI", [
-            ("Проверить статус", self.check_byedpi_status),
-            ("Порт 10801", self.check_byedpi_port),
-            ("Версия", self.check_byedpi_version),
-            ("Перезапустить ByeDPI", self.restart_byedpi),
-        ])
-        
-        self.create_diagnostic_card(right_column, "TGProxy", [
-            ("Проверить статус", self.check_tgproxy_status),
-            ("Порт 1080", self.check_tgproxy_port),
-            ("Проверить Telegram", self.check_telegram),
-            ("Перезапустить TGProxy", self.restart_tgproxy),
-        ])
-        
-        self.create_diagnostic_card(right_column, "Система", [
-            ("Права администратора", self.check_admin_rights),
-            ("Версия лаунчера", self.check_launcher_version),
-            ("Папка AppData", self.open_appdata_folder),
-            ("Очистить кэш", self.clear_cache),
-            ("Автозапуск", self.toggle_autostart),
-            ("Оптимизация сети", self.optimize_network_latency),
-            ("Найти лучший DNS", self.find_and_set_best_dns),
-            ("Очистить DNS кэш", self.flush_dns_cache_command),
-            ("Сбросить настройки", self.restore_network_defaults_command),
-        ])
-        
-        result_frame = tk.Frame(self.diagnostic_page, bg=self.colors['bg_light'])
-        result_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=(10, 20))
-        
-        tk.Label(result_frame, text="Результаты диагностики:", font=("Segoe UI", 12, "bold"),
-                fg=self.colors['text_primary'], bg=self.colors['bg_light']).pack(anchor='w', padx=15, pady=(8, 5))
-        
-        text_frame = tk.Frame(result_frame, bg=self.colors['bg_light'])
-        text_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 10))
-        
-        self.diagnostic_text = tk.Text(text_frame, height=8, bg=self.colors['bg_dark'],
-                                    fg=self.colors['text_primary'], font=("Consolas", 9),
-                                    wrap=tk.WORD, borderwidth=0)
-        scrollbar = tk.Scrollbar(text_frame, command=self.diagnostic_text.yview)
-        self.diagnostic_text.configure(yscrollcommand=scrollbar.set)
-        
-        self.diagnostic_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-    def create_help_page(self):
-        self.help_page = tk.Frame(self.content_panel, bg=self.colors['bg_dark'])
-        
-        container = tk.Frame(self.help_page, bg=self.colors['bg_dark'])
-        container.pack(fill=tk.BOTH, expand=True)
-        
-        canvas_frame = tk.Frame(container, bg=self.colors['bg_dark'])
-        canvas_frame.pack(fill=tk.BOTH, expand=True)
-        
-        canvas = tk.Canvas(canvas_frame, bg=self.colors['bg_dark'], highlightthickness=0)
-        scrollbar = tk.Scrollbar(canvas_frame, orient="vertical", command=canvas.yview)
-        
-        scrollable_frame = tk.Frame(canvas, bg=self.colors['bg_dark'])
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        
-        canvas.create_window((20, 0), window=scrollable_frame, anchor="nw", width=880)
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        
-        def _on_mousewheel(event):
-            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        
-        canvas.bind_all("<MouseWheel>", _on_mousewheel)
-        
-        tk.Label(scrollable_frame, text="Помощь", font=("Segoe UI", 28, "bold"),
-                fg=self.colors['text_primary'], bg=self.colors['bg_dark']).pack(anchor='w', pady=(0, 20))
-        
-        self.help_section(scrollable_frame, "Установка:", [
-            ("1.", "Скачивайте архив и распаковывайте в любое место 2 файла: ", "Zapret_Launcher.exe", " и ", "zapret_resources.zip", ";"),
-            ("2.", "Запускайте ", "Zapret_Launcher.exe", " от ", "имени администратора", ";"),
-            ("3.", "Выбирайте любой метод использования Zapret и подключайтесь к ", "стабильной сети", " находясь под ", "ограничениями РКН", ";"),
-            ("4.", "После всех 3-х действий ", "Zapret_Launcher.exe", " можно запускать в любой папке/в любом месте на компьютере ", "без файла zapret_resources.zip", "."),
-        ])
-        
-        self.help_section(scrollable_frame, "Telegram Proxy:", [
-            ("1.", "Ставим галочку ", '"Запустить вместе с Zapret"', " в лаунчере", ";"),
-            ("2.", "Запускаем ", "Telegram", " на ПК", ";"),
-            ("3.", "Переходим в ", "настройки", ";"),
-            ("4.", "Продвинутые настройки", ""),
-            ("5.", "Тип соединения", ""),
-            ("6.", "Использовать собственное прокси (", "SOCKS5", ", Хост: ", "127.0.0.1", ", Порт: ", "1080", ")."),
-        ])
-        
-        self.help_section(scrollable_frame, "ByeDPI Оптимизатор:", [
-            ("", "ByeDPI", " — это дополнительный инструмент для обхода DPI;"),
-            ("1.", "Включайте только если тормозит интернет или стандартные стратегии не помогают", ";"),
-            ("2.", "Особенно полезен для ", "YouTube", " и ", "онлайн-игр", ";"),
-            ("3.", "Создает локальный SOCKS5 прокси на порту ", "10801", ";"),
-        ])
-        
-        self.help_section(scrollable_frame, "Что такое zapret_resources.zip:", [
-            ("1.", "Это архив со всеми файлами Zapret, которые необходимы для работы лаунчера", ";"),
-            ("2.", "При первом запуске лаунчер распаковывает ", "zapret_resources.zip", " в ", "%APPDATA%/ZapretLauncher/zapret_core/", ";"),
-            ("3.", "Все файлы извлекаются в эту папку", ";"),
-            ("4.", "Стратегии запускаются оттуда", ";"),
-            ("5.", "Пользовательские списки (", "*-user.txt", ") сохраняются там же", "."),
-        ])
-        
-        self.help_section(scrollable_frame, "В каких случаях можно удалить zapret_resources.zip:", [
-            ("1.", "После успешной распаковки — если папка ", "zapret_core", " в appdata/local уже существует и полная", ";"),
-            ("2.", "Если вы обновляете лаунчер — новый .exe yaже содержит свежий архив", ";"),
-            ("3.", "Если вы хотите сбросить Zapret — удали папку ", "zapret_core", ", и при следующем запуске архив распакуется заново", "."),
-        ])
-        
-        self.help_section(scrollable_frame, "НЕ УДАЛЯЙТЕ, если:", [
-            ("1.", "Папка ", "zapret_core", " отсутствует или повреждена", ";"),
-            ("2.", "Вы хотите сохранить возможность переустановки без скачивания", ";"),
-            ("3.", "Вы делитесь программой — архив (", "zapret_resources.zip", ") должен быть рядом с .exe", "."),
-        ])
-        
-        self.help_section(scrollable_frame, "Антивирус и WinDivert:", [
-            ("", "Некоторые антивирусы могут реагировать на программу из-за использования компонента ", "WinDivert", ". ", "Это НОРМАЛЬНО", "."),
-            ("", "WinDivert", " — это легальный драйвер с открытым исходным кодом, используемый для фильтрации сетевых пакетов.", ""),
-        ])
-        
-        self.help_section(scrollable_frame, "Если антивирус ругается:", [
-            ("1.", "Добавьте папку с программой в ", "исключения", ";"),
-            ("2.", "Или скомпилируйте программу сам из исходников или временно отключите антивирус при запуске", "."),
-        ])
-        
-        self.help_section(scrollable_frame, "Возможные конфликты:", [
-            ("", "Zapret", " и ", "ByeDPI", " работают на разных уровнях и ", "в большинстве случаев не конфликтуют", "."),
-            ("", "", ""),
-            ("", "Если после включения всего интернет работает нестабильно:", ""),
-            ("  •", "Отключайте по одной галочке, чтобы найти виновника", ""),
-            ("  •", "Для YouTube иногда помогает ", "отключение QUIC", " в браузере (chrome://flags/#enable-quic)", ""),
-            ("  •", "Если пинг в играх вырос, отключите ", "TGProxy", " (он для игр не нужен)", ""),
-            ("  •", "Разные стратегии Zapret могут вести себя по-разному с ByeDPI — экспериментируйте", ""),
-        ])
-        
-        links_frame = tk.Frame(scrollable_frame, bg=self.colors['bg_dark'])
-        links_frame.pack(fill=tk.X, pady=(20, 10))
-        
-        tk.Label(links_frame, text="Полезные ссылки:", font=("Segoe UI", 12, "bold"),
-                fg=self.colors['text_primary'], bg=self.colors['bg_dark']).pack(anchor='w', pady=(0, 10))
-        
-        def on_enter(e):
-            e.widget.config(fg=self.colors['accent_hover'])
-        
-        def on_leave(e):
-            e.widget.config(fg=self.colors['accent'])
-        
-        link1 = tk.Label(links_frame, text="Оригинальный Zapret", font=("Segoe UI", 9),
-                        fg=self.colors['accent'], bg=self.colors['bg_dark'], cursor="hand2")
-        link1.pack(anchor='w', pady=2)
-        link1.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/flowseal/zapret-discord-youtube"))
-        link1.bind("<Enter>", on_enter)
-        link1.bind("<Leave>", on_leave)
-        
-        link2 = tk.Label(links_frame, text="Оригинальный TG Proxy", font=("Segoe UI", 9),
-                        fg=self.colors['accent'], bg=self.colors['bg_dark'], cursor="hand2")
-        link2.pack(anchor='w', pady=2)
-        link2.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/Flowseal/tg-ws-proxy"))
-        link2.bind("<Enter>", on_enter)
-        link2.bind("<Leave>", on_leave)
-        
-        link3 = tk.Label(links_frame, text="Оригинальный ByeDPI", font=("Segoe UI", 9),
-                        fg=self.colors['accent'], bg=self.colors['bg_dark'], cursor="hand2")
-        link3.pack(anchor='w', pady=2)
-        link3.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/hufrea/byedpi"))
-        link3.bind("<Enter>", on_enter)
-        link3.bind("<Leave>", on_leave)
-        
-        author_frame = tk.Frame(scrollable_frame, bg=self.colors['bg_dark'])
-        author_frame.pack(fill=tk.X, pady=(30, 30))
-        
-        tk.Label(author_frame, text="by trimansberg", font=("Segoe UI", 10, "italic"),
-                fg=self.colors['text_secondary'], bg=self.colors['bg_dark']).pack()
-        
-    def create_diagnostic_card(self, parent, title, buttons):
-        card = tk.Frame(parent, bg=self.colors['bg_light'])
-        card.pack(fill=tk.X, pady=(0, 4))
-        
-        tk.Label(card, text=title, font=("Segoe UI", 11, "bold"),
-                fg=self.colors['text_primary'], bg=self.colors['bg_light']).pack(anchor='w', padx=5, pady=(2, 0))
-        
-        separator = tk.Frame(card, bg=self.colors['separator'], height=1)
-        separator.pack(fill=tk.X, padx=5, pady=(0, 2))
-        
-        container = tk.Frame(card, bg=self.colors['bg_light'])
-        container.pack(fill=tk.X, padx=5, pady=(0, 2))
-        
-        for i in range(0, len(buttons), 2):
-            row = tk.Frame(container, bg=self.colors['bg_light'])
-            row.pack(fill=tk.X, pady=1)
-            
-            btn1_text, btn1_cmd = buttons[i]
-            btn1 = RoundedButton(row, text=btn1_text, 
-                            command=lambda cmd=btn1_cmd: self.safe_command(cmd),
-                            width=180, height=22, bg=self.colors['button_bg'],
-                            font=("Segoe UI", 7), corner_radius=4)
-            btn1.pack(side=tk.LEFT, padx=(0, 2))
-            
-            if i + 1 < len(buttons):
-                btn2_text, btn2_cmd = buttons[i + 1]
-                btn2 = RoundedButton(row, text=btn2_text, 
-                                command=lambda cmd=btn2_cmd: self.safe_command(cmd),
-                                width=180, height=22, bg=self.colors['button_bg'],
-                                font=("Segoe UI", 7), corner_radius=4)
-                btn2.pack(side=tk.LEFT, padx=(2, 0))
-
-    def help_section(self, parent, title, lines):
-        tk.Label(parent, text=title, font=("Segoe UI", 14, "bold"),
-                fg=self.colors['accent'], bg=self.colors['bg_dark']).pack(anchor='w', pady=(15, 5))
-        
-        section_frame = tk.Frame(parent, bg=self.colors['bg_dark'])
-        section_frame.pack(fill=tk.X, pady=2)
-        
-        for line in lines:
-            if len(line) == 2:
-                tk.Label(section_frame, text=line[0] + " " + line[1], 
-                        font=("Segoe UI", 9),
-                        fg=self.colors['text_secondary'], 
-                        bg=self.colors['bg_dark'], wraplength=850, justify=tk.LEFT).pack(anchor='w', pady=1)
-            
-            elif len(line) >= 3:
-                frame = tk.Frame(section_frame, bg=self.colors['bg_dark'])
-                frame.pack(anchor='w', pady=1, fill=tk.X)
-                
-                if line[0]:
-                    tk.Label(frame, text=line[0], font=("Segoe UI", 9),
-                            fg=self.colors['text_secondary'], bg=self.colors['bg_dark']).pack(side=tk.LEFT)
-                
-                for i in range(1, len(line)):
-                    if i % 2 == 1:
-                        tk.Label(frame, text=line[i], font=("Segoe UI", 9, "bold"),
-                                fg=self.colors['accent'], bg=self.colors['bg_dark']).pack(side=tk.LEFT)
-                    else:
-                        tk.Label(frame, text=line[i], font=("Segoe UI", 9),
-                                fg=self.colors['text_secondary'], bg=self.colors['bg_dark']).pack(side=tk.LEFT)
-
-    def create_lists_page(self):
-        self.lists_page = tk.Frame(self.content_panel, bg=self.colors['bg_dark'])
-        
-        tk.Label(self.lists_page, text="Редактор", font=("Segoe UI", 32, "bold"),
-                fg=self.colors['text_primary'], bg=self.colors['bg_dark']).pack(anchor='w', pady=(30, 30), padx=30)
-        
-        lists_content = tk.Frame(self.lists_page, bg=self.colors['bg_light'])
-        lists_content.pack(fill=tk.X, padx=30, pady=10)
-        
-        for label, filename in [("General листы", "list-general.txt"), ("Google листы", "list-google.txt")]:
-            frame = tk.Frame(lists_content, bg=self.colors['bg_light'])
-            frame.pack(fill=tk.X, pady=15, padx=20)
-            
-            text_frame = tk.Frame(frame, bg=self.colors['bg_light'])
-            text_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
-            
-            tk.Label(text_frame, text=label, font=("Segoe UI", 14, "bold"), 
-                    fg=self.colors['text_primary'], bg=self.colors['bg_light'], anchor='w').pack(anchor='w')
-            tk.Label(text_frame, text=filename, font=("Segoe UI", 11), 
-                    fg=self.colors['text_secondary'], bg=self.colors['bg_light'], anchor='w').pack(anchor='w', pady=(5, 0))
-            
-            btn_frame = tk.Frame(frame, bg=self.colors['bg_light'])
-            btn_frame.pack(side=tk.RIGHT, padx=(10, 0))
-            
-            edit_btn = RoundedButton(btn_frame, text="ИЗМЕНИТЬ", 
-                                     command=lambda f=filename: self.edit_list_file(f),
-                                     width=100, height=35, bg=self.colors['button_bg'], 
-                                     font=("Segoe UI", 10, "bold"), corner_radius=8)
-            edit_btn.pack()
-        
-        folder_frame = tk.Frame(self.lists_page, bg=self.colors['bg_dark'])
-        folder_frame.pack(fill=tk.X, padx=30, pady=(20, 10))
-        
-        open_folder_btn = RoundedButton(folder_frame, text="Открыть папку с Zapret", 
-                                       command=open_zapret_folder,
-                                       width=300, height=45, bg=self.colors['button_bg'], 
-                                       font=("Segoe UI", 11, "bold"), corner_radius=10)
-        open_folder_btn.pack()
-
-    def edit_list_file(self, filename):
-        if not check_zapret_folder():
-            return
-        lists_path = os.path.join(self.zapret.zapret_dir, "lists")
-        file_path = os.path.join(lists_path, filename)
-        ListEditor(self.root, file_path, filename)
-
     def toggle_autostart(self):
         current = self.check_autostart_status()
         new_state = not current
@@ -2304,12 +2064,15 @@ class ZapretLauncher:
             self.connect_btn.set_text("ПОДКЛЮЧИТЬСЯ")
             self.connect_btn.normal_color = self.colors['accent']
             self.connect_btn.itemconfig(self.connect_btn.rect, fill=self.colors['accent'])
+        
+        if hasattr(self, 'tray_icon'):
+            self.tray_icon.update_menu()
 
     def toggle_connection(self):
         if self.is_connected:
             self.disconnect()
         else:
-            self.connect()
+            self.show_mode_selector()
         if hasattr(self, 'tray_icon'):
             self.tray_icon.update_menu()
 
@@ -2372,6 +2135,7 @@ class ZapretLauncher:
     def finish_disconnect(self):
         self.is_connected = False
         self.current_strategy = None
+        self.mode_label.config(text="Не выбран", fg=self.colors['text_secondary'])
         self.update_status("Готов к работе", self.colors['text_secondary'])
         self.update_ui_state()
         self.connect_btn.set_enabled(True)
@@ -2425,32 +2189,20 @@ class ZapretLauncher:
         except:
             pass
 
-    def show_page(self, page_name):
-        if page_name == self.current_page:
-            return
-        
-        if hasattr(self, f"{self.current_page}_page"):
-            getattr(self, f"{self.current_page}_page").place_forget()
-        
-        if hasattr(self, f"{page_name}_page"):
-            getattr(self, f"{page_name}_page").place(x=0, y=0, width=950, height=800)
-            getattr(self, f"{page_name}_page").tkraise()
-            self.current_page = page_name
-
     def show_main_page(self):
-        self.show_page("main")
+        self.pages.show_page("main")
         
     def show_service_page(self):
-        self.show_page("service")
+        self.pages.show_page("service")
         
     def show_lists_page(self):
-        self.show_page("lists")
+        self.pages.show_page("lists")
 
     def show_diagnostic_page(self):
-        self.show_page("diagnostic")
-    
+        self.pages.show_page("diagnostic")
+
     def show_help_page(self):
-        self.show_page("help")
+        self.pages.show_page("help")
 
 if __name__ == "__main__":
     root = tk.Tk()
