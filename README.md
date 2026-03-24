@@ -66,4 +66,4 @@
 
 ***Контакты:***
 Discord: @uyolookatme
-***by trimansberg***
+ | ***by trimansberg***
