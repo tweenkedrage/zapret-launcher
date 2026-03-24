@@ -6,7 +6,6 @@ from typing import List, Tuple, Optional
 import winreg
 import ctypes
 
-
 DNS_SERVERS = [
     {"name": "Cloudflare", "primary": "1.1.1.1", "secondary": "1.0.0.1"},
     {"name": "Google", "primary": "8.8.8.8", "secondary": "8.8.4.4"},
@@ -28,53 +27,19 @@ def list_network_adapters() -> List[str]:
             if 'подключено' in line.lower() or 'connected' in line.lower():
                 parts = line.split()
                 if len(parts) >= 4:
-                    name = ' '.join(parts[3:]).strip('*').strip()
-                    if name and 'Loopback' not in name and 'lo' not in name.lower():
+                    name = parts[-1].strip()
+                    if name and 'Loopback' not in name and 'tap' not in name.lower() and 'vpn' not in name.lower():
                         adapters.append(name)
-    except:
-        pass
-    
-    if not adapters:
-        try:
-            result = subprocess.run(
-                ['wmic', 'nic', 'where', 'NetEnabled=True', 'get', 'Name'],
-                capture_output=True, text=True, encoding='cp866'
-            )
-            lines = result.stdout.split('\n')
-            for line in lines[1:]:
-                name = line.strip()
-                if name and 'Loopback' not in name and 'lo' not in name.lower():
-                    adapters.append(name)
-        except:
-            pass
-    
-    if not adapters:
-        try:
-            result = subprocess.run(
-                ['ipconfig'],
-                capture_output=True, text=True, encoding='cp866'
-            )
-            lines = result.stdout.split('\n')
-            for line in lines:
-                if 'адаптер' in line.lower() or 'adapter' in line.lower():
-                    import re
-                    match = re.search(r'[а-яА-Яa-zA-Z0-9\s\-]+(?=:)', line)
-                    if match:
-                        name = match.group().strip()
-                        if name and 'Loopback' not in name and 'lo' not in name.lower():
-                            adapters.append(name)
-        except:
-            pass
+    except Exception as e:
+        print(f"Ошибка: {e}")
     
     return adapters
-
 
 def is_admin() -> bool:
     try:
         return ctypes.windll.shell32.IsUserAnAdmin()
     except:
         return False
-
 
 def ping_dns_server(dns_ip: str, timeout: float = 2.0) -> Tuple[bool, float]:
     try:
@@ -85,7 +50,6 @@ def ping_dns_server(dns_ip: str, timeout: float = 2.0) -> Tuple[bool, float]:
         return True, (end - start) * 1000
     except:
         return False, float('inf')
-
 
 def find_best_dns() -> Tuple[str, str, float, str]:
     results = []
@@ -108,43 +72,19 @@ def find_best_dns() -> Tuple[str, str, float, str]:
     
     return best["primary"], best["secondary"], best["latency"], best["name"]
 
-
 def set_dns_windows(primary: str, secondary: str) -> Tuple[bool, str]:
+    primary_ok, _ = ping_dns_server(primary, timeout=1.0)
+    if not primary_ok:
+        return False, f"DNS сервер {primary} не отвечает"
     if not is_admin():
         return False, "Требуются права администратора!"
     
     try:
-        result = subprocess.run(
-            ['netsh', 'interface', 'ip', 'show', 'interfaces'],
-            capture_output=True, text=True, encoding='cp866'
-        )
-        
-        lines = result.stdout.split('\n')
-        adapters = []
-        
-        for line in lines:
-            if ('подключено' in line.lower() or 'connected' in line.lower()) and 'loopback' not in line.lower():
-                parts = line.split()
-                if len(parts) >= 4:
-                    adapter_name = ' '.join(parts[3:]) if len(parts) > 4 else parts[3]
-                    adapter_name = adapter_name.strip('*').strip()
-                    if adapter_name and adapter_name != 'Loopback':
-                        adapters.append(adapter_name)
-        
-        if not adapters:
-            result = subprocess.run(
-                ['wmic', 'nic', 'where', 'NetEnabled=True', 'get', 'Name'],
-                capture_output=True, text=True, encoding='cp866'
-            )
-            lines = result.stdout.split('\n')
-            for line in lines[1:]:
-                name = line.strip()
-                if name and 'Loopback' not in name:
-                    adapters.append(name)
-        
+        adapters = list_network_adapters()
         if not adapters:
             return False, "Не найдены активные сетевые адаптеры"
         
+        success_count = 0
         for adapter in adapters:
             try:
                 subprocess.run(
@@ -157,24 +97,30 @@ def set_dns_windows(primary: str, secondary: str) -> Tuple[bool, str]:
                      f'name={adapter}', f'addr={secondary}', 'index=2'],
                     capture_output=True, check=True, timeout=10
                 )
-            except subprocess.TimeoutExpired:
-                continue
+                success_count += 1
             except:
                 continue
         
-        return True, f"DNS установлен: {primary}, {secondary} (на {len(adapters)} адаптеров)"
+        if success_count == 0:
+            return False, "Не удалось установить DNS ни на один адаптер"
+        
+        return True, f"DNS установлен на {success_count} адаптер(ов)"
         
     except Exception as e:
         return False, f"Ошибка: {str(e)}"
 
-
 def flush_dns_cache() -> Tuple[bool, str]:
     try:
         subprocess.run(['ipconfig', '/flushdns'], capture_output=True, check=True)
+        
+        try:
+            subprocess.run(['dnscmd', '/clearcache'], capture_output=True, check=True)
+        except:
+            pass
+        
         return True, "DNS кэш очищен"
     except Exception as e:
         return False, f"Ошибка очистки DNS: {str(e)}"
-
 
 def optimize_network_latency() -> Tuple[bool, str]:
     if not is_admin():
@@ -182,59 +128,36 @@ def optimize_network_latency() -> Tuple[bool, str]:
     
     changes = []
     errors = []
+    max_interfaces = 50
     
     try:
         key_path = r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces"
-        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_SET_VALUE)
+        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_READ)
         
         i = 0
-        while True:
+        while i < max_interfaces:
             try:
                 subkey_name = winreg.EnumKey(key, i)
-                subkey = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 
-                                        f"{key_path}\\{subkey_name}", 
-                                        0, winreg.KEY_SET_VALUE)
                 try:
-                    winreg.SetValueEx(subkey, "TcpAckFrequency", 0, winreg.REG_DWORD, 1)
-                    winreg.SetValueEx(subkey, "TCPNoDelay", 0, winreg.REG_DWORD, 1)
-                    changes.append(f"Интерфейс {subkey_name}: TCP оптимизирован")
+                    subkey = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 
+                                            f"{key_path}\\{subkey_name}", 
+                                            0, winreg.KEY_SET_VALUE)
+                    try:
+                        winreg.SetValueEx(subkey, "TcpAckFrequency", 0, winreg.REG_DWORD, 1)
+                        winreg.SetValueEx(subkey, "TCPNoDelay", 0, winreg.REG_DWORD, 1)
+                        changes.append(f"Интерфейс {subkey_name}: оптимизирован")
+                    except:
+                        pass
+                    winreg.CloseKey(subkey)
                 except:
                     pass
-                winreg.CloseKey(subkey)
                 i += 1
             except WindowsError:
                 break
         
         winreg.CloseKey(key)
     except Exception as e:
-        errors.append(f"TCP оптимизация: {str(e)}")
-    
-    tcp_params = [
-        ("TcpWindowSize", 65535),
-        ("GlobalMaxTcpWindowSize", 65535),
-        ("Tcp1323Opts", 3),
-        ("DefaultTTL", 64),
-        ("EnablePMTUDiscovery", 1),
-        ("EnableTCPChimney", 1),
-        ("EnableRSS", 1),
-        ("EnableTCPA", 1),
-    ]
-    
-    try:
-        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
-                            r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters",
-                            0, winreg.KEY_SET_VALUE)
-        
-        for param, value in tcp_params:
-            try:
-                winreg.SetValueEx(key, param, 0, winreg.REG_DWORD, value)
-                changes.append(f"{param} = {value}")
-            except:
-                pass
-        
-        winreg.CloseKey(key)
-    except Exception as e:
-        errors.append(f"Глобальные TCP параметры: {str(e)}")
+        errors.append(f"Ошибка оптимизации интерфейсов: {str(e)}")
     
     try:
         subprocess.run(['netsh', 'int', 'tcp', 'set', 'global', 'autotuninglevel=disabled'],
@@ -256,7 +179,6 @@ def optimize_network_latency() -> Tuple[bool, str]:
     
     return True, result_msg
 
-
 def restore_network_defaults() -> Tuple[bool, str]:
     if not is_admin():
         return False, "Требуются права администратора!"
@@ -265,10 +187,17 @@ def restore_network_defaults() -> Tuple[bool, str]:
         subprocess.run(['netsh', 'int', 'tcp', 'set', 'global', 'autotuninglevel=normal'],
                       capture_output=True, check=True)
         
-        subprocess.run(['netsh', 'interface', 'ip', 'set', 'dns', 'name="Ethernet"', 'source=dhcp'],
-                      capture_output=True)
+        adapters = list_network_adapters()
+        for adapter in adapters:
+            try:
+                subprocess.run(
+                    ['netsh', 'interface', 'ip', 'set', 'dns', f'name={adapter}', 'source=dhcp'],
+                    capture_output=True, timeout=10
+                )
+            except:
+                continue
         
-        return True, "Стандартные настройки сети восстановлены"
+        return True, f"Стандартные настройки сети восстановлены на {len(adapters)} адаптерах"
     except Exception as e:
         return False, f"Ошибка: {str(e)}"
 
@@ -277,6 +206,9 @@ def set_dns_manual(primary: str, secondary: str, adapter_name: str) -> Tuple[boo
         return False, "Требуются права администратора!"
     
     try:
+        if ' ' in adapter_name:
+            adapter_name = f'"{adapter_name}"'
+        
         subprocess.run(
             ['netsh', 'interface', 'ip', 'set', 'dns',
              f'name={adapter_name}', 'source=static', f'addr={primary}'],
@@ -291,23 +223,28 @@ def set_dns_manual(primary: str, secondary: str, adapter_name: str) -> Tuple[boo
     except Exception as e:
         return False, f"Ошибка: {str(e)}"
 
-def get_current_dns() -> Tuple[str, str]:
+def get_current_dns() -> dict:
+    result_dict = {}
     try:
-        result = subprocess.run(
-            ['netsh', 'interface', 'ip', 'show', 'dns'],
-            capture_output=True, text=True, encoding='cp866'
-        )
-        lines = result.stdout.split('\n')
-        dns_servers = []
-        for line in lines:
-            if 'DNS-сервер' in line:
-                import re
-                ip = re.findall(r'\d+\.\d+\.\d+\.\d+', line)
-                if ip:
-                    dns_servers.append(ip[0])
-        
-        if dns_servers:
-            return dns_servers[0], dns_servers[1] if len(dns_servers) > 1 else ""
-        return "", ""
+        adapters = list_network_adapters()
+        for adapter in adapters:
+            result = subprocess.run(
+                ['netsh', 'interface', 'ip', 'show', 'dns', f'name={adapter}'],
+                capture_output=True, text=True, encoding='cp866'
+            )
+            dns_servers = []
+            for line in result.stdout.split('\n'):
+                if 'DNS-сервер' in line:
+                    import re
+                    ip = re.findall(r'\d+\.\d+\.\d+\.\d+', line)
+                    if ip:
+                        dns_servers.append(ip[0])
+            
+            if dns_servers:
+                result_dict[adapter] = {
+                    'primary': dns_servers[0],
+                    'secondary': dns_servers[1] if len(dns_servers) > 1 else None
+                }
+        return result_dict
     except:
-        return "", ""
+        return {}
