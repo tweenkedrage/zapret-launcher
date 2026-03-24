@@ -43,7 +43,7 @@ class RoundedButton(tk.Canvas):
         self.font = font
         self.enabled = True
         self.normal_color = bg
-        self.hover_color = '#5a7aff'
+        self.hover_color = "#6c5579"
         self.corner_radius = corner_radius
         
         points = []
