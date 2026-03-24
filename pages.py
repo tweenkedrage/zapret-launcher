@@ -22,12 +22,11 @@ ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 CURRENT_VERSION = "2.3b"
 
 PROVIDER_PARAMS = {
-    "Ростелеком/Дом.ru/Tele2/SamaraLan": ["--split", "1", "--disorder", "-1"],
+    "Ростелеком/Дом.ru/Tele2": ["--split", "1", "--disorder", "-1"],
     "МГТС (МТС)/Yota": ["-7", "-e1", "-q"],
     "Мегафон": ["-s0", "-o1", "-d1", "-r1+s", "-Ar", "-o1", "-At", "-f-1", "-r1+s", "-As"],
     "Билайн": ["--split", "1", "--disorder", "1", "--fake", "-1", "--ttl", "8"],
     "ТТК": ["-1", "-e1"],
-    "SkyNet (Киргизия)": ["--split", "1", "--disorder", "1", "--fake", "-1", "--ttl", "8"],
 }
 
 def check_zapret_folder():
