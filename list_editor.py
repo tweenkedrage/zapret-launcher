@@ -41,7 +41,7 @@ class ListEditor:
         button_frame.pack(fill=tk.X)
         
         tk.Button(button_frame, text="Сохранить", command=self.save_content,
-                 bg='#4CAF50', fg='white', padx=20, pady=5).pack(side=tk.RIGHT, padx=(5, 0))
+                 bg='#6c5579', fg='white', padx=20, pady=5).pack(side=tk.RIGHT, padx=(5, 0))
         tk.Button(button_frame, text="Отмена", command=self.dialog.destroy,
                  padx=20, pady=5).pack(side=tk.RIGHT)
         
