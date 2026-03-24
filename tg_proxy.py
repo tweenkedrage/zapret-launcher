@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import subprocess
 import base64
 import logging
 import os
