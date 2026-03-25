@@ -1,4 +1,4 @@
-# zapret-launcher
+# Zapret Launcher
 `Обход ограничений РКН, ускорение Telegram/YouTube и снижение задержек в играх`
 
 ***Установка:***
