@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import subprocess
 import base64
 import logging
 import os
@@ -15,7 +14,6 @@ from typing import Dict, List, Optional, Set, Tuple
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 DEFAULT_PORT = 1080
-import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 log = logging.getLogger('tg-ws-proxy')
 
