@@ -208,8 +208,15 @@ class RawWebSocket:
 
     async def recv(self) -> Optional[bytes]:
         while not self._closed:
-            opcode, payload = await self._read_frame()
-
+            try:
+                opcode, payload = await asyncio.wait_for(
+                    self._read_frame(), 
+                    timeout=10.0
+                )
+            except asyncio.TimeoutError:
+                self._closed = True
+                return None
+            
             if opcode == self.OP_CLOSE:
                 self._closed = True
                 try:
@@ -540,6 +547,11 @@ async def _bridge_ws(reader, writer, ws: RawWebSocket, label,
                     await ws.send(chunk)
         except (asyncio.CancelledError, ConnectionError, OSError):
             pass
+        finally:
+            try:
+                await ws.close()
+            except:
+                pass
 
     async def ws_to_tcp():
         nonlocal down_bytes, down_packets
@@ -557,19 +569,34 @@ async def _bridge_ws(reader, writer, ws: RawWebSocket, label,
                     await writer.drain()
         except (asyncio.CancelledError, ConnectionError, OSError):
             pass
+        finally:
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except:
+                pass
 
     tasks = [asyncio.create_task(tcp_to_ws()),
              asyncio.create_task(ws_to_tcp())]
     try:
-        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        
+        for task in pending:
+            task.cancel()
+        
+        if pending:
+            await asyncio.wait(pending, timeout=1.0)
+            
     finally:
         for t in tasks:
-            t.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+            if not t.done():
+                t.cancel()
+        
         try:
             await ws.close()
         except:
             pass
+        
         try:
             writer.close()
             await writer.wait_closed()
