@@ -1,8 +1,8 @@
 import subprocess
-import os
-import json
 import time
 import shutil
+import socket
+import json
 from pathlib import Path
 import sys
 from typing import Optional, Tuple
@@ -12,10 +12,10 @@ class ByeDPIOptimizer:
         self.app_data_dir = app_data_dir
         self.byedpi_dir = app_data_dir / "byedpi"
         self.bin_dir = self.byedpi_dir / "bin"
-        self.config_file = self.byedpi_dir / "config.json"
         self.process: Optional[subprocess.Popen] = None
         self.is_running = False
         self.current_version = "17.3"
+        self._binary_path = None
         
         self.rostel_params = [
             "--split", "1",
@@ -33,36 +33,47 @@ class ByeDPIOptimizer:
     
     def copy_binary_if_exists(self):
         binary = self.get_binary_path()
-        if binary and binary.exists():
+        if binary and binary.exists() and binary != self.bin_dir / "ciadpi.exe":
             target = self.bin_dir / "ciadpi.exe"
-            if not target.exists():
-                try:
-                    shutil.copy2(binary, target)
-                except:
-                    pass
+            try:
+                shutil.copy2(binary, target)
+            except Exception as e:
+                print(f"Не удалось скопировать бинарник: {e}")
     
     def set_params(self, params):
         self.rostel_params = params
+        self._save_params()
+
+    def _save_params(self):
+        try:
+            config_file = self.byedpi_dir / "config.json"
+            with open(config_file, 'w') as f:
+                json.dump({'params': self.rostel_params}, f)
+        except:
+            pass
     
     def get_binary_path(self) -> Optional[Path]:
-        app_binary = self.bin_dir / "ciadpi.exe"
-        if app_binary.exists():
-            return app_binary
+        if self._binary_path is not None:
+            return self._binary_path
         
         if getattr(sys, 'frozen', False):
             base_path = Path(sys._MEIPASS)
             exe_path = base_path / "bin" / "ciadpi.exe"
             if exe_path.exists():
+                self._binary_path = exe_path
                 return exe_path
         
         local_path = Path(__file__).parent / "bin" / "ciadpi.exe"
         if local_path.exists():
+            self._binary_path = local_path
             return local_path
         
         root_path = Path(__file__).parent / "ciadpi.exe"
         if root_path.exists():
+            self._binary_path = root_path
             return root_path
         
+        self._binary_path = None
         return None
     
     def start(self) -> Tuple[bool, str]:
@@ -88,26 +99,26 @@ class ByeDPIOptimizer:
                 stderr=subprocess.DEVNULL
             )
             
-            time.sleep(2)
-            
-            if self.process.poll() is None:
-                time.sleep(1)
+            for _ in range(10):
+                time.sleep(0.3)
+                if self.process.poll() is not None:
+                    return False, "Процесс завершился сразу"
                 
-                import socket
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                result = sock.connect_ex(('127.0.0.1', 10801))
-                sock.close()
-                
-                if result == 0:
+                if self._is_port_open(10801):
                     self.is_running = True
                     return True, "ByeDPI запущен"
-                else:
-                    return False, "ByeDPI запущен, но порт 10801 не открыт"
-            else:
-                return False, "Процесс завершился сразу"
-                            
+            
+            return False, "ByeDPI запущен, но порт 10801 не открыт"
+                                
         except Exception as e:
             return False, f"Ошибка запуска: {str(e)}"
+
+    def _is_port_open(self, port: int) -> bool:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(0.5)
+        result = sock.connect_ex(('127.0.0.1', port))
+        sock.close()
+        return result == 0
         
     def stop(self) -> Tuple[bool, str]:
         result = False
@@ -145,14 +156,10 @@ class ByeDPIOptimizer:
                 if line.strip():
                     parts = line.split()
                     if len(parts) >= 5:
-                        pid = parts[-1]
-                        pids.add(pid)
+                        pids.add(parts[-1])
             
             for pid in pids:
-                try:
-                    subprocess.run(f'taskkill /F /PID {pid}', shell=True, capture_output=True)
-                except:
-                    pass
+                subprocess.run(f'taskkill /F /PID {pid}', shell=True, capture_output=True)
             
             if port == 10801:
                 subprocess.run('taskkill /F /IM ciadpi.exe', shell=True, capture_output=True)
