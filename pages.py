@@ -57,6 +57,7 @@ class Pages:
         self.create_service_page()
         self.create_lists_page()
         self.create_diagnostic_page()
+        self.create_traffic_page()
         
     def show_page(self, page_name):
         if page_name == self.current_page:
@@ -278,7 +279,7 @@ class Pages:
         if self.app.update_interval == 0:
             msg = "Обновление статистики: моментально"
         else:
-            msg = f"Обновление статистики установлено на {self.app.update_interval} сек"
+            msg = f"Обновление статистики: каждые {self.app.update_interval} сек"
         
         self.app.show_notification(msg)
     
@@ -355,6 +356,88 @@ class Pages:
         
         self.app.diagnostic_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+    def create_traffic_page(self):
+        self.traffic_page = tk.Frame(self.content_panel, bg=self.colors['bg_dark'])
+        
+        tk.Label(self.traffic_page, text="Трафик по процессам", font=("Segoe UI", 32, "bold"),
+                fg=self.colors['text_primary'], bg=self.colors['bg_dark']).pack(anchor='w', pady=(30, 20), padx=30)
+        
+        top_panel = tk.Frame(self.traffic_page, bg=self.colors['bg_dark'])
+        top_panel.pack(fill=tk.X, padx=30, pady=(0, 10))
+        
+        tk.Label(top_panel, text="Режим обновления:", font=self.font_primary,
+                fg=self.colors['text_secondary'], bg=self.colors['bg_dark']).pack(side=tk.LEFT)
+        
+        self.traffic_update_mode = ttk.Combobox(top_panel, 
+            values=["Маленькое (3 сек)", "Среднее (10 сек)", "Высокое (30 сек)", "Долгое (60 сек)", "Не обновлять"],
+            width=18, font=self.font_primary)
+        self.traffic_update_mode.pack(side=tk.LEFT, padx=(10, 0))
+        self.traffic_update_mode.bind("<<ComboboxSelected>>", self._on_traffic_mode_change)
+        
+        table_frame = tk.Frame(self.traffic_page, bg=self.colors['bg_light'])
+        table_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=10)
+        
+        columns = ("Процесс", "Скорость", "VPN", "Прямой", "Соед.", "Хост", "Всего")
+        
+        style = ttk.Style()
+        style.theme_use('default')
+        
+        style.configure("Treeview.Heading",
+                        background=self.colors['bg_medium'],
+                        foreground=self.colors['text_primary'],
+                        font=("Segoe UI", 10, "bold"),
+                        relief="flat")
+        style.map("Treeview.Heading",
+                background=[('active', self.colors['bg_medium'])],
+                foreground=[('active', self.colors['text_primary'])])
+        
+        style.configure("Treeview",
+                        background=self.colors['bg_light'],
+                        foreground=self.colors['text_primary'],
+                        rowheight=25,
+                        fieldbackground=self.colors['bg_light'],
+                        font=("Segoe UI", 9))
+        
+        style.map("Treeview",
+                background=[('selected', self.colors['accent'])],
+                foreground=[('selected', 'white')])
+        
+        self.traffic_tree = ttk.Treeview(table_frame, columns=columns, show="headings", height=20, style="Treeview")
+        
+        self.traffic_tree.column("Процесс", width=200, anchor="w")
+        self.traffic_tree.column("Скорость", width=100, anchor="e")
+        self.traffic_tree.column("VPN", width=100, anchor="e")
+        self.traffic_tree.column("Прямой", width=100, anchor="e")
+        self.traffic_tree.column("Соед.", width=70, anchor="center")
+        self.traffic_tree.column("Хост", width=180, anchor="w")
+        self.traffic_tree.column("Всего", width=100, anchor="e")
+        
+        for col in columns:
+            self.traffic_tree.heading(col, text=col)
+        
+        scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=self.traffic_tree.yview)
+        self.traffic_tree.configure(yscrollcommand=scrollbar.set)
+        
+        self.traffic_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+    def _on_traffic_mode_change(self, event):
+        mode = self.traffic_update_mode.get()
+        self.app.set_traffic_update_mode(mode)
+        
+        if mode == "Маленькое (3 сек)":
+            msg = "Трафик: быстрое обновление (3 сек)"
+        elif mode == "Среднее (10 сек)":
+            msg = "Трафик: среднее обновление (10 сек)"
+        elif mode == "Высокое (30 сек)":
+            msg = "Трафик: высокое обновление (30 сек)"
+        elif mode == "Долгое (60 сек)":
+            msg = "Трафик: долгое обновление (60 сек)"
+        else:
+            msg = "Трафик: автообновление отключено"
+        
+        self.app.show_notification(msg)
     
     def create_diagnostic_card(self, parent, title, buttons):
         card = tk.Frame(parent, bg=self.colors['bg_light'])
