@@ -19,20 +19,42 @@ def list_network_adapters() -> List[str]:
     try:
         result = subprocess.run(
             ['netsh', 'interface', 'ip', 'show', 'interfaces'],
-            capture_output=True, text=True, encoding='cp866'
+            capture_output=True, text=True, encoding='cp866',
+            creationflags=subprocess.CREATE_NO_WINDOW
         )
         
         lines = result.stdout.split('\n')
         for line in lines:
-            if 'подключено' in line.lower() or 'connected' in line.lower():
+            line = line.strip()
+            if line and ('connected' in line.lower() or 'подключено' in line.lower()):
                 parts = line.split()
-                if len(parts) >= 4:
+                if len(parts) >= 5:
                     name = parts[-1].strip()
-                    if name and 'Loopback' not in name and 'tap' not in name.lower() and 'vpn' not in name.lower():
-                        adapters.append(name)
+                    if name and 'Loopback' not in name and 'lo' not in name.lower():
+                        if name not in adapters:
+                            adapters.append(name)
+                elif len(parts) >= 4:
+                    name = parts[-1].strip()
+                    if name and 'Loopback' not in name:
+                        if name not in adapters:
+                            adapters.append(name)
     except Exception as e:
-        print(f"Ошибка: {e}")
+        print(f"Ошибка получения адаптеров: {e}")
     
+    if not adapters:
+        try:
+            result = subprocess.run(
+                ['wmic', 'nic', 'where', 'NetEnabled=True', 'get', 'Name'],
+                capture_output=True, text=True, encoding='cp866',
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            lines = result.stdout.split('\n')
+            for line in lines[1:]:
+                name = line.strip()
+                if name and 'Loopback' not in name:
+                    adapters.append(name)
+        except:
+            pass
     return adapters
 
 def is_admin() -> bool:
@@ -128,52 +150,44 @@ def optimize_network_latency() -> Tuple[bool, str]:
     
     changes = []
     errors = []
-    max_interfaces = 50
     
     try:
-        key_path = r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces"
-        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_READ)
+        subprocess.run(['netsh', 'int', 'tcp', 'set', 'global', 'chimney=disabled'],
+                      capture_output=True, check=True)
+        changes.append("TCP Chimney отключен")
+    except:
+        errors.append("Не удалось отключить TCP Chimney")
+    
+    try:
+        subprocess.run(['netsh', 'int', 'tcp', 'set', 'global', 'rss=disabled'],
+                      capture_output=True, check=True)
+        changes.append("RSS отключен")
+    except:
+        errors.append("Не удалось отключить RSS")
+    
+    try:
+        subprocess.run(['netsh', 'int', 'tcp', 'set', 'global', 'autotuninglevel=normal'],
+                      capture_output=True, check=True)
+        changes.append("TCP автонастройка установлена в normal")
+    except:
+        errors.append("Не удалось настроить TCP автонастройку")
+    
+    try:
+        import winreg
+        key_path = r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters"
+        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_SET_VALUE)
         
-        i = 0
-        while i < max_interfaces:
-            try:
-                subkey_name = winreg.EnumKey(key, i)
-                try:
-                    subkey = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 
-                                            f"{key_path}\\{subkey_name}", 
-                                            0, winreg.KEY_SET_VALUE)
-                    try:
-                        winreg.SetValueEx(subkey, "TcpAckFrequency", 0, winreg.REG_DWORD, 1)
-                        winreg.SetValueEx(subkey, "TCPNoDelay", 0, winreg.REG_DWORD, 1)
-                        changes.append(f"Интерфейс {subkey_name}: оптимизирован")
-                    except:
-                        pass
-                    winreg.CloseKey(subkey)
-                except:
-                    pass
-                i += 1
-            except WindowsError:
-                break
+        winreg.SetValueEx(key, "TcpWindowSize", 0, winreg.REG_DWORD, 65535)
+        changes.append("TCP Window Size увеличен")
+        
+        winreg.SetValueEx(key, "Tcp1323Opts", 0, winreg.REG_DWORD, 3)
+        changes.append("TCP 1323 опции включены")
         
         winreg.CloseKey(key)
     except Exception as e:
-        errors.append(f"Ошибка оптимизации интерфейсов: {str(e)}")
+        errors.append(f"Ошибка реестра: {str(e)}")
     
-    try:
-        subprocess.run(['netsh', 'int', 'tcp', 'set', 'global', 'autotuninglevel=disabled'],
-                      capture_output=True, check=True)
-        changes.append("TCP автонастройка отключена")
-    except:
-        errors.append("Не удалось отключить автонастройку TCP")
-    
-    try:
-        power_cfg = subprocess.run(['powercfg', '/query', 'SCHEME_CURRENT', 'SUB_NONE', '2a737441-1930-4402-8d77-b2bebba308a3'],
-                                   capture_output=True, text=True)
-        changes.append("Проверка настроек энергосбережения")
-    except:
-        pass
-    
-    result_msg = "Оптимизация выполнена:\n" + "\n".join(changes[:10])
+    result_msg = "Оптимизация выполнена:\n" + "\n".join(changes)
     if errors:
         result_msg += f"\n\nОшибки:\n" + "\n".join(errors)
     
@@ -183,10 +197,30 @@ def restore_network_defaults() -> Tuple[bool, str]:
     if not is_admin():
         return False, "Требуются права администратора!"
     
+    changes = []
+    
     try:
         subprocess.run(['netsh', 'int', 'tcp', 'set', 'global', 'autotuninglevel=normal'],
                       capture_output=True, check=True)
-        
+        changes.append("TCP автонастройка восстановлена (normal)")
+    except:
+        pass
+    
+    try:
+        subprocess.run(['netsh', 'int', 'tcp', 'set', 'global', 'chimney=enabled'],
+                      capture_output=True, check=True)
+        changes.append("TCP Chimney включен")
+    except:
+        pass
+    
+    try:
+        subprocess.run(['netsh', 'int', 'tcp', 'set', 'global', 'rss=enabled'],
+                      capture_output=True, check=True)
+        changes.append("RSS включен")
+    except:
+        pass
+    
+    try:
         adapters = list_network_adapters()
         for adapter in adapters:
             try:
@@ -194,12 +228,13 @@ def restore_network_defaults() -> Tuple[bool, str]:
                     ['netsh', 'interface', 'ip', 'set', 'dns', f'name={adapter}', 'source=dhcp'],
                     capture_output=True, timeout=10
                 )
+                changes.append(f"DNS восстановлен для {adapter}")
             except:
                 continue
-        
-        return True, f"Стандартные настройки сети восстановлены на {len(adapters)} адаптерах"
-    except Exception as e:
-        return False, f"Ошибка: {str(e)}"
+    except:
+        pass
+    
+    return True, f"Стандартные настройки восстановлены:\n" + "\n".join(changes[:10])
 
 def set_dns_manual(primary: str, secondary: str, adapter_name: str) -> Tuple[bool, str]:
     if not is_admin():
