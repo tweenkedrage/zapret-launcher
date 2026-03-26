@@ -378,6 +378,7 @@ class TGProxyServer:
         self._port = 1080
         self._host = '127.0.0.1'
         self._process = None
+        self._loop = None
         
     def _kill_process_on_port(self, port):
         try:
@@ -423,6 +424,7 @@ class TGProxyServer:
                 daemon=True
             )
             self._thread.start()
+            
             for _ in range(10):
                 time.sleep(0.5)
                 if self._is_port_open(1080):
@@ -443,15 +445,30 @@ class TGProxyServer:
         return result == 0
     
     def _run_proxy(self, port, dc_opt, stop_event, host):
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
         try:
-            loop.run_until_complete(run_proxy(port, dc_opt, stop_event, host))
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            self._loop = loop
+            
+            loop.run_until_complete(self._run_proxy_async(port, dc_opt, stop_event, host))
         except Exception as e:
             print(f"TGProxy run error: {e}")
         finally:
-            loop.close()
+            if self._loop and not self._loop.is_closed():
+                self._loop.close()
+            self._loop = None
+    
+    async def _run_proxy_async(self, port, dc_opt, stop_event, host):
+        from tg_proxy import _run
+        
+        proxy_task = asyncio.create_task(_run(port, dc_opt, stop_event, host))
+        await stop_event.wait()
+        
+        proxy_task.cancel()
+        try:
+            await proxy_task
+        except asyncio.CancelledError:
+            pass
     
     def stop(self):
         if not self._running:
@@ -461,9 +478,9 @@ class TGProxyServer:
             self._stop_event.set()
         
         self._running = False
+        
         if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=3)
-        time.sleep(2)
+            self._thread.join(timeout=5)
         
         self._kill_process_on_port(1080)
 
@@ -1308,7 +1325,7 @@ class ZapretLauncher:
             dialog.destroy()
             
             mode = self._pending_mode
-            self.update_status(f"Запуск {mode['name']} режима...", self.colors['accent'])
+            self.update_status(f"Запуск {mode['name']} режим...", self.colors['accent'])
             self.connect_btn.set_enabled(False)
             self.root.update()
             
@@ -1342,7 +1359,7 @@ class ZapretLauncher:
             mode_display = mode["name"]
             strategy_display = self.zapret.get_strategy_display_name(selected_strategy)
             self.mode_label.config(text=mode_display, fg=self.colors['accent_green'])
-            self.update_status(f"Подключено: {mode_display} ({strategy_display})", self.colors['accent_green'])
+            self.update_status(f"Подключено: Стратегия {strategy_display}", self.colors['accent_green'])
             self.update_ui_state()
             self.save_settings()
             self.root.after(100, self.update_stats_display)
@@ -1616,19 +1633,26 @@ class ZapretLauncher:
             if mode.get("byedpi", False):
                 provider_str = f" ({self.current_provider})" if mode.get("byedpi_provider") else ""
                 components.append(f"ByeDPI{provider_str}")
+
+            mode_label_text = "Кастомный"
+
+            if components:
+                status_text = "" + ", ".join(components) + ""
+            else:
+                status_text = "Кастомный"
             
-            mode_name = "Кастомный (" + ", ".join(components) + ")"
-            
-            self.root.after(0, lambda: on_success(mode_name))
+            self._current_mode_name = mode_label_text
+            self._current_status_text = status_text
+            self.root.after(0, lambda: on_success(mode_label_text, status_text))
         
         def on_error(component, error_msg):
             self.update_status("Ошибка запуска", self.colors['accent_red'])
             messagebox.showerror(f"Ошибка {component}", error_msg)
             self.connect_btn.set_enabled(True)
         
-        def on_success(mode_name):
-            self.mode_label.config(text=mode_name, fg=self.colors['accent_green'])
-            self.update_status(f"Подключено: {mode_name}", self.colors['accent_green'])
+        def on_success(mode_label_text, status_text):
+            self.mode_label.config(text=mode_label_text, fg=self.colors['accent_green'])
+            self.update_status(f"Подключено: {status_text}", self.colors['accent_green'])
             self.update_ui_state()
             self.save_settings()
             self.root.after(100, self.update_stats_display)
@@ -2246,7 +2270,7 @@ class ZapretLauncher:
                 best_success_count = success_count
         
         if best_strategy:
-            self.log_to_diagnostic(f"\nЛучшая стратегия: {best_strategy}")
+            self.log_to_diagnostic(f"\Подходящая стратегия: {best_strategy}")
             self.log_to_diagnostic(f"Результат: {best_success_count}/{len(test_sites)}")
             
             self.strategy_var.set(best_strategy)
@@ -2265,7 +2289,7 @@ class ZapretLauncher:
     def check_zapret_status(self):
         self.log_to_diagnostic("Проверка статуса Zapret...")
         if self.zapret.is_winws_running():
-            self.log_to_diagnostic(f"Zapret запущен (стратегия: {self.current_strategy or 'неизвестно'})")
+            self.log_to_diagnostic(f"Zapret запущен (Стратегия: {self.current_strategy or 'неизвестно'})")
         else:
             self.log_to_diagnostic("Zapret не запущен")
 
@@ -2558,7 +2582,7 @@ class ZapretLauncher:
             
             self.stats.start_session()
             
-            self.update_status(f"Подключено: {self.zapret.get_strategy_display_name(strategy)}", 
+            self.update_status(f"Подключено: Стратегия {self.zapret.get_strategy_display_name(strategy)}", 
                             self.colors['accent_green'])
             self.update_ui_state()
             self.save_settings()
