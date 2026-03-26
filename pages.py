@@ -89,7 +89,7 @@ class Pages:
                 fg=self.colors['text_primary'], bg=self.colors['bg_light']).pack(side=tk.LEFT, padx=15, pady=10)
         
         self.app.mode_label = tk.Label(mode_frame, text="Не выбран", font=self.font_medium,
-                                       fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
+                                    fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
         self.app.mode_label.pack(side=tk.LEFT, padx=15, pady=10)
         
         self.app.stats_frame = tk.Frame(self.main_page, bg=self.colors['bg_medium'])
@@ -102,7 +102,7 @@ class Pages:
         stats_row1.pack(fill=tk.X, padx=15, pady=2)
         
         self.app.stats_time_label = tk.Label(stats_row1, text="00:00:00", font=("Segoe UI", 18, "bold"),
-                                             fg=self.colors['accent'], bg=self.colors['bg_medium'])
+                                            fg=self.colors['accent'], bg=self.colors['bg_medium'])
         self.app.stats_time_label.pack(side=tk.LEFT)
         
         tk.Label(stats_row1, text="время работы", font=self.font_primary,
@@ -111,28 +111,36 @@ class Pages:
         self.app.stats_traffic_label = tk.Label(stats_row1, text="⬇ 0 B  |  ⬆ 0 B", font=("Segoe UI", 12),
                                                 fg=self.colors['text_primary'], bg=self.colors['bg_medium'])
         self.app.stats_traffic_label.pack(side=tk.LEFT, padx=(0, 20))
-        
         self.app.stats_total_label = tk.Label(stats_row1, text="0 B", font=("Segoe UI", 12),
-                                              fg=self.colors['text_secondary'], bg=self.colors['bg_medium'])
+                                            fg=self.colors['text_secondary'], bg=self.colors['bg_medium'])
         self.app.stats_total_label.pack(side=tk.LEFT)
         
         stats_speed_frame = tk.Frame(self.app.stats_frame, bg=self.colors['bg_medium'])
         stats_speed_frame.pack(fill=tk.X, padx=15, pady=(10, 5))
-        
-        tk.Label(stats_speed_frame, text="Скорость:", font=self.font_bold,
-                fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(anchor='w')
-        
-        speed_row = tk.Frame(stats_speed_frame, bg=self.colors['bg_medium'])
-        speed_row.pack(fill=tk.X, pady=5)
-        
-        self.app.stats_speed_up_label = tk.Label(speed_row, text="⬆ 0 B/s", font=self.font_primary,
+
+        stats_container = tk.Frame(stats_speed_frame, bg=self.colors['bg_medium'], width=550, height=80)
+        stats_container.pack(anchor='w')
+        stats_container.pack_propagate(False)
+
+        tk.Label(stats_container, text="Скорость:", font=self.font_bold,
+                fg=self.colors['text_primary'], bg=self.colors['bg_medium']).place(x=0, y=0)
+
+        self.app.stats_speed_up_label = tk.Label(stats_container, text="⬆ 0 B/s", font=self.font_primary,
                                                 fg=self.colors['accent_green'], bg=self.colors['bg_medium'])
-        self.app.stats_speed_up_label.pack(side=tk.LEFT, padx=(0, 20))
-        
-        self.app.stats_speed_down_label = tk.Label(speed_row, text="⬇ 0 B/s", font=self.font_primary,
+        self.app.stats_speed_up_label.place(x=0, y=28)
+        self.app.stats_speed_down_label = tk.Label(stats_container, text="⬇ 0 B/s", font=self.font_primary,
                                                 fg=self.colors['accent'], bg=self.colors['bg_medium'])
-        self.app.stats_speed_down_label.pack(side=tk.LEFT)
-        
+        self.app.stats_speed_down_label.place(x=120, y=28)
+
+        tk.Label(stats_container, text="|", font=self.font_bold,
+                fg=self.colors['text_secondary'], bg=self.colors['bg_medium']).place(x=280, y=15)
+        tk.Label(stats_container, text="Задержка (RTT):", font=self.font_bold,
+                fg=self.colors['text_primary'], bg=self.colors['bg_medium']).place(x=320, y=0)
+
+        self.app.stats_rtt_label = tk.Label(stats_container, text="-- ms", font=self.font_primary,
+                                            fg=self.colors['accent'], bg=self.colors['bg_medium'])
+        self.app.stats_rtt_label.place(x=320, y=28)
+                                                                        
         button_frame = tk.Frame(self.main_page, bg=self.colors['bg_dark'])
         button_frame.pack(fill=tk.X, padx=30, pady=30)
         
