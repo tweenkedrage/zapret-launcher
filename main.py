@@ -45,7 +45,7 @@ ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
 ZAPRET_API_URL = "https://api.github.com/repos/flowseal/zapret-discord-youtube/releases/latest"
-CURRENT_VERSION = "2.5"
+CURRENT_VERSION = "2.6"
 
 PROVIDER_PARAMS = {
     "Ростелеком/Дом.ru/Tele2": ["--split", "1", "--disorder", "-1"],
@@ -503,8 +503,8 @@ class ZapretCore:
         if not archive_path:
             messagebox.showerror(
                 "Ошибка", 
-                f"Не найден файл ресурсов {ZAPRET_RESOURCES_ZIP}.\n"
-                "Запусти build_resources.py для его создания."
+                f"Не найден файл ресурсов {ZAPRET_RESOURCES_ZIP}\n"
+                "Запустите build_resources.py для его создания"
             )
             sys.exit(1)
             
@@ -727,7 +727,7 @@ class ZapretLauncher:
         self.tgws_var = tk.BooleanVar(value=False)
         self.byedpi_var = tk.BooleanVar(value=False)
 
-        self.update_intervals = [0, 5, 10, 30, 60]
+        self.update_intervals = [0, 5, 10, 30, 60, None]
         self.update_interval_index = 0
         self.update_interval = self.update_intervals[self.update_interval_index]
         self.update_timer_id = None
@@ -739,9 +739,10 @@ class ZapretLauncher:
         self.traffic_speed_vpn_history = {}
         self.traffic_speed_direct_history = {}
         self.traffic_last_update = time.time()
-        self.traffic_update_interval = 10
         self._traffic_update_scheduled = False
         self._traffic_collecting = False
+        self._traffic_collecting_start = 0
+        self._traffic_update_timer = None
         self.hostname_cache = {}
         self.hostname_cache_time = {}
         
@@ -791,12 +792,13 @@ class ZapretLauncher:
         self.font_bold = ("Segoe UI", 12, "bold")
         
         self.colors = get_theme('dark')
+        self.setup_scrollbar_style()
         self.root.configure(bg=self.colors['bg_dark'])
         
         if not is_admin():
             result = messagebox.askyesno(
                 "Права администратора",
-                "Программа требует прав администратора для работы.\n\n"
+                "Программа требует прав администратора для работы\n\n"
                 "Запустить от имени администратора?"
             )
             if result:
@@ -906,18 +908,34 @@ class ZapretLauncher:
             
             if icon_image:
                 icon_image = icon_image.subsample(icon_image.width() // 120, icon_image.height() // 120)
-                icon_label = tk.Label(logo_frame, image=icon_image, bg=self.colors['bg_medium'])
+                
+                icon_label = tk.Label(logo_frame, image=icon_image, bg=self.colors['bg_medium'], cursor="hand2")
                 icon_label.image = icon_image
                 icon_label.pack(expand=True, pady=10)
+                
+                icon_label.bind("<Button-1>", lambda e: self.show_settings_page())
+                icon_label.bind("<Enter>", lambda e: icon_label.config(cursor="hand2"))
+                icon_label.bind("<Leave>", lambda e: icon_label.config(cursor=""))
+                
             else:
                 raise Exception("Иконка не найдена")
                 
         except Exception as e:
             print(f"Не удалось загрузить иконку: {e}")
-            tk.Label(logo_frame, text="ZAPRET", font=("Segoe UI", 24, "bold"), 
-                    fg=self.colors['accent'], bg=self.colors['bg_medium']).pack(expand=True)
-            tk.Label(logo_frame, text="LAUNCHER", font=("Segoe UI", 10), 
-                    fg=self.colors['text_secondary'], bg=self.colors['bg_medium']).pack()
+            logo_btn = RoundedButton(
+                logo_frame,
+                text="ZAPRET\nLAUNCHER",
+                command=self.show_settings_page,
+                width=120, height=120,
+                bg=self.colors['accent'],
+                fg=self.colors['text_primary'],
+                font=("Segoe UI", 14, "bold"),
+                corner_radius=60
+            )
+            logo_btn.pack(expand=True, pady=10)
+            
+            logo_btn.bind("<Enter>", lambda e: logo_btn.config(cursor="hand2"))
+            logo_btn.bind("<Leave>", lambda e: logo_btn.config(cursor=""))
 
         nav_buttons = [
             ("Главная", self.show_main_page),
@@ -931,10 +949,20 @@ class ZapretLauncher:
             btn_frame = tk.Frame(left_panel, bg=self.colors['bg_medium'])
             btn_frame.pack(fill=tk.X, pady=2, padx=15)
             
-            btn = RoundedButton(btn_frame, text=text, command=command,
-                width=220, height=45, bg=self.colors['bg_light'], 
-                fg=self.colors['text_secondary'], font=("Segoe UI", 11), corner_radius=10)
+            btn = RoundedButton(
+                btn_frame,
+                text=text,
+                command=command,
+                width=220, height=45,
+                bg=self.colors['bg_light'],
+                fg=self.colors['text_secondary'],
+                font=("Segoe UI", 11),
+                corner_radius=10
+            )
             btn.pack()
+            
+            btn.bind("<Enter>", lambda e: btn.config(cursor="hand2"))
+            btn.bind("<Leave>", lambda e: btn.config(cursor=""))
         
         separator = tk.Frame(left_panel, bg=self.colors['separator'], height=1)
         separator.pack(fill=tk.X, padx=15, pady=20)
@@ -942,18 +970,33 @@ class ZapretLauncher:
         credit_frame = tk.Frame(left_panel, bg=self.colors['bg_medium'])
         credit_frame.pack(side=tk.BOTTOM, pady=(0, 30), fill=tk.X)
         
-        self.left_status = tk.Label(credit_frame, text="●", font=("Segoe UI", 12), 
-                                    fg=self.colors['text_secondary'], bg=self.colors['bg_medium'])
+        self.left_status = tk.Label(
+            credit_frame,
+            text="●",
+            font=("Segoe UI", 12),
+            fg=self.colors['text_secondary'],
+            bg=self.colors['bg_medium']
+        )
         self.left_status.pack()
         
-        tk.Label(credit_frame, text=f"v{CURRENT_VERSION}", font=("Segoe UI", 9), 
-                fg=self.colors['text_secondary'], bg=self.colors['bg_medium']).pack(pady=(5, 0))
+        tk.Label(
+            credit_frame,
+            text=f"v{CURRENT_VERSION}",
+            font=("Segoe UI", 9),
+            fg=self.colors['text_secondary'],
+            bg=self.colors['bg_medium']
+        ).pack(pady=(5, 0))
         
-        self.credit_label = tk.Label(credit_frame, text="by trimansberg", font=("Segoe UI", 8), 
-                                    fg=self.colors['text_secondary'], bg=self.colors['bg_medium'],
-                                    cursor="hand2")
+        self.credit_label = tk.Label(
+            credit_frame,
+            text="by trimansberg",
+            font=("Segoe UI", 8),
+            fg=self.colors['text_secondary'],
+            bg=self.colors['bg_medium'],
+            cursor="hand2"
+        )
         self.credit_label.pack(pady=(2, 0))
-
+        
         self.credit_label.bind("<Enter>", lambda e: self.credit_label.config(fg=self.colors['accent']))
         self.credit_label.bind("<Leave>", lambda e: self.credit_label.config(fg=self.colors['text_secondary']))
         self.credit_label.bind("<Button-1>", lambda e: self.open_github())
@@ -961,12 +1004,12 @@ class ZapretLauncher:
     def show_mode_selector(self):
         dialog = tk.Toplevel(self.root)
         dialog.title("Выбор режима запуска")
-        dialog.geometry("500x500")
+        dialog.geometry("500x550")
         dialog.resizable(False, False)
         dialog.configure(bg=self.colors['bg_medium'])
         
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 250
-        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 250
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 275
         dialog.geometry(f"+{x}+{y}")
         
         tk.Label(dialog, text="Выберите режим запуска", font=("Segoe UI", 16, "bold"),
@@ -976,7 +1019,7 @@ class ZapretLauncher:
         main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
         
         canvas = tk.Canvas(main_frame, bg=self.colors['bg_medium'], highlightthickness=0)
-        scrollbar = tk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview, style="Custom.Vertical.TScrollbar")
         scrollable_frame = tk.Frame(canvas, bg=self.colors['bg_medium'])
         
         scrollable_frame.bind(
@@ -991,49 +1034,164 @@ class ZapretLauncher:
         scrollbar.pack(side="right", fill="y")
         
         def _on_mousewheel(event):
-            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+            try:
+                if canvas and canvas.winfo_exists():
+                    canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+            except (tk.TclError, AttributeError):
+                pass
         
-        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        dialog.bind_all("<MouseWheel>", _on_mousewheel)
+        
+        dialog._mousewheel_handler = _on_mousewheel
+        
+        canvas.bind("<MouseWheel>", _on_mousewheel)
+        scrollable_frame.bind("<MouseWheel>", _on_mousewheel)
         
         modes = [
-            {"name": "Стандартный", "desc": "Обход блокировок через Zapret", "zapret": True, "tgproxy": False, "byedpi": False, "game": False},
-            {"name": "TG Proxy", "desc": "Ускорение работы Telegram", "zapret": False, "tgproxy": True, "byedpi": False, "game": False},
-            {"name": "ByeDPI", "desc": "Оптимизация игр, снижение задержки", "zapret": False, "tgproxy": False, "byedpi": True, "game": False},
-            {"name": "Игровой", "desc": "Максимальная производительность для игр", "zapret": True, "tgproxy": False, "byedpi": False, "game": True},
-            {"name": "Кастомный", "desc": "Выберите что включить самостоятельно", "zapret": False, "tgproxy": False, "byedpi": False, "game": False, "custom": True}
+            {"name": "Стандартный", "desc": "Обход блокировок через Zapret", 
+            "zapret": True, "tgproxy": False, "byedpi": False, "game": False},
+            {"name": "TG Proxy", "desc": "Ускорение работы Telegram", 
+            "zapret": False, "tgproxy": True, "byedpi": False, "game": False},
+            {"name": "ByeDPI", "desc": "Оптимизация YouTube/игр, снижение задержки", 
+            "zapret": False, "tgproxy": False, "byedpi": True, "game": False},
+            {"name": "Игровой", "desc": "Максимальная производительность для игр", 
+            "zapret": True, "tgproxy": False, "byedpi": False, "game": True},
+            {"name": "Кастомный", "desc": "Выберите что включить самостоятельно", 
+            "zapret": False, "tgproxy": False, "byedpi": False, "game": False, "custom": True}
         ]
         
         selected_mode = [None]
+        selected_widget = [None]
+        select_btn = [None]
+        
+        def update_select_button():
+            if select_btn[0]:
+                if selected_mode[0]:
+                    select_btn[0].set_enabled(True)
+                    select_btn[0].update_colors(
+                        self.colors['accent'],
+                        self.colors['text_primary'],
+                        self.colors['button_hover']
+                    )
+                    select_btn[0].config(cursor="hand2")
+                else:
+                    select_btn[0].set_enabled(False)
+                    select_btn[0].update_colors(
+                        self.colors['button_bg'],
+                        self.colors['text_secondary'],
+                        self.colors['button_bg']
+                    )
+                    select_btn[0].config(cursor="arrow")
+        
+        def on_single_click(mode, frame, name_label, desc_label):
+            if selected_widget[0]:
+                prev_frame, prev_name, prev_desc = selected_widget[0]
+                prev_frame.configure(bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
+                prev_name.configure(fg=self.colors['accent'], bg=self.colors['bg_light'])
+                prev_desc.configure(fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
+            
+            frame.configure(bg=self.colors['accent'], relief=tk.RIDGE, bd=2)
+            name_label.configure(fg=self.colors['text_primary'], bg=self.colors['accent'])
+            desc_label.configure(fg=self.colors['text_secondary'], bg=self.colors['accent'])
+            
+            selected_widget[0] = (frame, name_label, desc_label)
+            selected_mode[0] = mode
+            update_select_button()
+        
+        def on_double_click(mode):
+            if mode:
+                dialog.destroy()
+                self.start_with_mode(mode)
+        
+        def on_select_click():
+            if selected_mode[0]:
+                dialog.destroy()
+                self.start_with_mode(selected_mode[0])
         
         for mode in modes:
-            mode_frame = tk.Frame(scrollable_frame, bg=self.colors['bg_light'], relief=tk.FLAT, bd=1)
-            mode_frame.pack(fill=tk.X, padx=10, pady=5, ipady=5)
+            mode_frame = tk.Frame(scrollable_frame, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0, cursor="hand2")
+            mode_frame.pack(fill=tk.X, padx=10, pady=5, ipady=8)
+            
+            original_bg = self.colors['bg_light']
             
             name_label = tk.Label(mode_frame, text=mode["name"], font=("Segoe UI", 12, "bold"),
-                                fg=self.colors['accent'], bg=self.colors['bg_light'])
-            name_label.pack(anchor='w', padx=10, pady=(5, 0))
-            
+                                fg=self.colors['accent'], bg=original_bg)
+            name_label.pack(anchor='w', padx=15, pady=(8, 2))
+
             desc_label = tk.Label(mode_frame, text=mode["desc"], font=("Segoe UI", 9),
-                                fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
-            desc_label.pack(anchor='w', padx=10, pady=(0, 5))
+                                fg=self.colors['text_secondary'], bg=original_bg)
+            desc_label.pack(anchor='w', padx=15, pady=(0, 8))
             
-            def make_select(m):
-                return lambda: select_mode(m)
+            def make_on_click(m, f, nl, dl):
+                return lambda e: on_single_click(m, f, nl, dl)
             
-            select_btn = RoundedButton(mode_frame, text="Выбрать", command=make_select(mode),
-                                    width=80, height=28, bg=self.colors['button_bg'],
-                                    font=("Segoe UI", 9), corner_radius=6)
-            select_btn.pack(side=tk.RIGHT, padx=10, pady=5)
+            def make_on_double(m):
+                return lambda e: on_double_click(m)
+            
+            click_handler = make_on_click(mode, mode_frame, name_label, desc_label)
+            double_handler = make_on_double(mode)
+            
+            mode_frame.bind("<Button-1>", click_handler)
+            mode_frame.bind("<Double-Button-1>", double_handler)
+            name_label.bind("<Button-1>", click_handler)
+            name_label.bind("<Double-Button-1>", double_handler)
+            desc_label.bind("<Button-1>", click_handler)
+            desc_label.bind("<Double-Button-1>", double_handler)
+            
+            def make_on_enter(frame, nl, dl, orig_bg):
+                def on_enter_func(e):
+                    if selected_widget[0] and selected_widget[0][0] == frame:
+                        return
+                    frame.configure(bg=self.colors['bg_light_hover'])
+                    nl.configure(bg=self.colors['bg_light_hover'])
+                    dl.configure(bg=self.colors['bg_light_hover'])
+                return on_enter_func
+            
+            def make_on_leave(frame, nl, dl, orig_bg):
+                def on_leave_func(e):
+                    if selected_widget[0] and selected_widget[0][0] == frame:
+                        return
+                    frame.configure(bg=orig_bg)
+                    nl.configure(bg=orig_bg)
+                    dl.configure(bg=orig_bg)
+                return on_leave_func
+            
+            mode_frame.bind("<Enter>", make_on_enter(mode_frame, name_label, desc_label, original_bg))
+            mode_frame.bind("<Leave>", make_on_leave(mode_frame, name_label, desc_label, original_bg))
+            name_label.bind("<Enter>", make_on_enter(mode_frame, name_label, desc_label, original_bg))
+            name_label.bind("<Leave>", make_on_leave(mode_frame, name_label, desc_label, original_bg))
+            desc_label.bind("<Enter>", make_on_enter(mode_frame, name_label, desc_label, original_bg))
+            desc_label.bind("<Leave>", make_on_leave(mode_frame, name_label, desc_label, original_bg))
         
-        def select_mode(mode):
-            selected_mode[0] = mode
-            dialog.destroy()
-            self.start_with_mode(mode)
+        bottom_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
+        bottom_frame.pack(fill=tk.X, padx=20, pady=15)
         
-        cancel_btn = RoundedButton(dialog, text="Отмена", command=dialog.destroy,
-                                width=100, height=35, bg=self.colors['button_bg'],
-                                font=("Segoe UI", 10), corner_radius=8)
-        cancel_btn.pack(pady=15)
+        select_btn[0] = RoundedButton(
+            bottom_frame,
+            text="Выбрать",
+            command=on_select_click,
+            width=100, height=35,
+            bg=self.colors['button_bg'],
+            fg=self.colors['text_secondary'],
+            font=("Segoe UI", 10),
+            corner_radius=8
+        )
+        select_btn[0].set_enabled(False)
+        select_btn[0].config(cursor="arrow")
+        select_btn[0].pack(side=tk.RIGHT, padx=(10, 0))
+        
+        cancel_btn = RoundedButton(
+            bottom_frame,
+            text="Отмена",
+            command=dialog.destroy,
+            width=100, height=35,
+            bg=self.colors['button_bg'],
+            fg=self.colors['text_primary'],
+            font=("Segoe UI", 10),
+            corner_radius=8
+        )
+        cancel_btn.config(cursor="hand2")
+        cancel_btn.pack(side=tk.RIGHT)
 
     def start_with_mode(self, mode):
         if mode["name"] == "Стандартный" or mode["name"] == "Игровой":
@@ -1075,9 +1233,6 @@ class ZapretLauncher:
             self.byedpi_enabled = True
             self.byedpi_var.set(True)
         
-        if mode.get("game", False):
-            self._apply_game_mode()
-        
         self.is_connected = True
         self.stats.start_session()
         self.start_stats_monitoring()
@@ -1092,7 +1247,7 @@ class ZapretLauncher:
 
     def select_strategy_for_mode(self, mode_name):
         dialog = tk.Toplevel(self.root)
-        dialog.title(f"Выбор стратегии для режима {mode_name}")
+        dialog.title(f"Выбор стратегии")
         dialog.geometry("450x450")
         dialog.resizable(False, False)
         dialog.configure(bg=self.colors['bg_medium'])
@@ -1101,7 +1256,7 @@ class ZapretLauncher:
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 225
         dialog.geometry(f"+{x}+{y}")
         
-        tk.Label(dialog, text=f"Выберите стратегию Zapret для режима {mode_name}", 
+        tk.Label(dialog, text=f"Выберите стратегию Zapret", 
                 font=("Segoe UI", 12, "bold"),
                 fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(pady=(20, 10))
         
@@ -1180,9 +1335,6 @@ class ZapretLauncher:
                 self.byedpi_enabled = True
                 self.byedpi_var.set(True)
             
-            if mode.get("game", False):
-                self._apply_game_mode()
-            
             self.is_connected = True
             self.stats.start_session()
             self.start_stats_monitoring()
@@ -1209,9 +1361,6 @@ class ZapretLauncher:
                                 font=("Segoe UI", 10), corner_radius=8)
         cancel_btn.pack(side=tk.LEFT, padx=5)
 
-    def _apply_game_mode(self):
-        self.log_to_diagnostic("Игровой режим активирован")
-
     def show_provider_selector(self, mode):
         dialog = tk.Toplevel(self.root)
         dialog.title("Выбор провайдера для ByeDPI")
@@ -1227,11 +1376,6 @@ class ZapretLauncher:
                 font=("Segoe UI", 14, "bold"),
                 fg=self.colors['text_primary'], 
                 bg=self.colors['bg_medium']).pack(pady=(20, 10))
-        
-        tk.Label(dialog, text="Это поможет подобрать оптимальные параметры", 
-                font=("Segoe UI", 10),
-                fg=self.colors['text_secondary'], 
-                bg=self.colors['bg_medium']).pack(pady=(0, 15))
         
         providers = list(PROVIDER_PARAMS.keys())
         
@@ -1336,7 +1480,6 @@ class ZapretLauncher:
         custom_zapret = tk.IntVar(value=1)
         custom_tgproxy = tk.IntVar(value=0)
         custom_byedpi = tk.IntVar(value=0)
-        custom_byedpi_provider = tk.StringVar(value=self.current_provider)
         
         zapret_frame = tk.Frame(dialog, bg=self.colors['bg_light'])
         zapret_frame.pack(fill=tk.X, padx=20, pady=5, ipady=5)
@@ -1530,9 +1673,14 @@ class ZapretLauncher:
         
         self.stats.update_speed()
         self.update_stats_display()
+
+        if self.update_interval is None:
+            return
         
         if not self.root.winfo_viewable():
             interval = 5000
+        elif self.update_interval == 0:
+            interval = 500
         elif self.update_interval > 0:
             interval = int(self.update_interval * 1000)
         else:
@@ -1624,7 +1772,7 @@ class ZapretLauncher:
 
     def optimize_network_latency(self):
         self.log_to_diagnostic("="*50)
-        self.log_to_diagnostic("ОПТИМИЗАЦИЯ СЕТИ (УБИРАНИЕ INPUT LAG)")
+        self.log_to_diagnostic("ОПТИМИЗАЦИЯ СЕТИ")
         self.log_to_diagnostic("="*50)
         
         if not is_admin():
@@ -1638,7 +1786,7 @@ class ZapretLauncher:
         if success:
             self.log_to_diagnostic(msg)
             self.log_to_diagnostic("Оптимизация завершена")
-            messagebox.showinfo("Успех", "Сетевые параметры оптимизированы!\n\nПерезагрузите компьютер для применения изменений.")
+            messagebox.showinfo("Успех", "Сетевые параметры оптимизированы!\n\nПерезагрузите компьютер для применения изменений")
         else:
             self.log_to_diagnostic(f"Ошибка: {msg}")
             messagebox.showerror("Ошибка", msg)
@@ -1659,7 +1807,7 @@ class ZapretLauncher:
             try:
                 primary, secondary, latency, name = find_best_dns()
                 
-                self.log_to_diagnostic(f"Лучший DNS: {name}")
+                self.log_to_diagnostic(f"Установлен подходящий DNS: {name}")
                 self.log_to_diagnostic(f"Primary: {primary} (задержка: {latency:.1f} мс)")
                 self.log_to_diagnostic(f"Secondary: {secondary}")
                 
@@ -1749,7 +1897,7 @@ class ZapretLauncher:
         cancel_btn.pack(side=tk.LEFT, padx=5)
 
     def flush_dns_cache_command(self):
-        self.log_to_diagnostic("Очистка DNS кэша...")
+        self.log_to_diagnostic("Очистка DNS кеша...")
         success, msg = flush_dns_cache()
         if success:
             self.log_to_diagnostic(f"{msg}")
@@ -2121,12 +2269,6 @@ class ZapretLauncher:
         else:
             self.log_to_diagnostic("Zapret не запущен")
 
-    def check_zapret_version(self):
-        self.log_to_diagnostic("Доступные стратегии:")
-        for s in self.zapret.available_strategies:
-            self.log_to_diagnostic(f"  • {s}")
-        self.log_to_diagnostic(f"Всего стратегий: {len(self.zapret.available_strategies)}")
-
     def check_zapret_logs(self):
         self.log_to_diagnostic("Поиск процессов winws.exe...")
         found = False
@@ -2156,7 +2298,7 @@ class ZapretLauncher:
         self.log_to_diagnostic("Проверка статуса ByeDPI...")
         status = self.byedpi.get_status()
         if status['running']:
-            self.log_to_diagnostic(f"ByeDPI запущен (версия {status['version']}, провайдер: {self.current_provider})")
+            self.log_to_diagnostic(f"ByeDPI запущен (версия {status['version']}, выбранный провайдер: {self.current_provider})")
         else:
             if status['binary_exists']:
                 self.log_to_diagnostic("ByeDPI не запущен (файл есть)")
@@ -2244,10 +2386,9 @@ class ZapretLauncher:
         return result
 
     def clear_cache(self):
-        self.log_to_diagnostic("Очистка кэша...")
+        self.log_to_diagnostic("Очистка кеша...")
         try:
             self.diagnostic_text.delete(1.0, tk.END)
-            self.log_to_diagnostic("Кэш диагностики очищен")
         except Exception as e:
             self.log_to_diagnostic(f"Ошибка: {str(e)}")
 
@@ -2473,6 +2614,13 @@ class ZapretLauncher:
         self.update_ui_state()
         self.connect_btn.set_enabled(True)
 
+        if hasattr(self, '_traffic_update_timer') and self._traffic_update_timer:
+            try:
+                self.root.after_cancel(self._traffic_update_timer)
+            except:
+                pass
+            self._traffic_update_timer = None
+
         self.traffic_history = {}
         self.traffic_history_vpn = {}
         self.traffic_history_direct = {}
@@ -2547,8 +2695,9 @@ class ZapretLauncher:
                     if 0 <= interval_index < len(self.update_intervals):
                         self.update_interval_index = interval_index
                         self.update_interval = self.update_intervals[self.update_interval_index]
-
-                    self.load_traffic_mode_setting()
+                        
+                        if self.update_interval is None:
+                            self.stop_stats_monitoring()
         except:
             pass
 
@@ -2579,12 +2728,18 @@ class ZapretLauncher:
     def show_diagnostic_page(self):
         self.pages.show_page("diagnostic")
 
+    def show_settings_page(self):
+        self.pages.show_page("settings")
+
     def show_traffic_page(self):
         self.pages.show_page("traffic")
-        if not hasattr(self.pages, 'traffic_update_mode') or not self.pages.traffic_update_mode.get():
-            self.load_traffic_mode_setting()
         if hasattr(self, '_traffic_collecting'):
             self._traffic_collecting = False
+        if hasattr(self, '_traffic_update_timer') and self._traffic_update_timer:
+            try:
+                self.root.after_cancel(self._traffic_update_timer)
+            except:
+                pass
         self.update_traffic_table()
 
     def _reset_traffic_history(self):
@@ -2819,22 +2974,6 @@ class ZapretLauncher:
             return f"{bytes_per_sec / 1024:.1f} KB/s"
         else:
             return f"{bytes_per_sec / (1024 * 1024):.1f} MB/s"
-        
-    def set_traffic_update_mode(self, mode):
-        modes = {
-            "Маленькое (3 сек)": 3,
-            "Среднее (10 сек)": 10,
-            "Высокое (30 сек)": 30,
-            "Долгое (60 сек)": 60,
-            "Не обновлять": None
-        }
-        self.traffic_update_interval = modes.get(mode, 10)
-        self.save_traffic_mode_setting(mode)
-        
-        if hasattr(self, '_traffic_update_scheduled'):
-            self._traffic_update_scheduled = False
-            if self.pages.current_page == "traffic":
-                self.update_traffic_table()
 
     def _get_hostname(self, ip):
         if not ip or ip in ['127.0.0.1', '0.0.0.0', '::1']:
@@ -2863,40 +3002,24 @@ class ZapretLauncher:
         finally:
             socket.setdefaulttimeout(None)
 
-    def save_traffic_mode_setting(self, mode):
-        try:
-            settings = self.load_settings_data()
-            settings['traffic_update_mode'] = mode
-            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-                json.dump(settings, f, indent=2)
-        except:
-            pass
-
-    def load_traffic_mode_setting(self):
-        try:
-            if CONFIG_FILE.exists():
-                with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    mode = data.get('traffic_update_mode', "Среднее (10 сек)")
-                    if mode in ["Маленькое (3 сек)", "Среднее (10 сек)", "Высокое (30 сек)", "Долгое (60 сек)", "Не обновлять"]:
-                        self.pages.traffic_update_mode.set(mode)
-                        self.set_traffic_update_mode(mode)
-        except:
-            pass
-
     def update_traffic_table(self):
-        if self.pages.current_page != "traffic":
-            self._traffic_update_scheduled = False
+        if self.update_interval is None:
             return
-        
-        if self.traffic_update_interval is None:
-            self._traffic_update_scheduled = False
+    
+        if self.pages.current_page != "traffic":
+            self._schedule_next_traffic_update()
             return
         
         if hasattr(self, '_traffic_collecting') and self._traffic_collecting:
-            return
+            if time.time() - self._traffic_collecting_start > 5:
+                self._traffic_collecting = False
+                self._traffic_collecting_start = 0
+            else:
+                self._schedule_next_traffic_update()
+                return
         
         self._traffic_collecting = True
+        self._traffic_collecting_start = time.time()
         
         def collect_data():
             try:
@@ -2904,17 +3027,29 @@ class ZapretLauncher:
                 self.root.after(0, lambda: self._update_traffic_table_ui(processes))
             finally:
                 self._traffic_collecting = False
+                self.root.after(0, self._schedule_next_traffic_update)
         
         threading.Thread(target=collect_data, daemon=True).start()
+
+    def _schedule_next_traffic_update(self):
+        if self.update_interval is None:
+            return
         
-        if not hasattr(self, '_traffic_update_scheduled') or not self._traffic_update_scheduled:
-            self._traffic_update_scheduled = True
-            self.root.after(int(self.traffic_update_interval * 1000), self._schedule_traffic_update)
+        if self.update_interval == 0:
+            interval_ms = 500
+        else:
+            interval_ms = int(self.update_interval * 1000)
+        
+        if hasattr(self, '_traffic_update_timer') and self._traffic_update_timer:
+            try:
+                self.root.after_cancel(self._traffic_update_timer)
+            except:
+                pass
+        
+        self._traffic_update_timer = self.root.after(interval_ms, self.update_traffic_table)
 
     def _schedule_traffic_update(self):
-        self._traffic_update_scheduled = False
-        if self.pages.current_page == "traffic":
-            self.update_traffic_table()
+        self._schedule_next_traffic_update()
 
     def _update_traffic_table_ui(self, processes):
         for item in self.pages.traffic_tree.get_children():
@@ -2932,6 +3067,60 @@ class ZapretLauncher:
                 proc['host'],
                 proc['total']
             ))
+
+    def setup_scrollbar_style(self):
+        style = ttk.Style()
+        style.theme_use('default')
+        
+        style.configure(
+            "Custom.Vertical.TScrollbar",
+            background=self.colors['bg_light'],
+            troughcolor=self.colors['bg_dark'],
+            bordercolor=self.colors['bg_dark'],
+            arrowcolor=self.colors['text_secondary'],
+            lightcolor=self.colors['bg_light'],
+            darkcolor=self.colors['bg_light'],
+            relief="flat"
+        )
+        
+        style.map(
+            "Custom.Vertical.TScrollbar",
+            background=[
+                ('pressed', self.colors['accent']),
+                ('active', self.colors['accent_hover']),
+                ('!active', self.colors['bg_light'])
+            ],
+            arrowcolor=[
+                ('pressed', self.colors['text_primary']),
+                ('active', self.colors['text_primary']),
+                ('!active', self.colors['text_secondary'])
+            ]
+        )
+        
+        style.configure(
+            "Custom.Horizontal.TScrollbar",
+            background=self.colors['bg_light'],
+            troughcolor=self.colors['bg_dark'],
+            bordercolor=self.colors['bg_dark'],
+            arrowcolor=self.colors['text_secondary'],
+            lightcolor=self.colors['bg_light'],
+            darkcolor=self.colors['bg_light'],
+            relief="flat"
+        )
+        
+        style.map(
+            "Custom.Horizontal.TScrollbar",
+            background=[
+                ('pressed', self.colors['accent']),
+                ('active', self.colors['accent_hover']),
+                ('!active', self.colors['bg_light'])
+            ],
+            arrowcolor=[
+                ('pressed', self.colors['text_primary']),
+                ('active', self.colors['text_primary']),
+                ('!active', self.colors['text_secondary'])
+            ]
+        )
 
 if __name__ == "__main__":
     root = tk.Tk()
