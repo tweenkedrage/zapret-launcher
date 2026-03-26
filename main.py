@@ -749,6 +749,9 @@ class ZapretLauncher:
         self.update_interval = self.update_intervals[self.update_interval_index]
         self.update_timer_id = None
 
+        self.rtt_timer_id = None
+        self.rtt_update_interval = 5000
+
         self.traffic_history = {}
         self.traffic_history_vpn = {}
         self.traffic_history_direct = {}
@@ -764,6 +767,9 @@ class ZapretLauncher:
         self.hostname_cache_time = {}
         
         self.byedpi_status = tk.Label()
+
+        self._cached_processes = []
+        self._last_process_time = 0
 
         try:
             icon_paths = [
@@ -1680,8 +1686,57 @@ class ZapretLauncher:
         if hasattr(self, 'stats_speed_down_label'):
             self.stats_speed_down_label.config(text=f"⬇ {stats['speed_down_str']}")
 
+    def _update_rtt(self):
+        if hasattr(self, 'stats_rtt_label'):
+            rtt = self.measure_rtt()
+            if rtt > 0:
+                self.stats_rtt_label.config(text=f"{rtt:.0f} ms", fg=self.colors['accent'])
+            else:
+                self.stats_rtt_label.config(text="-- ms", fg=self.colors['text_secondary'])
+        
+        self.rtt_timer_id = self.root.after(self.rtt_update_interval, self._update_rtt)
+
+    def start_rtt_monitoring(self):
+        self.stop_rtt_monitoring()
+        self.rtt_timer_id = self.root.after(1000, self._update_rtt)
+
+    def stop_rtt_monitoring(self):
+        if self.rtt_timer_id:
+            self.root.after_cancel(self.rtt_timer_id)
+            self.rtt_timer_id = None
+
+    def measure_rtt(self) -> float:
+        try:
+            result = subprocess.run(
+                ['ping', '-n', '1', '8.8.8.8'],
+                capture_output=True, text=True, encoding='cp866',
+                creationflags=subprocess.CREATE_NO_WINDOW,
+                timeout=3
+            )
+            
+            if result.returncode == 0:
+                output = result.stdout
+                
+                match = re.search(r'(?:время|time)[=<>]\s*(\d+)\s*мс', output, re.IGNORECASE)
+                if match:
+                    return float(match.group(1))
+                
+                match = re.search(r'time[=<>](\d+)ms', output, re.IGNORECASE)
+                if match:
+                    return float(match.group(1))
+                
+                match = re.search(r'(\d+)\s*мс', output, re.IGNORECASE)
+                if match:
+                    return float(match.group(1))
+            
+            return -1
+        except Exception as e:
+            print(f"RTT measurement error: {e}")
+            return -1
+
     def start_stats_monitoring(self):
         self.stop_stats_monitoring()
+        self.start_rtt_monitoring()
         
         if self.is_connected:
             self._schedule_stats_update()
@@ -1693,6 +1748,19 @@ class ZapretLauncher:
 
     def _schedule_stats_update(self):
         if not self.is_connected:
+            if self.update_interval is None:
+                return
+                
+            if not self.root.winfo_viewable():
+                interval = 5000
+            elif self.update_interval == 0:
+                interval = 500
+            elif self.update_interval > 0:
+                interval = int(self.update_interval * 1000)
+            else:
+                interval = 1000
+            
+            self.update_timer_id = self.root.after(interval, self._schedule_stats_update)
             return
         
         self.stats.update_speed()
@@ -2631,6 +2699,7 @@ class ZapretLauncher:
         threading.Thread(target=stop_all, daemon=True).start()
 
     def finish_disconnect(self):
+        self._cached_processes = []
         self.is_connected = False
         self.current_strategy = None
         self.mode_label.config(text="Не выбран", fg=self.colors['text_secondary'])
@@ -2757,6 +2826,7 @@ class ZapretLauncher:
 
     def show_traffic_page(self):
         self.pages.show_page("traffic")
+        self._cached_processes = []
         if hasattr(self, '_traffic_collecting'):
             self._traffic_collecting = False
         if hasattr(self, '_traffic_update_timer') and self._traffic_update_timer:
@@ -2779,6 +2849,9 @@ class ZapretLauncher:
         processes = []
         current_time = time.time()
         time_diff = current_time - self.traffic_last_update
+
+        if hasattr(self, '_cached_processes') and (current_time - self._last_process_time < 0.5):
+            return self._cached_processes
         
         if time_diff < 0.1:
             time_diff = 0.5
@@ -2965,6 +3038,8 @@ class ZapretLauncher:
                 'host': '',
                 'total': '-'
             })
+        self._cached_processes = processes
+        self._last_process_time = current_time
         return processes
 
     def _parse_speed_value(self, speed_str):
