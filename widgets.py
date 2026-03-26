@@ -45,6 +45,7 @@ class RoundedButton(tk.Canvas):
         self.normal_color = bg
         self.hover_color = "#6c5579"
         self.corner_radius = corner_radius
+        self._text = text
         
         points = []
         points.extend([corner_radius, 0, width-corner_radius, 0])
@@ -72,7 +73,11 @@ class RoundedButton(tk.Canvas):
             self.itemconfig(self.rect, fill=self.normal_color)
 
     def set_text(self, text):
+        self._text = text
         self.itemconfig(self.text_id, text=text)
+
+    def get_text(self):
+        return self._text
 
     def set_enabled(self, enabled):
         self.enabled = enabled
