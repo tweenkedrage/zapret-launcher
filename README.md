@@ -60,4 +60,4 @@
 - [**Оригинальный Zapret**](https://github.com/flowseal/zapret-discord-youtube)
 
 ***Контакты:***
-- Discord: `@uyolookatme`
+- **Discord**: `@uyolookatme`
