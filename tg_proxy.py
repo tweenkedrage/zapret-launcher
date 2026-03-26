@@ -216,7 +216,10 @@ class RawWebSocket:
             except asyncio.TimeoutError:
                 self._closed = True
                 return None
-            
+            except ConnectionError:
+                self._closed = True
+                return None
+                
             if opcode == self.OP_CLOSE:
                 self._closed = True
                 try:
@@ -232,8 +235,7 @@ class RawWebSocket:
 
             if opcode == self.OP_PING:
                 try:
-                    pong = self._build_frame(self.OP_PONG, payload,
-                                             mask=True)
+                    pong = self._build_frame(self.OP_PONG, payload, mask=True)
                     self.writer.write(pong)
                     await self.writer.drain()
                 except Exception:
@@ -245,7 +247,6 @@ class RawWebSocket:
 
             if opcode in (self.OP_TEXT, self.OP_BINARY):
                 return payload
-
         return None
 
     async def close(self):
@@ -288,25 +289,36 @@ class RawWebSocket:
         return bytes(header) + data
 
     async def _read_frame(self) -> Tuple[int, bytes]:
-        hdr = await self.reader.readexactly(2)
+        try:
+            hdr = await self.reader.readexactly(2)
+        except asyncio.IncompleteReadError as e:
+            raise ConnectionError("Connection closed") from e
+        
         opcode = hdr[0] & 0x0F
         is_masked = bool(hdr[1] & 0x80)
         length = hdr[1] & 0x7F
 
         if length == 126:
-            length = struct.unpack('>H',
-                                   await self.reader.readexactly(2))[0]
+            try:
+                length = struct.unpack('>H', await self.reader.readexactly(2))[0]
+            except asyncio.IncompleteReadError:
+                raise ConnectionError("Connection closed")
         elif length == 127:
-            length = struct.unpack('>Q',
-                                   await self.reader.readexactly(8))[0]
+            try:
+                length = struct.unpack('>Q', await self.reader.readexactly(8))[0]
+            except asyncio.IncompleteReadError:
+                raise ConnectionError("Connection closed")
 
-        if is_masked:
-            mask_key = await self.reader.readexactly(4)
-            payload = await self.reader.readexactly(length)
-            return opcode, _xor_mask(payload, mask_key)
-
-        payload = await self.reader.readexactly(length)
-        return opcode, payload
+        try:
+            if is_masked:
+                mask_key = await self.reader.readexactly(4)
+                payload = await self.reader.readexactly(length)
+                return opcode, _xor_mask(payload, mask_key)
+            else:
+                payload = await self.reader.readexactly(length)
+                return opcode, payload
+        except asyncio.IncompleteReadError:
+            raise ConnectionError("Connection closed")
 
 def _human_bytes(n: int) -> str:
     for unit in ('B', 'KB', 'MB', 'GB'):
@@ -569,6 +581,8 @@ async def _bridge_ws(reader, writer, ws: RawWebSocket, label,
                     await writer.drain()
         except (asyncio.CancelledError, ConnectionError, OSError):
             pass
+        except Exception as e:
+            log.debug(f"ws_to_tcp error: {e}")
         finally:
             try:
                 writer.close()
