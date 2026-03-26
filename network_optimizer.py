@@ -1,9 +1,8 @@
 import subprocess
-import socket
 import time
-import threading
 from typing import List, Tuple, Optional
 import winreg
+import re
 import ctypes
 
 DNS_SERVERS = [
@@ -140,7 +139,7 @@ def flush_dns_cache() -> Tuple[bool, str]:
         except:
             pass
         
-        return True, "DNS кэш очищен"
+        return True, "DNS кеш очищен"
     except Exception as e:
         return False, f"Ошибка очистки DNS: {str(e)}"
 
@@ -173,7 +172,6 @@ def optimize_network_latency() -> Tuple[bool, str]:
         errors.append("Не удалось настроить TCP автонастройку")
     
     try:
-        import winreg
         key_path = r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters"
         key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_SET_VALUE)
         
@@ -269,8 +267,7 @@ def get_current_dns() -> dict:
             )
             dns_servers = []
             for line in result.stdout.split('\n'):
-                if 'DNS-сервер' in line:
-                    import re
+                if 'DNS сервер' in line:
                     ip = re.findall(r'\d+\.\d+\.\d+\.\d+', line)
                     if ip:
                         dns_servers.append(ip[0])
