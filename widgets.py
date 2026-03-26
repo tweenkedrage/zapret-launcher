@@ -1,9 +1,13 @@
 import tkinter as tk
 
 class ModernSwitch(tk.Canvas):
-    def __init__(self, parent, width=50, height=24, bg_color='#25252B', 
-                 active_color='#4361ee', command=None, initial=False):
-        super().__init__(parent, width=width, height=height, highlightthickness=0, bg=parent['bg'])
+    def __init__(self, parent, width=50, height=24, 
+                bg_color='#25252B', 
+                active_color='#4361ee', 
+                command=None, 
+                initial=False):
+        super().__init__(parent, width=width, height=height, 
+                        highlightthickness=0, bg=parent['bg'])
         self.active_color = active_color
         self.inactive_color = bg_color
         self.state = initial
@@ -11,8 +15,14 @@ class ModernSwitch(tk.Canvas):
         self.width = width
         self.height = height
         
-        self.bg_rect = self.create_oval(2, 2, width-2, height-2, fill=self.inactive_color, outline='#2D2D35', width=1)
-        self.slider = self.create_oval(4, 4, height-4, height-4, fill='#ffffff', outline='', tags=('slider',))
+        self.bg_rect = self.create_oval(2, 2, width-2, 
+                                        height-2, 
+                                        fill=self.inactive_color, 
+                                        outline='#2D2D35', width=1)
+        self.slider = self.create_oval(4, 4, height-4, 
+                                       height-4, 
+                                       fill='#ffffff', 
+                                       outline='', tags=('slider',))
         
         if self.state:
             self.coords(self.slider, width-height+4, 4, width-4, height-4)
@@ -35,15 +45,19 @@ class ModernSwitch(tk.Canvas):
 
 class RoundedButton(tk.Canvas):
     def __init__(self, parent, text, command, width=200, height=40, 
-                 bg='#4361ee', fg='white', font=("Segoe UI", 11, "bold"), corner_radius=8):
-        super().__init__(parent, width=width, height=height, highlightthickness=0, bg=parent['bg'], cursor="hand2")
+                bg='#4361ee', fg='white', 
+                font=("Segoe UI", 11, "bold"), 
+                corner_radius=8, hover_color=None):
+        super().__init__(parent, width=width, height=height, 
+                        highlightthickness=0, 
+                        bg=parent['bg'], cursor="hand2")
         self.command = command
         self.bg = bg
         self.fg = fg
         self.font = font
         self.enabled = True
         self.normal_color = bg
-        self.hover_color = "#6c5579"
+        self.hover_color = hover_color if hover_color else "#6c5579"
         self.corner_radius = corner_radius
         self._text = text
         
