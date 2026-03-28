@@ -2,7 +2,7 @@
 `Обход ограничений РКН, ускорение Telegram/YouTube и снижение задержек в играх`
 
 ***Установка:***
-1. [Скачайте любой архив](https://github.com/tweenkedrage/zapret-launcher/releases/latest) (`.rar`, `.zip`) и распаковывайте в любое место 2 файла: `Zapret_Launcher.exe` и `zapret_resources.zip` (Главное чтобы они были в одном месте и не в отдельных папках);
+1. [Скачайте любой архив](https://github.com/tweenkedrage/zapret-launcher/releases/latest) (`.rar`, `.zip`) и распакуйте в любое место 2 файла: `Zapret_Launcher.exe` и `zapret_resources.zip` (Главное чтобы они были в одном месте и не в отдельных папках);
 2. Запустите **Zapret_Launcher.exe** от **имени администратора**;
 3. Выберите любой режим использования;
 4. Пользуйтесь.
