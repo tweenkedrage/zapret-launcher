@@ -76,7 +76,20 @@ class ByeDPIOptimizer:
         self._binary_path = None
         return None
     
+    def _is_already_running(self) -> bool:
+        try:
+            result = subprocess.run(
+                'tasklist /FI "IMAGENAME eq ciadpi.exe" /FO CSV',
+                shell=True, capture_output=True, text=True
+            )
+            return 'ciadpi.exe' in result.stdout
+        except:
+            return False
+    
     def start(self) -> Tuple[bool, str]:
+        if self._is_already_running():
+            self.stop()
+            
         binary = self.get_binary_path()
         if not binary:
             return False, "ByeDPI не найден"
