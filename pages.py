@@ -5,16 +5,10 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from main import ZapretLauncher
 
-from theme import get_theme
 from list_editor import ListEditor
 from widgets import RoundedButton
-import webbrowser
 import os
-import subprocess
-import json
 import time
-import threading
-import sys
 from pathlib import Path
 
 APPDATA_DIR = Path(os.getenv('LOCALAPPDATA')) / 'ZapretLauncher'
@@ -152,8 +146,6 @@ class Pages:
         return self.main_page
     
     def create_service_page(self, parent):
-        from main import check_launcher_updates, check_zapret_updates
-        
         self.service_page = tk.Frame(parent, bg=self.colors['bg_dark'])
         
         tk.Label(self.service_page, text="Сервис", font=("Segoe UI", 32, "bold"),
@@ -165,8 +157,8 @@ class Pages:
                 ("IPSet Filter", "ipset_filter"),
             ]),
             ("Обновление", [
-                ("Проверить обновление лаунчера", "check_launcher"),
-                ("Проверить обновление Zapret", "check_zapret"),
+                ("Обновить лаунчер", "check_launcher"),
+                ("Обновить Zapret", "check_zapret"),
             ]),
         ]
         
@@ -180,19 +172,19 @@ class Pages:
             for btn_text, cmd in items:
                 if cmd == "check_launcher":
                     btn = RoundedButton(card, text=btn_text, 
-                                       command=lambda: check_launcher_updates(self.app, silent=False),
-                                       width=220, height=35, bg=self.colors['button_bg'],
-                                       font=self.font_primary, corner_radius=8)
+                                    command=lambda: self.app.check_launcher_updates(self.app, silent=False),
+                                    width=220, height=35, bg=self.colors['button_bg'],
+                                    font=self.font_primary, corner_radius=8)
                 elif cmd == "check_zapret":
                     btn = RoundedButton(card, text=btn_text, 
-                                       command=lambda: check_zapret_updates(self.app, silent=False),
-                                       width=220, height=35, bg=self.colors['button_bg'],
-                                       font=self.font_primary, corner_radius=8)
+                                    command=lambda: self.app.check_zapret_updates(self.app, silent=False),
+                                    width=220, height=35, bg=self.colors['button_bg'],
+                                    font=self.font_primary, corner_radius=8)
                 else:
                     btn = RoundedButton(card, text=btn_text, 
-                                       command=lambda c=cmd: self.app.run_service_command(c),
-                                       width=200, height=35, bg=self.colors['button_bg'],
-                                       font=self.font_primary, corner_radius=8)
+                                    command=lambda c=cmd: self.app.run_service_command(c),
+                                    width=200, height=35, bg=self.colors['button_bg'],
+                                    font=self.font_primary, corner_radius=8)
                 btn.pack(anchor='w', padx=15, pady=2)
         return self.service_page
     
@@ -360,6 +352,8 @@ class Pages:
         for i in range(0, len(buttons), 2):
             row = tk.Frame(buttons_container, bg=self.colors['bg_light'])
             row.pack(fill=tk.X, pady=2)
+
+            row.config(cursor="")
             
             btn1_text, btn1_cmd = buttons[i]
             btn1 = RoundedButton(row, text=btn1_text,
@@ -384,6 +378,7 @@ class Pages:
             else:
                 spacer = tk.Frame(row, bg=self.colors['bg_light'])
                 spacer.pack(side=tk.LEFT, padx=(4, 0), fill=tk.X, expand=True)
+                spacer.config(cursor="")
 
     def create_traffic_page(self, parent):
         self.traffic_page = tk.Frame(parent, bg=self.colors['bg_dark'])
@@ -517,21 +512,27 @@ class Pages:
             ("60 секунд", self._set_update_interval_60),
             ("Не обновлять", self._set_update_interval_none),
         ])
-        
+
+        self._create_provider_card(left_column)
+            
         info_card = tk.Frame(left_column, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
         info_card.pack(fill=tk.X, pady=8)
-        
+            
         info_inner = tk.Frame(info_card, bg=self.colors['bg_light'])
         info_inner.pack(fill=tk.X, padx=12, pady=10)
-        
+            
         tk.Label(info_inner, text="Текущие настройки", font=("Segoe UI", 12, "bold"),
-                fg=self.colors['accent'], bg=self.colors['bg_light']).pack(anchor='w', pady=(0, 5))
-        
+            fg=self.colors['accent'], bg=self.colors['bg_light']).pack(anchor='w', pady=(0, 5))
+            
         self.current_interval_label = tk.Label(info_inner, 
             text=f"Обновление интерфейса: {self._get_current_interval_text()}",
             font=("Segoe UI", 10), fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
         self.current_interval_label.pack(anchor='w', pady=2)
-        
+            
+        self.current_provider_label = tk.Label(info_inner, 
+            text=f"Провайдер ByeDPI: {self.app.current_provider}",
+            font=("Segoe UI", 10), fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
+        self.current_provider_label.pack(anchor='w', pady=2)
         return self.settings_page
 
     def _get_current_interval_text(self):
@@ -544,6 +545,60 @@ class Pages:
             None: "отключено"
         }
         return intervals.get(self.app.update_interval, "10 секунд")
+    
+    def _create_provider_card(self, parent): 
+        card = tk.Frame(parent, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
+        card.pack(fill=tk.X, pady=8)
+        
+        inner = tk.Frame(card, bg=self.colors['bg_light'])
+        inner.pack(fill=tk.X, padx=12, pady=10)
+        
+        title_frame = tk.Frame(inner, bg=self.colors['bg_light'])
+        title_frame.pack(fill=tk.X, pady=(0, 8))
+        
+        title_label = tk.Label(title_frame, text="Провайдер для ByeDPI", font=("Segoe UI", 12, "bold"),
+                            fg=self.colors['accent'], bg=self.colors['bg_light'])
+        title_label.pack(side=tk.LEFT)
+        
+        title_sep = tk.Frame(inner, bg=self.colors['separator'], height=1)
+        title_sep.pack(fill=tk.X, pady=(0, 8))
+        
+        providers_container = tk.Frame(inner, bg=self.colors['bg_light'])
+        providers_container.pack(fill=tk.X)
+        providers_container.config(cursor="")
+        providers = list(self.app.PROVIDER_PARAMS.keys())
+
+        rows = (len(providers) + 1) // 2
+        for i in range(rows):
+            row = tk.Frame(providers_container, bg=self.colors['bg_light'])
+            row.pack(fill=tk.X, pady=2)
+            row.config(cursor="")
+            
+            provider_left = providers[i * 2] if i * 2 < len(providers) else None
+            if provider_left:
+                btn_left = RoundedButton(row, text=provider_left, 
+                                        command=lambda p=provider_left: self._set_provider(p),
+                                        width=160, height=32,
+                                        bg=self.colors['button_bg'],
+                                        fg=self.colors['text_secondary'],
+                                        font=("Segoe UI", 9),
+                                        corner_radius=6)
+                btn_left.pack(side=tk.LEFT, padx=(0, 4), fill=tk.X, expand=True)
+
+            provider_right = providers[i * 2 + 1] if i * 2 + 1 < len(providers) else None
+            if provider_right:
+                btn_right = RoundedButton(row, text=provider_right, 
+                                        command=lambda p=provider_right: self._set_provider(p),
+                                        width=160, height=32,
+                                        bg=self.colors['button_bg'],
+                                        fg=self.colors['text_secondary'],
+                                        font=("Segoe UI", 9),
+                                        corner_radius=6)
+                btn_right.pack(side=tk.LEFT, padx=(4, 0), fill=tk.X, expand=True)
+
+            elif provider_left:
+                spacer = tk.Frame(row, bg=self.colors['bg_light'])
+                spacer.pack(side=tk.LEFT, padx=(4, 0), fill=tk.X, expand=True)
 
     def _create_settings_card(self, parent, title, options):
         card = tk.Frame(parent, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
@@ -564,10 +619,14 @@ class Pages:
         
         options_container = tk.Frame(inner, bg=self.colors['bg_light'])
         options_container.pack(fill=tk.X)
+
+        options_container.config(cursor="")
         
         for i in range(0, len(options), 2):
             row = tk.Frame(options_container, bg=self.colors['bg_light'])
             row.pack(fill=tk.X, pady=2)
+
+            row.config(cursor="")
             
             opt1_text, opt1_cmd = options[i]
             if opt1_cmd:
@@ -581,7 +640,7 @@ class Pages:
             else:
                 btn1 = tk.Label(row, text=opt1_text, font=("Segoe UI", 9),
                             bg=self.colors['button_bg'], fg=self.colors['text_secondary'],
-                            padx=10, pady=8, relief=tk.FLAT)
+                            padx=10, pady=8, relief=tk.FLAT, cursor="")
                 btn1.pack(side=tk.LEFT, padx=(0, 4), fill=tk.X, expand=True)
             
             if i + 1 < len(options):
@@ -597,74 +656,59 @@ class Pages:
                 else:
                     btn2 = tk.Label(row, text=opt2_text, font=("Segoe UI", 9),
                                 bg=self.colors['button_bg'], fg=self.colors['text_secondary'],
-                                padx=10, pady=8, relief=tk.FLAT)
+                                padx=10, pady=8, relief=tk.FLAT, cursor="")
                     btn2.pack(side=tk.LEFT, padx=(4, 0), fill=tk.X, expand=True)
             else:
                 spacer = tk.Frame(row, bg=self.colors['bg_light'])
-                spacer.pack(side=tk.LEFT, padx=(4, 0), fill=tk.X, expand=True)
+                spacer.config(cursor="")
+
+    def _set_provider(self, provider):
+        if provider == self.app.current_provider:
+            return
+        
+        self.app.current_provider = provider
+        self.app.provider_var.set(provider)
+        self.app.byedpi.set_provider(provider)
+        self.app.save_settings()
+        
+        if hasattr(self, 'current_provider_label'):
+            self.current_provider_label.config(text=f"Провайдер ByeDPI: {provider}")
+        
+        if self.app.byedpi_enabled:
+            self.app.byedpi.stop()
+            time.sleep(0.5)
+            success, msg = self.app.byedpi.start()
+            if not success:
+                self.app.log_to_diagnostic(f"Ошибка перезапуска ByeDPI с провайдером {provider}: {msg}")
+                self.app.byedpi_enabled = False
+                self.app.byedpi_var.set(False)
+            else:
+                self.app.log_to_diagnostic(f"Провайдер ByeDPI изменен на: {provider}")
+        
+        self._update_provider_buttons_highlight(provider)
+        
+        self.app.show_notification(f"Провайдер ByeDPI: {provider}")
+
+    def _update_provider_buttons_highlight(self, selected_provider, parent=None):
+        if parent is None:
+            parent = self.settings_page
+        
+        for widget in parent.winfo_children():
+            if isinstance(widget, tk.Frame):
+                for child in widget.winfo_children():
+                    if isinstance(child, tk.Frame):
+                        for btn in child.winfo_children():
+                            if hasattr(btn, 'get_text') and btn.get_text() in self.app.PROVIDER_PARAMS:
+                                if btn.get_text() == selected_provider:
+                                    btn.update_colors(self.colors['accent'], self.colors['text_primary'], self.colors['accent_hover'])
+                                else:
+                                    btn.update_colors(self.colors['button_bg'], self.colors['text_secondary'], self.colors['button_bg'])
 
     def _set_update_interval_0(self):
         self.app.update_interval_index = 0
         self.app.update_interval = self.app.update_intervals[0]
         self._update_interval_ui()
         self.app.save_settings()
-        self.app.save_interval_setting()
-        self.app.stop_stats_monitoring()
-        self.app.start_stats_monitoring()
-        if self.app.pages.current_page == "traffic":
-            self.app.update_traffic_table()
-
-        if hasattr(self.app, '_traffic_update_timer') and self.app._traffic_update_timer:
-            try:
-                self.app.root.after_cancel(self.app._traffic_update_timer)
-            except:
-                pass
-        if self.app.pages.current_page == "traffic":
-            self.app.update_traffic_table()
-        self.app.show_notification("Обновление интерфейса: быстро")
-
-    def _set_update_interval_5(self):
-        self.app.update_interval_index = 1
-        self.app.update_interval = self.app.update_intervals[1]
-        self._update_interval_ui()
-        self.app.save_settings()
-        self.app.save_interval_setting()
-        self.app.stop_stats_monitoring()
-        self.app.start_stats_monitoring()
-
-        if hasattr(self.app, '_traffic_update_timer') and self.app._traffic_update_timer:
-            try:
-                self.app.root.after_cancel(self.app._traffic_update_timer)
-            except:
-                pass
-        if self.app.pages.current_page == "traffic":
-            self.app.update_traffic_table()
-        self.app.show_notification("Обновление интерфейса: 5 секунд")
-
-    def _set_update_interval_10(self):
-        self.app.update_interval_index = 2
-        self.app.update_interval = self.app.update_intervals[2]
-        self._update_interval_ui()
-        self.app.save_settings()
-        self.app.save_interval_setting()
-        self.app.stop_stats_monitoring()
-        self.app.start_stats_monitoring()
-
-        if hasattr(self.app, '_traffic_update_timer') and self.app._traffic_update_timer:
-            try:
-                self.app.root.after_cancel(self.app._traffic_update_timer)
-            except:
-                pass
-        if self.app.pages.current_page == "traffic":
-            self.app.update_traffic_table()
-        self.app.show_notification("Обновление интерфейса: 10 секунд")
-
-    def _set_update_interval_30(self):
-        self.app.update_interval_index = 3
-        self.app.update_interval = self.app.update_intervals[3]
-        self._update_interval_ui()
-        self.app.save_settings()
-        self.app.save_interval_setting()
         self.app.stop_stats_monitoring()
         self.app.start_stats_monitoring()
         
@@ -673,8 +717,71 @@ class Pages:
                 self.app.root.after_cancel(self.app._traffic_update_timer)
             except:
                 pass
+            self.app._traffic_update_timer = None
+        
         if self.app.pages.current_page == "traffic":
             self.app.update_traffic_table()
+        
+        self.app.show_notification("Обновление интерфейса: быстро")
+
+    def _set_update_interval_5(self):
+        self.app.update_interval_index = 1
+        self.app.update_interval = self.app.update_intervals[1]
+        self._update_interval_ui()
+        self.app.save_settings()
+        self.app.stop_stats_monitoring()
+        self.app.start_stats_monitoring()
+        
+        if hasattr(self.app, '_traffic_update_timer') and self.app._traffic_update_timer:
+            try:
+                self.app.root.after_cancel(self.app._traffic_update_timer)
+            except:
+                pass
+            self.app._traffic_update_timer = None
+        
+        if self.app.pages.current_page == "traffic":
+            self.app.update_traffic_table()
+        
+        self.app.show_notification("Обновление интерфейса: 5 секунд")
+
+    def _set_update_interval_10(self):
+        self.app.update_interval_index = 2
+        self.app.update_interval = self.app.update_intervals[2]
+        self._update_interval_ui()
+        self.app.save_settings()
+        self.app.stop_stats_monitoring()
+        self.app.start_stats_monitoring()
+        
+        if hasattr(self.app, '_traffic_update_timer') and self.app._traffic_update_timer:
+            try:
+                self.app.root.after_cancel(self.app._traffic_update_timer)
+            except:
+                pass
+            self.app._traffic_update_timer = None
+        
+        if self.app.pages.current_page == "traffic":
+            self.app.update_traffic_table()
+        
+        self.app.show_notification("Обновление интерфейса: 10 секунд")
+
+    def _set_update_interval_30(self):
+        self.app.update_interval_index = 3
+        self.app.update_interval = self.app.update_intervals[3]
+        self._update_interval_ui()
+        self.app.save_settings()
+        self.app.stop_stats_monitoring()
+        self.app.start_stats_monitoring()
+        
+        if hasattr(self.app, '_traffic_update_timer') and self.app._traffic_update_timer:
+            try:
+                self.app.root.after_cancel(self.app._traffic_update_timer)
+            except:
+                pass
+            self.app._traffic_update_timer = None
+        
+        if self.app.pages.current_page == "traffic":
+            self.app.update_traffic_table()
+        
         self.app.show_notification("Обновление интерфейса: 30 секунд")
 
     def _set_update_interval_60(self):
@@ -682,17 +789,19 @@ class Pages:
         self.app.update_interval = self.app.update_intervals[4]
         self._update_interval_ui()
         self.app.save_settings()
-        self.app.save_interval_setting()
         self.app.stop_stats_monitoring()
         self.app.start_stats_monitoring()
-
+        
         if hasattr(self.app, '_traffic_update_timer') and self.app._traffic_update_timer:
             try:
                 self.app.root.after_cancel(self.app._traffic_update_timer)
             except:
                 pass
+            self.app._traffic_update_timer = None
+        
         if self.app.pages.current_page == "traffic":
             self.app.update_traffic_table()
+        
         self.app.show_notification("Обновление интерфейса: 60 секунд")
 
     def _set_update_interval_none(self):
@@ -709,7 +818,7 @@ class Pages:
             except:
                 pass
             self.app._traffic_update_timer = None
-        
+
         if self.app.pages.current_page == "traffic":
             for item in self.app.pages.traffic_tree.get_children():
                 self.app.pages.traffic_tree.delete(item)
@@ -717,14 +826,6 @@ class Pages:
         self.app.show_notification("Обновление интерфейса: отключено")
 
     def _update_interval_ui(self):
-        if hasattr(self.app, 'interval_label'):
-            if self.app.update_interval == 0:
-                self.app.interval_label.config(text="Обновление: моментально")
-            elif self.app.update_interval is None:
-                self.app.interval_label.config(text="Обновление: отключено")
-            else:
-                self.app.interval_label.config(text=f"Обновление: каждые {self.app.update_interval} сек")
-        
         if hasattr(self, 'current_interval_label'):
             self.current_interval_label.config(
                 text=f"Обновление интерфейса: {self._get_current_interval_text()}"
