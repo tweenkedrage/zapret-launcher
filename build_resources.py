@@ -102,8 +102,7 @@ try:
         print(f"Путь: {os.path.abspath(ZIP_FILENAME)}")
     else:
         print("Ошибка: файл не создан")
-
+        
 except Exception as e:
     print(f"Ошибка: {e}")
-
 input("Нажми Enter для выхода...")
