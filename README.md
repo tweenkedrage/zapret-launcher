@@ -38,4 +38,4 @@
 - Windows 10 (64-bit) / Windows 11;
 - 2gb RAM.
 
-***by trennylenc (trimansberg)***
+***by trennylenc (a.k.a. trimansberg)***
