@@ -90,7 +90,6 @@ def find_best_dns() -> Tuple[str, str, float, str]:
     
     results.sort(key=lambda x: x["latency"])
     best = results[0]
-    
     return best["primary"], best["secondary"], best["latency"], best["name"]
 
 def set_dns_windows(primary: str, secondary: str) -> Tuple[bool, str]:
@@ -124,9 +123,7 @@ def set_dns_windows(primary: str, secondary: str) -> Tuple[bool, str]:
         
         if success_count == 0:
             return False, "Не удалось установить DNS ни на один адаптер"
-        
         return True, f"DNS установлен на {success_count} адаптер(ов)"
-        
     except Exception as e:
         return False, f"Ошибка: {str(e)}"
 
@@ -138,7 +135,6 @@ def flush_dns_cache() -> Tuple[bool, str]:
             subprocess.run(['dnscmd', '/clearcache'], capture_output=True, check=True)
         except:
             pass
-        
         return True, "DNS кеш очищен"
     except Exception as e:
         return False, f"Ошибка очистки DNS: {str(e)}"
@@ -188,7 +184,6 @@ def optimize_network_latency() -> Tuple[bool, str]:
     result_msg = "Оптимизация выполнена:\n" + "\n".join(changes)
     if errors:
         result_msg += f"\n\nОшибки:\n" + "\n".join(errors)
-    
     return True, result_msg
 
 def restore_network_defaults() -> Tuple[bool, str]:
@@ -231,7 +226,6 @@ def restore_network_defaults() -> Tuple[bool, str]:
                 continue
     except:
         pass
-    
     return True, f"Стандартные настройки восстановлены:\n" + "\n".join(changes[:10])
 
 def set_dns_manual(primary: str, secondary: str, adapter_name: str) -> Tuple[bool, str]:
