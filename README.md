@@ -37,3 +37,5 @@
 ***Системные требования:***
 - Windows 10 (64-bit) / Windows 11;
 - 2gb RAM.
+
+***by trennylenc (trimansberg)***
