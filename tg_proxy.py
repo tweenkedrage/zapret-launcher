@@ -916,7 +916,6 @@ async def _pipe(r: asyncio.StreamReader, w: asyncio.StreamWriter):
                 w.write(data)
                 await w.drain()
             except (ConnectionResetError, BrokenPipeError, OSError):
-                # Игнорируем ошибки при передаче данных
                 break
             except asyncio.CancelledError:
                 raise
@@ -1024,7 +1023,6 @@ async def _handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWri
                             except TimeoutError:
                                 pass
                             except ConnectionResetError:
-                                # Игнорируем ошибки сброса соединения
                                 pass
                             except Exception as e:
                                 log.debug(f"Error in _handle_client: {e}")
@@ -1033,7 +1031,6 @@ async def _handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWri
                                     writer.close()
                                     await writer.wait_closed()
                                 except (ConnectionResetError, OSError, asyncio.CancelledError):
-                                    # Игнорируем ошибки при закрытии
                                     pass
                                 except Exception:
                                     pass
