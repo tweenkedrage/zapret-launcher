@@ -5,6 +5,7 @@ import socket
 import json
 from pathlib import Path
 import sys
+import re
 from typing import Optional, Tuple
 
 class ByeDPIOptimizer:
@@ -169,6 +170,10 @@ class ByeDPIOptimizer:
         return False
     
     def start(self) -> Tuple[bool, str]:
+        ok, msg = self.check_binary()
+        if not ok:
+            return False, msg
+        
         self._kill_process_on_port(10801)
         time.sleep(0.5)
         
@@ -183,13 +188,9 @@ class ByeDPIOptimizer:
             return False, f"Файл не существует: {binary}"
 
         try:
-            self._kill_process_on_port(10801)
-            time.sleep(0.5)
-            
             args = [str(binary)] + self.rostel_params
             
             print(f"Запуск ByeDPI: {' '.join(args)}")
-            
             self.process = subprocess.Popen(
                 args,
                 creationflags=subprocess.CREATE_NO_WINDOW,
@@ -197,28 +198,29 @@ class ByeDPIOptimizer:
                 stderr=subprocess.DEVNULL
             )
             
-            for attempt in range(15):
+            for attempt in range(30):
                 time.sleep(0.3)
                 
                 if self.process.poll() is not None:
+                    returncode = self.process.returncode
+                    if returncode != 0:
+                        return False, f"Процесс завершился с кодом {returncode}. Проверьте параметры: {' '.join(self.rostel_params)}"
                     return False, "Процесс завершился сразу после запуска"
                 
                 if self._is_port_open(10801):
                     self.is_running = True
                     return True, "ByeDPI запущен"
                 
-                if attempt == 5:
+                if attempt == 10:
                     print("Ожидание открытия порта 10801...")
-                elif attempt == 10:
-                    if self.process.poll() is not None:
-                        return False, f"Процесс завершился с кодом {self.process.returncode}"
+                elif attempt == 20:
+                    print("ByeDPI всё ещё запускается...")
             
             if self.process.poll() is None:
                 self.stop()
-                return False, f"Порт 10801 не открылся. Проверьте параметры: {' '.join(self.rostel_params)}"
+                return False, f"Порт 10801 не открылся за 9 секунд. Проверьте параметры: {' '.join(self.rostel_params)}"
             
-            return False, "Неизвестная ошибка при запуске"
-                                
+            return False, "Неизвестная ошибка при запуске"                 
         except FileNotFoundError:
             return False, f"Файл не найден: {binary}"
         except Exception as e:
@@ -253,6 +255,24 @@ class ByeDPIOptimizer:
         self.stop()
         time.sleep(1)
         return self.start()
+    
+    def check_binary(self) -> Tuple[bool, str]:
+        binary = self.get_binary_path()
+        if not binary:
+            return False, "ByeDPI не найден"
+        
+        if not binary.exists():
+            return False, f"Файл не существует: {binary}"
+        
+        try:
+            result = subprocess.run(
+                [str(binary), "--help"],
+                capture_output=True,
+                timeout=3
+            )
+            return True, "Бинарник работает"
+        except Exception as e:
+            return False, f"Бинарник не отвечает: {e}"
 
     def get_status(self) -> dict:
         binary_exists = self.get_binary_path() is not None
@@ -287,7 +307,6 @@ class ByeDPIOptimizer:
             output = result.stdout or result.stderr
             for line in output.split('\n'):
                 if 'version' in line.lower():
-                    import re
                     match = re.search(r'(\d+\.\d+)', line)
                     if match:
                         return match.group(1)
