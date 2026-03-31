@@ -19,6 +19,7 @@ from tg_proxy import _run
 import subprocess
 import os
 import json
+import gc
 import time
 import threading
 import psutil
@@ -485,20 +486,15 @@ class TGProxyServer:
             return
         
         try:
-            # Останавливаем event loop
             if self._stop_event:
                 try:
                     self._stop_event.set()
                 except:
                     pass
-            
-            # Даем время на завершение
             time.sleep(0.5)
             
-            # Останавливаем loop с игнорированием ошибок
             if self._loop and not self._loop.is_closed():
                 try:
-                    # Отменяем все задачи
                     def cancel_all():
                         try:
                             tasks = asyncio.all_tasks(self._loop)
@@ -506,7 +502,6 @@ class TGProxyServer:
                                 if not task.done():
                                     task.cancel()
                             
-                            # Ждем завершения с игнорированием ошибок
                             if tasks:
                                 self._loop.run_until_complete(
                                     asyncio.gather(*tasks, return_exceptions=True)
@@ -522,7 +517,6 @@ class TGProxyServer:
                     self._loop.call_soon_threadsafe(cancel_all)
                     time.sleep(0.5)
                     
-                    # Закрываем loop
                     def close_loop():
                         try:
                             if not self._loop.is_closed():
@@ -538,11 +532,9 @@ class TGProxyServer:
                 finally:
                     self._loop = None
             
-            # Ждем завершения потока
             if self._thread and self._thread.is_alive():
                 self._thread.join(timeout=2)
             
-            # Убиваем процесс на порту
             try:
                 self._kill_process_on_port(1080)
             except:
@@ -953,7 +945,6 @@ class ZapretLauncher:
 
     def on_closing(self):
         try:
-            # Останавливаем все компоненты
             try:
                 self.zapret.stop_current_strategy()
             except:
@@ -973,14 +964,12 @@ class ZapretLauncher:
             
             time.sleep(1)
             
-            # Принудительно убиваем процессы
             try:
                 subprocess.run('taskkill /F /IM winws.exe', shell=True, capture_output=True)
                 subprocess.run('taskkill /F /IM python.exe', shell=True, capture_output=True)
             except:
                 pass
             
-            # Убиваем процессы на портах
             for port in [1080, 10801]:
                 try:
                     result = subprocess.run(
@@ -1867,8 +1856,6 @@ class ZapretLauncher:
             notification.overrideredirect(True)
             notification.configure(bg=self.colors['bg_medium'])
             notification.transient(self.root)
-            
-            # Сохраняем ссылку на уведомление
             notification._is_alive = True
             
             def on_iconify():
@@ -1885,7 +1872,6 @@ class ZapretLauncher:
                     except:
                         pass
             
-            # Удаляем старые привязки, чтобы не накапливались
             for binding in self.root.bindtags():
                 if '<Map>' in binding or '<Unmap>' in binding:
                     pass
@@ -2803,26 +2789,21 @@ class ZapretLauncher:
         self.update_status("Отключение...", self.colors['accent'])
         self.connect_btn.set_enabled(False)
         self.root.update()
-        
-        # Останавливаем мониторинг RTT
         self.stop_rtt_monitoring()
         
         def stop_all():
             try:
-                # Останавливаем Zapret
                 try:
                     self.zapret.stop_current_strategy()
                 except Exception as e:
                     print(f"Zapret stop error: {e}")
                 
-                # Останавливаем TG Proxy
                 try:
                     if hasattr(self, 'tg_proxy') and self.tg_proxy:
                         self.tg_proxy.stop()
                 except Exception as e:
                     print(f"TGProxy stop error: {e}")
                 
-                # Останавливаем ByeDPI
                 try:
                     if self.byedpi_enabled:
                         self.byedpi.stop()
@@ -2831,19 +2812,13 @@ class ZapretLauncher:
                 except Exception as e:
                     print(f"ByeDPI stop error: {e}")
                 
-                # Даем время на завершение
                 time.sleep(1.5)
                 
-                # Принудительно убиваем все связанные процессы
                 try:
-                    # Убиваем все winws.exe
                     subprocess.run('taskkill /F /IM winws.exe', shell=True, capture_output=True)
-                    # Убиваем все python процессы (осторожно, может убить другие экземпляры)
-                    # subprocess.run('taskkill /F /IM python.exe', shell=True, capture_output=True)
                 except:
                     pass
                 
-                # Убиваем процессы на портах
                 for port in [1080, 10801]:
                     try:
                         result = subprocess.run(
@@ -2862,26 +2837,21 @@ class ZapretLauncher:
                     except:
                         pass
                 
-                # Останавливаем WinDivert
                 try:
                     self._stop_windivert_service()
                 except Exception as e:
                     print(f"WinDivert stop error: {e}")
                 
-                # Завершаем сессию статистики
                 try:
                     self.stats.end_session()
                 except:
                     pass
                 
-                # Обновляем UI в главном потоке
                 self.root.after(0, self.finish_disconnect)
                 
             except Exception as e:
                 print(f"Error in stop_all: {e}")
                 self.root.after(0, self.finish_disconnect)
-        
-        # Запускаем в отдельном потоке
         threading.Thread(target=stop_all, daemon=True).start()
 
     def finish_disconnect(self):
@@ -2897,7 +2867,6 @@ class ZapretLauncher:
             self.update_ui_state()
             self.connect_btn.set_enabled(True)
             
-            # Очищаем таймеры
             if hasattr(self, '_traffic_update_timer') and self._traffic_update_timer:
                 try:
                     self.root.after_cancel(self._traffic_update_timer)
@@ -2912,7 +2881,6 @@ class ZapretLauncher:
                     pass
                 self.rtt_timer_id = None
             
-            # Очищаем кэши
             self.traffic_history = {}
             self.traffic_history_vpn = {}
             self.traffic_history_direct = {}
@@ -2921,9 +2889,6 @@ class ZapretLauncher:
             self.traffic_speed_direct_history = {}
             self.hostname_cache = {}
             self.hostname_cache_time = {}
-            
-            # Принудительный сбор мусора несколько раз
-            import gc
             for _ in range(3):
                 gc.collect()
             
