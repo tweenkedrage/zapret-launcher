@@ -9,25 +9,52 @@ import ssl
 import struct
 import sys
 import time
+import json
+from datetime import datetime
 from collections import deque
 from typing import Dict, List, Optional, Set, Tuple
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 DEFAULT_PORT = 1080
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+class JSONFormatter(logging.Formatter):
+    def format(self, record):
+        log_entry = {
+            "timestamp": datetime.now().isoformat(),
+            "level": record.levelname,
+            "name": record.name,
+            "message": record.getMessage(),
+        }
+        if hasattr(record, 'extra'):
+            log_entry.update(record.extra)
+        return json.dumps(log_entry, ensure_ascii=False)
+
 log = logging.getLogger('tg-ws-proxy')
+log.setLevel(logging.INFO)
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(JSONFormatter())
+log.addHandler(console_handler)
 
 _TCP_NODELAY = True
-_RECV_BUF = 262144
-_SEND_BUF = 262144
-_WS_POOL_SIZE = 16
-_WS_POOL_MAX_AGE = 180.0
-_MAX_MSG_SIZE = 1024 * 1024
+_RECV_BUF = 524288
+_SEND_BUF = 524288
+_WS_POOL_SIZE = 32
+_WS_POOL_MAX_AGE = 600.0
+_MAX_MSG_SIZE = 5 * 1024 * 1024
 _HEARTBEAT_INTERVAL = 30.0
-_CONNECTION_TIMEOUT = 30.0
-_MAX_RETRIES = 3
+_CONNECTION_TIMEOUT = 90.0
+_MAX_RETRIES = 5
 _RETRY_DELAY = 1.0
-_DC_FAIL_COOLDOWN = 15.0
+_DC_FAIL_COOLDOWN = 30.0
+_MAX_CONNECTIONS = 300
+_SOCKET_BUFFER_MULTIPLIER = 2
+_WS_KEEPALIVE_INTERVAL = 25.0
+_MAX_RECONNECT_ATTEMPTS = 5
+_RECONNECT_DELAY = 2.0
+
+_connection_semaphore = asyncio.Semaphore(_MAX_CONNECTIONS)
+_telegram_ip_cache: Dict[str, bool] = {}
+_CACHE_MAX_SIZE = 1000
 
 _TG_RANGES = [
     (struct.unpack('!I', _socket.inet_aton('185.76.151.0'))[0],
@@ -46,6 +73,7 @@ _IP_TO_DC: Dict[str, Tuple[int, bool]] = {
     '149.154.175.52': (1, True),
     '149.154.167.41': (2, False), '149.154.167.50': (2, False),
     '149.154.167.51': (2, False), '149.154.167.220': (2, False),
+    'web.telegram.org': (2, False),
     '95.161.76.100':  (2, False),
     '149.154.167.151': (2, True), '149.154.167.222': (2, True),
     '149.154.167.223': (2, True), '149.154.162.123': (2, True),
@@ -70,6 +98,20 @@ FULL_DC_OPT = {
     5: ['91.108.56.100', '91.108.56.102', '91.108.56.126', '91.108.56.101', '91.108.56.116', '149.154.171.5'],
 }
 
+_TELEGRAM_WEB_DOMAINS = [
+    'web.telegram.org',
+    'webk.telegram.org',
+    'web.telegram.org/z',
+    'web.telegram.org/k',
+    'web.telegram.org/a'
+]
+
+_TELEGRAM_WEB_PATHS = [
+    '/apiws',
+    '/apiwsp',
+    '/apiwss'
+]
+
 _dc_opt: Dict[int, Optional[str]] = {}
 _ws_blacklist: Set[Tuple[int, bool]] = set()
 _dc_fail_until: Dict[Tuple[int, bool], float] = {}
@@ -89,6 +131,12 @@ def is_port_available(host: str, port: int) -> bool:
     finally:
         sock.close()
 
+def _is_telegram_web_host(host: str) -> bool:
+    if not host:
+        return False
+    host_lower = host.lower()
+    return any(domain in host_lower for domain in _TELEGRAM_WEB_DOMAINS)
+
 def _set_sock_opts(transport):
     sock = transport.get_extra_info('socket')
     if sock is None:
@@ -102,7 +150,9 @@ def _set_sock_opts(transport):
         sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_RCVBUF, _RECV_BUF)
         sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_SNDBUF, _SEND_BUF)
         sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_KEEPALIVE, 1)
-    except OSError:
+        sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_KEEPALIVE, 1)
+        sock.ioctl(_socket.SIO_KEEPALIVE_VALS, (1, 30000, 5000))
+    except (OSError, AttributeError):
         pass
 
 class WsHandshakeError(Exception):
@@ -133,13 +183,19 @@ class RawWebSocket:
     OP_PING = 0x9
     OP_PONG = 0xA
 
+    __slots__ = ('reader', 'writer', '_closed', '_last_heartbeat', '_heartbeat_task', 
+                 '_keepalive_task', '_last_activity', '_reconnect_attempts')
+
     def __init__(self, reader: asyncio.StreamReader,
                  writer: asyncio.StreamWriter):
         self.reader = reader
         self.writer = writer
         self._closed = False
         self._last_heartbeat = time.monotonic()
+        self._last_activity = time.monotonic()
         self._heartbeat_task = None
+        self._keepalive_task = None
+        self._reconnect_attempts = 0
 
     async def _heartbeat(self):
         while not self._closed:
@@ -147,9 +203,31 @@ class RawWebSocket:
                 await asyncio.sleep(_HEARTBEAT_INTERVAL)
                 if self._closed:
                     break
-                if time.monotonic() - self._last_heartbeat > _HEARTBEAT_INTERVAL * 2:
+                
+                now = time.monotonic()
+                if now - self._last_activity > _HEARTBEAT_INTERVAL * 2:
+                    await self.ping()
+                    self._last_heartbeat = now
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                log.debug(f"Heartbeat error: {e}")
+                break
+
+    async def _keepalive(self):
+        while not self._closed:
+            try:
+                await asyncio.sleep(_WS_KEEPALIVE_INTERVAL)
+                if self._closed:
                     break
-                await self.ping()
+                
+                now = time.monotonic()
+                if now - self._last_heartbeat > _HEARTBEAT_INTERVAL * 3:
+                    log.debug("Keepalive timeout, closing connection")
+                    await self.close()
+                    break
+                    
             except asyncio.CancelledError:
                 break
             except Exception:
@@ -162,103 +240,129 @@ class RawWebSocket:
             frame = self._build_frame(self.OP_PING, b'', mask=True)
             self.writer.write(frame)
             await self.writer.drain()
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug(f"Ping error: {e}")
 
     @staticmethod
     async def connect(ip: str, domain: str, path: str = '/apiws',
-                      timeout: float = 8.0) -> 'RawWebSocket':
-        reader = writer = None
-        try:
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(ip, 443, ssl=_ssl_ctx,
-                                        server_hostname=domain,
-                                        limit=_RECV_BUF),
-                timeout=min(timeout, 8))
-            _set_sock_opts(writer.transport)
-
-            ws_key = base64.b64encode(os.urandom(16)).decode()
-            req = (
-                f'GET {path} HTTP/1.1\r\n'
-                f'Host: {domain}\r\n'
-                f'Upgrade: websocket\r\n'
-                f'Connection: Upgrade\r\n'
-                f'Sec-WebSocket-Key: {ws_key}\r\n'
-                f'Sec-WebSocket-Version: 13\r\n'
-                f'Sec-WebSocket-Protocol: binary\r\n'
-                f'Origin: https://web.telegram.org\r\n'
-                f'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                f'AppleWebKit/537.36 (KHTML, like Gecko) '
-                f'Chrome/131.0.0.0 Safari/537.36\r\n'
-                f'\r\n'
-            ).encode()
-            writer.write(req)
-            await writer.drain()
-
-            response_lines: list[str] = []
-            while True:
-                line = await asyncio.wait_for(reader.readline(), timeout=timeout)
-                if line in (b'\r\n', b'\n', b''):
-                    break
-                response_lines.append(line.decode('utf-8', errors='replace').strip())
-
-            if not response_lines:
-                raise WsHandshakeError(0, 'empty response')
-
-            first_line = response_lines[0]
-            parts = first_line.split(' ', 2)
+                      timeout: float = 10.0, is_web: bool = False) -> 'RawWebSocket':
+        last_error = None
+        
+        for attempt in range(_MAX_RECONNECT_ATTEMPTS):
+            reader = writer = None
             try:
-                status_code = int(parts[1]) if len(parts) >= 2 else 0
-            except ValueError:
-                status_code = 0
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(ip, 443, ssl=_ssl_ctx,
+                                            server_hostname=domain,
+                                            limit=_RECV_BUF),
+                    timeout=min(timeout, 10))
+                _set_sock_opts(writer.transport)
 
-            if status_code == 101:
-                ws = RawWebSocket(reader, writer)
-                ws._heartbeat_task = asyncio.create_task(ws._heartbeat())
-                return ws
+                ws_key = base64.b64encode(os.urandom(16)).decode()
+                
+                user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+                origin = 'https://web.telegram.org'
+                
+                req = (
+                    f'GET {path} HTTP/1.1\r\n'
+                    f'Host: {domain}\r\n'
+                    f'Upgrade: websocket\r\n'
+                    f'Connection: Upgrade\r\n'
+                    f'Sec-WebSocket-Key: {ws_key}\r\n'
+                    f'Sec-WebSocket-Version: 13\r\n'
+                    f'Sec-WebSocket-Protocol: binary\r\n'
+                    f'Origin: {origin}\r\n'
+                    f'User-Agent: {user_agent}\r\n'
+                    f'\r\n'
+                ).encode()
+                writer.write(req)
+                await writer.drain()
 
-            headers: dict[str, str] = {}
-            for hl in response_lines[1:]:
-                if ':' in hl:
-                    k, v = hl.split(':', 1)
-                    headers[k.strip().lower()] = v.strip()
+                response_lines: list[str] = []
+                while True:
+                    line = await asyncio.wait_for(reader.readline(), timeout=timeout)
+                    if line in (b'\r\n', b'\n', b''):
+                        break
+                    response_lines.append(line.decode('utf-8', errors='replace').strip())
 
-            raise WsHandshakeError(status_code, first_line, headers,
-                                    location=headers.get('location'))
-        except Exception:
-            if writer:
+                if not response_lines:
+                    raise WsHandshakeError(0, 'empty response')
+
+                first_line = response_lines[0]
+                parts = first_line.split(' ', 2)
                 try:
-                    writer.close()
-                    await writer.wait_closed()
-                except:
-                    pass
-            raise
+                    status_code = int(parts[1]) if len(parts) >= 2 else 0
+                except ValueError:
+                    status_code = 0
+
+                if status_code == 101:
+                    ws = RawWebSocket(reader, writer)
+                    ws._heartbeat_task = asyncio.create_task(ws._heartbeat())
+                    ws._keepalive_task = asyncio.create_task(ws._keepalive())
+                    log.debug(f"WebSocket connected to {domain}:{path}")
+                    return ws
+
+                headers: dict[str, str] = {}
+                for hl in response_lines[1:]:
+                    if ':' in hl:
+                        k, v = hl.split(':', 1)
+                        headers[k.strip().lower()] = v.strip()
+
+                raise WsHandshakeError(status_code, first_line, headers,
+                                        location=headers.get('location'))
+                                        
+            except Exception as e:
+                last_error = e
+                if writer:
+                    try:
+                        writer.close()
+                        await writer.wait_closed()
+                    except:
+                        pass
+                
+                if attempt < _MAX_RECONNECT_ATTEMPTS - 1:
+                    await asyncio.sleep(_RECONNECT_DELAY)
+                    continue
+                    
+        raise last_error or ConnectionError("Failed to connect after retries")
 
     async def send(self, data: bytes):
         if self._closed:
             raise ConnectionError("WebSocket closed")
-        frame = self._build_frame(self.OP_BINARY, data, mask=True)
-        self.writer.write(frame)
-        await self.writer.drain()
+        try:
+            frame = self._build_frame(self.OP_BINARY, data, mask=True)
+            self.writer.write(frame)
+            await self.writer.drain()
+            self._last_activity = time.monotonic()
+        except Exception as e:
+            log.debug(f"Send error: {e}")
+            self._closed = True
+            raise
 
     async def send_batch(self, parts: List[bytes]):
         if self._closed:
             raise ConnectionError("WebSocket closed")
-        frames = bytearray()
-        for part in parts:
-            frames.extend(self._build_frame(self.OP_BINARY, part, mask=True))
-        self.writer.write(frames)
-        await self.writer.drain()
+        try:
+            frames = bytearray()
+            for part in parts:
+                frames.extend(self._build_frame(self.OP_BINARY, part, mask=True))
+            self.writer.write(frames)
+            await self.writer.drain()
+            self._last_activity = time.monotonic()
+        except Exception as e:
+            log.debug(f"Send batch error: {e}")
+            self._closed = True
+            raise
 
     async def recv(self) -> Optional[bytes]:
         while not self._closed:
             try:
-                opcode, payload = await asyncio.wait_for(
-                    self._read_frame(), timeout=10.0)
+                async with asyncio.timeout(15.0):
+                    opcode, payload = await self._read_frame()
+                self._last_activity = time.monotonic()
                 self._last_heartbeat = time.monotonic()
-            except asyncio.TimeoutError:
-                self._closed = True
-                return None
+            except TimeoutError:
+                continue
             except ConnectionError:
                 self._closed = True
                 return None
@@ -293,17 +397,21 @@ class RawWebSocket:
         if self._closed:
             return
         self._closed = True
-        if self._heartbeat_task and not self._heartbeat_task.done():
-            self._heartbeat_task.cancel()
-            try:
-                await self._heartbeat_task
-            except:
-                pass
+        
+        for task in [self._heartbeat_task, self._keepalive_task]:
+            if task and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except:
+                    pass
+        
         try:
             self.writer.write(self._build_frame(self.OP_CLOSE, b'', mask=True))
             await self.writer.drain()
         except Exception:
             pass
+        
         try:
             self.writer.close()
             await self.writer.wait_closed()
@@ -363,17 +471,29 @@ def _human_bytes(n: int) -> str:
     return f"{n:.1f}TB"
 
 def _is_telegram_ip(ip: str) -> bool:
+    if ip in _telegram_ip_cache:
+        return _telegram_ip_cache[ip]
+    
     try:
         n = struct.unpack('!I', _socket.inet_aton(ip))[0]
-        return any(lo <= n <= hi for lo, hi in _TG_RANGES)
+        result = any(lo <= n <= hi for lo, hi in _TG_RANGES)
+        
+        if len(_telegram_ip_cache) >= _CACHE_MAX_SIZE:
+            _telegram_ip_cache.pop(next(iter(_telegram_ip_cache)))
+        _telegram_ip_cache[ip] = result
+        return result
     except OSError:
         return False
 
 def _is_http_transport(data: bytes) -> bool:
-    http_methods = [b'POST ', b'GET ', b'HEAD ', b'OPTIONS ', b'PUT ', b'DELETE ']
-    if any(data.startswith(m) for m in http_methods):
-        if b'Upgrade: websocket' not in data:
-            return True
+    if len(data) < 4:
+        return False
+    if data[0:4] == b'POST' or data[0:3] == b'GET' or data[0:4] == b'HEAD':
+        if b'Upgrade: websocket' in data or b'Upgrade: WebSocket' in data:
+            return False
+        if b'web.telegram.org' in data or b'webk.telegram.org' in data:
+            return False
+        return True
     return False
 
 def _dc_from_init(data: bytes) -> Tuple[Optional[int], bool]:
@@ -415,6 +535,8 @@ def _patch_init_dc(data: bytes, dc: int) -> bytes:
         return data
 
 class _MsgSplitter:
+    __slots__ = ('_dec',)
+    
     def __init__(self, init_data: bytes):
         key_raw = bytes(init_data[8:40])
         iv = bytes(init_data[40:56])
@@ -426,10 +548,11 @@ class _MsgSplitter:
         plain = self._dec.update(chunk)
         boundaries = []
         pos = 0
-        while pos < len(plain):
+        plain_len = len(plain)
+        while pos < plain_len:
             first = plain[pos]
             if first == 0x7f:
-                if pos + 4 > len(plain):
+                if pos + 4 > plain_len:
                     break
                 msg_len = (struct.unpack_from('<I', plain, pos + 1)[0] & 0xFFFFFF) * 4
                 if msg_len > _MAX_MSG_SIZE:
@@ -438,7 +561,7 @@ class _MsgSplitter:
             else:
                 msg_len = first * 4
                 pos += 1
-            if msg_len == 0 or pos + msg_len > len(plain):
+            if msg_len == 0 or pos + msg_len > plain_len:
                 break
             pos += msg_len
             boundaries.append(pos)
@@ -453,12 +576,24 @@ class _MsgSplitter:
             parts.append(chunk[prev:])
         return parts
 
-def _ws_domains(dc: int, is_media: Optional[bool]) -> List[str]:
+def _ws_domains(dc: int, is_media: Optional[bool], is_web: bool = False) -> List[str]:
+    if is_web:
+        return [
+            'web.telegram.org',
+            'webk.telegram.org',
+            'web.telegram.org/z',
+            'web.telegram.org/k'
+        ]
     if is_media is None or is_media:
         return [f'kws{dc}-1.web.telegram.org', f'kws{dc}.web.telegram.org', f'kws{dc}-2.web.telegram.org']
     return [f'kws{dc}.web.telegram.org', f'kws{dc}-1.web.telegram.org', f'kws{dc}-2.web.telegram.org']
 
 class Stats:
+    __slots__ = ('connections_total', 'connections_ws', 'connections_tcp_fallback',
+                 'connections_http_rejected', 'connections_passthrough', 'ws_errors',
+                 'bytes_up', 'bytes_down', 'pool_hits', 'pool_misses', 'active_connections', 
+                 'start_time', 'reconnections')
+
     def __init__(self):
         self.connections_total = 0
         self.connections_ws = 0
@@ -471,6 +606,7 @@ class Stats:
         self.pool_hits = 0
         self.pool_misses = 0
         self.active_connections = 0
+        self.reconnections = 0
         self.start_time = time.time()
 
     def summary(self) -> str:
@@ -487,12 +623,15 @@ class Stats:
                 f"err={self.ws_errors} "
                 f"active={self.active_connections} "
                 f"pool={pool_rate} "
+                f"reconn={self.reconnections} "
                 f"up={_human_bytes(self.bytes_up)} "
                 f"down={_human_bytes(self.bytes_down)}")
 
 _stats = Stats()
 
 class _WsPool:
+    __slots__ = ('_idle', '_refilling', '_lock')
+    
     def __init__(self):
         self._idle: Dict[Tuple[int, bool], deque] = {}
         self._refilling: Set[Tuple[int, bool]] = set()
@@ -553,17 +692,17 @@ class _WsPool:
             self._refilling.discard(key)
 
     @staticmethod
-    async def _connect_one(target_ip: str, domains: List[str]) -> Optional[RawWebSocket]:
+    async def _connect_one(target_ip: str, domains: List[str], is_web: bool = False) -> Optional[RawWebSocket]:
         for domain in domains:
             try:
-                ws = await RawWebSocket.connect(target_ip, domain, timeout=5)
-                return ws
-            except WsHandshakeError as exc:
-                if exc.is_redirect:
-                    continue
-                return None
+                for path in _TELEGRAM_WEB_PATHS:
+                    try:
+                        ws = await RawWebSocket.connect(target_ip, domain, path=path, timeout=10, is_web=is_web)
+                        return ws
+                    except WsHandshakeError:
+                        continue
             except Exception:
-                return None
+                continue
         return None
 
     @staticmethod
@@ -600,16 +739,15 @@ async def _bridge_ws(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
                      splitter: Optional[_MsgSplitter] = None):
     
     _stats.active_connections += 1
-    tcp_to_ws_task = None
-    ws_to_tcp_task = None
     
     async def tcp_to_ws():
         try:
             while True:
                 try:
-                    chunk = await asyncio.wait_for(reader.read(_RECV_BUF), timeout=_CONNECTION_TIMEOUT)
-                except asyncio.TimeoutError:
-                    break
+                    async with asyncio.timeout(_CONNECTION_TIMEOUT):
+                        chunk = await reader.read(_RECV_BUF)
+                except TimeoutError:
+                    continue
                 if not chunk:
                     break
                 _stats.bytes_up += len(chunk)
@@ -621,7 +759,9 @@ async def _bridge_ws(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
                         await ws.send(parts[0])
                 else:
                     await ws.send(chunk)
-        except (asyncio.CancelledError, ConnectionError, OSError):
+        except asyncio.CancelledError:
+            raise
+        except (ConnectionError, OSError):
             pass
         except Exception as e:
             log.debug(f"tcp_to_ws error: {e}")
@@ -635,17 +775,19 @@ async def _bridge_ws(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
         try:
             while True:
                 try:
-                    data = await asyncio.wait_for(ws.recv(), timeout=_CONNECTION_TIMEOUT)
-                except asyncio.TimeoutError:
-                    break
+                    async with asyncio.timeout(_CONNECTION_TIMEOUT):
+                        data = await ws.recv()
+                except TimeoutError:
+                    continue
                 if data is None:
                     break
                 _stats.bytes_down += len(data)
                 writer.write(data)
-                buf = writer.transport.get_write_buffer_size()
-                if buf > _SEND_BUF // 2:
+                if writer.transport.get_write_buffer_size() > _SEND_BUF // 2:
                     await writer.drain()
-        except (asyncio.CancelledError, ConnectionError, OSError):
+        except asyncio.CancelledError:
+            raise
+        except (ConnectionError, OSError):
             pass
         except Exception as e:
             log.debug(f"ws_to_tcp error: {e}")
@@ -679,7 +821,6 @@ async def _bridge_ws(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
             tcp_to_ws_task.cancel()
         if ws_to_tcp_task and not ws_to_tcp_task.done():
             ws_to_tcp_task.cancel()
-        
         await asyncio.gather(tcp_to_ws_task, ws_to_tcp_task, return_exceptions=True)
         raise
         
@@ -688,8 +829,8 @@ async def _bridge_ws(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
             if task and not task.done():
                 task.cancel()
                 try:
-                    await asyncio.wait_for(task, timeout=1.0)
-                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    await asyncio.wait_for(task, timeout=0.5)
+                except (TimeoutError, asyncio.CancelledError):
                     pass
                 except Exception:
                     pass
@@ -718,9 +859,10 @@ async def _bridge_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
         try:
             while True:
                 try:
-                    data = await asyncio.wait_for(src.read(_RECV_BUF), timeout=_CONNECTION_TIMEOUT)
-                except asyncio.TimeoutError:
-                    break
+                    async with asyncio.timeout(_CONNECTION_TIMEOUT):
+                        data = await src.read(_RECV_BUF)
+                except TimeoutError:
+                    continue
                 if not data:
                     break
                 if 'up' in tag:
@@ -728,8 +870,11 @@ async def _bridge_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
                 else:
                     _stats.bytes_down += len(data)
                 dst_w.write(data)
-                await dst_w.drain()
+                if dst_w.transport.get_write_buffer_size() > _SEND_BUF // 2:
+                    await dst_w.drain()
         except asyncio.CancelledError:
+            raise
+        except Exception:
             pass
 
     tasks = [
@@ -759,7 +904,7 @@ async def _pipe(r: asyncio.StreamReader, w: asyncio.StreamWriter):
             w.write(data)
             await w.drain()
     except asyncio.CancelledError:
-        pass
+        raise
     finally:
         try:
             w.close()
@@ -792,173 +937,182 @@ async def _tcp_fallback(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
     return True
 
 async def _handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-    _stats.connections_total += 1
-    peer = writer.get_extra_info('peername')
-    label = f"{peer[0]}:{peer[1]}" if peer else "?"
+    async with _connection_semaphore:
+        _stats.connections_total += 1
+        peer = writer.get_extra_info('peername')
+        label = f"{peer[0]}:{peer[1]}" if peer else "?"
 
-    _set_sock_opts(writer.transport)
+        _set_sock_opts(writer.transport)
 
-    try:
-        hdr = await asyncio.wait_for(reader.readexactly(2), timeout=5)
-        if hdr[0] != 5:
-            return
-        nmethods = hdr[1]
-        await reader.readexactly(nmethods)
-        writer.write(b'\x05\x00')
-        await writer.drain()
-
-        req = await asyncio.wait_for(reader.readexactly(4), timeout=5)
-        _ver, cmd, _rsv, atyp = req
-        if cmd != 1:
-            writer.write(_socks5_reply(0x07))
+        try:
+            async with asyncio.timeout(5):
+                hdr = await reader.readexactly(2)
+            if hdr[0] != 5:
+                return
+            nmethods = hdr[1]
+            await reader.readexactly(nmethods)
+            writer.write(b'\x05\x00')
             await writer.drain()
-            return
 
-        if atyp == 1:
-            raw = await reader.readexactly(4)
-            dst = _socket.inet_ntoa(raw)
-        elif atyp == 3:
-            dlen = (await reader.readexactly(1))[0]
-            dst = (await reader.readexactly(dlen)).decode()
-        else:
-            writer.write(_socks5_reply(0x08))
-            await writer.drain()
-            return
-
-        port = struct.unpack('!H', await reader.readexactly(2))[0]
-
-        if not _is_telegram_ip(dst):
-            _stats.connections_passthrough += 1
-            try:
-                rr, rw = await asyncio.wait_for(
-                    asyncio.open_connection(dst, port, limit=_RECV_BUF), timeout=8)
-            except Exception:
-                writer.write(_socks5_reply(0x05))
+            async with asyncio.timeout(5):
+                req = await reader.readexactly(4)
+            _ver, cmd, _rsv, atyp = req
+            if cmd != 1:
+                writer.write(_socks5_reply(0x07))
                 await writer.drain()
+                return
+
+            if atyp == 1:
+                raw = await reader.readexactly(4)
+                dst = _socket.inet_ntoa(raw)
+            elif atyp == 3:
+                dlen = (await reader.readexactly(1))[0]
+                dst = (await reader.readexactly(dlen)).decode()
+            else:
+                writer.write(_socks5_reply(0x08))
+                await writer.drain()
+                return
+
+            port = struct.unpack('!H', await reader.readexactly(2))[0]
+            is_web = _is_telegram_web_host(dst)
+
+            if not _is_telegram_ip(dst) and not is_web:
+                _stats.connections_passthrough += 1
+                try:
+                    async with asyncio.timeout(8):
+                        rr, rw = await asyncio.open_connection(dst, port, limit=_RECV_BUF)
+                except Exception:
+                    writer.write(_socks5_reply(0x05))
+                    await writer.drain()
+                    return
+
+                writer.write(_socks5_reply(0x00))
+                await writer.drain()
+                
+                pipe1 = asyncio.create_task(_pipe(reader, rw))
+                pipe2 = asyncio.create_task(_pipe(rr, writer))
+                
+                try:
+                    await asyncio.wait([pipe1, pipe2], return_when=asyncio.FIRST_COMPLETED)
+                finally:
+                    for task in [pipe1, pipe2]:
+                        if not task.done():
+                            task.cancel()
+                            try:
+                                await task
+                            except asyncio.CancelledError:
+                                pass
                 return
 
             writer.write(_socks5_reply(0x00))
             await writer.drain()
-            
-            pipe1 = asyncio.create_task(_pipe(reader, rw))
-            pipe2 = asyncio.create_task(_pipe(rr, writer))
-            
+
             try:
-                await asyncio.wait([pipe1, pipe2], return_when=asyncio.FIRST_COMPLETED)
-            finally:
-                for task in [pipe1, pipe2]:
-                    if not task.done():
-                        task.cancel()
-                        try:
-                            await task
-                        except asyncio.CancelledError:
-                            pass
-            return
+                async with asyncio.timeout(10):
+                    init = await reader.readexactly(64)
+            except asyncio.IncompleteReadError:
+                return
 
-        writer.write(_socks5_reply(0x00))
-        await writer.drain()
+            if _is_http_transport(init):
+                _stats.connections_http_rejected += 1
+                return
 
-        try:
-            init = await asyncio.wait_for(reader.readexactly(64), timeout=10)
-        except asyncio.IncompleteReadError:
-            return
+            dc, is_media = _dc_from_init(init)
+            init_patched = False
 
-        if _is_http_transport(init):
-            _stats.connections_http_rejected += 1
-            return
+            if dc is None and is_web:
+                dc = 2
+                is_media = False
+                log.debug(f"Using fallback DC2 for web.telegram.org: {dst}")
 
-        dc, is_media = _dc_from_init(init)
-        init_patched = False
-        
-        if dc is None and dst and dst in _IP_TO_DC:
-            result = _IP_TO_DC.get(dst)
-            if result:
-                dc, is_media = result
-                if dc in _dc_opt:
-                    init = _patch_init_dc(init, dc if is_media else -dc)
-                    init_patched = True
+            if dc is None and dst in _IP_TO_DC:
+                result = _IP_TO_DC.get(dst)
+                if result:
+                    dc, is_media = result
+                    if dc in _dc_opt:
+                        init = _patch_init_dc(init, dc if is_media else -dc)
+                        init_patched = True
 
-        if dc is None or dc not in _dc_opt:
-            await _tcp_fallback(reader, writer, dst, port, init, label)
-            return
+            if dc is None or dc not in _dc_opt:
+                await _tcp_fallback(reader, writer, dst, port, init, label)
+                return
 
-        dc_key = (dc, is_media if is_media is not None else True)
-        now = time.monotonic()
+            dc_key = (dc, is_media if is_media is not None else True)
+            now = time.monotonic()
 
-        if dc_key in _ws_blacklist:
-            await _tcp_fallback(reader, writer, dst, port, init,
-                                     label, dc=dc, is_media=is_media)
-            return
+            if dc_key in _ws_blacklist:
+                await _tcp_fallback(reader, writer, dst, port, init,
+                                         label, dc=dc, is_media=is_media)
+                return
 
-        fail_until = _dc_fail_until.get(dc_key, 0)
-        if now < fail_until:
-            await _tcp_fallback(reader, writer, dst, port, init,
-                                     label, dc=dc, is_media=is_media)
-            return
+            fail_until = _dc_fail_until.get(dc_key, 0)
+            if now < fail_until:
+                await _tcp_fallback(reader, writer, dst, port, init,
+                                         label, dc=dc, is_media=is_media)
+                return
 
-        domains = _ws_domains(dc, is_media)
-        target = _dc_opt[dc]
-        ws = None
-        ws_failed_redirect = False
-        all_redirects = True
+            domains = _ws_domains(dc, is_media, is_web=is_web)
+            target = _dc_opt[dc]
+            ws = None
+            ws_failed_redirect = False
+            all_redirects = True
 
-        ws = await _ws_pool.get(dc, is_media, target, domains)
-        if not ws:
-            for domain in domains:
-                try:
-                    ws = await RawWebSocket.connect(target, domain, timeout=6)
-                    all_redirects = False
-                    break
-                except WsHandshakeError as exc:
-                    _stats.ws_errors += 1
-                    if exc.is_redirect:
-                        ws_failed_redirect = True
-                        continue
-                    else:
+            ws = await _ws_pool.get(dc, is_media, target, domains)
+            if not ws:
+                for domain in domains:
+                    try:
+                        ws = await RawWebSocket.connect(target, domain, timeout=8, is_web=is_web)
                         all_redirects = False
+                        break
+                    except WsHandshakeError as exc:
+                        _stats.ws_errors += 1
+                        if exc.is_redirect:
+                            ws_failed_redirect = True
+                            continue
+                        else:
+                            all_redirects = False
+                    except Exception:
+                        _stats.ws_errors += 1
+                        all_redirects = False
+
+            if ws is None:
+                if ws_failed_redirect and all_redirects:
+                    _ws_blacklist.add(dc_key)
+                else:
+                    _dc_fail_until[dc_key] = now + _DC_FAIL_COOLDOWN
+                await _tcp_fallback(reader, writer, dst, port, init,
+                                         label, dc=dc, is_media=is_media)
+                return
+
+            _dc_fail_until.pop(dc_key, None)
+            _stats.connections_ws += 1
+
+            splitter = None
+            if init_patched:
+                try:
+                    splitter = _MsgSplitter(init)
                 except Exception:
-                    _stats.ws_errors += 1
-                    all_redirects = False
+                    pass
 
-        if ws is None:
-            if ws_failed_redirect and all_redirects:
-                _ws_blacklist.add(dc_key)
-            else:
-                _dc_fail_until[dc_key] = now + _DC_FAIL_COOLDOWN
+            await ws.send(init)
+            await _bridge_ws(reader, writer, ws, label,
+                             dc=dc, dst=dst, port=port, is_media=is_media,
+                             splitter=splitter)
 
-            await _tcp_fallback(reader, writer, dst, port, init,
-                                     label, dc=dc, is_media=is_media)
-            return
-
-        _dc_fail_until.pop(dc_key, None)
-        _stats.connections_ws += 1
-
-        splitter = None
-        if init_patched:
-            try:
-                splitter = _MsgSplitter(init)
-            except Exception:
-                pass
-
-        await ws.send(init)
-        await _bridge_ws(reader, writer, ws, label,
-                         dc=dc, dst=dst, port=port, is_media=is_media,
-                         splitter=splitter)
-
-    except asyncio.CancelledError:
-        raise
-    except asyncio.TimeoutError:
-        pass
-    except ConnectionResetError:
-        pass
-    except Exception as e:
-        log.debug(f"Error in _handle_client: {e}")
-    finally:
-        try:
-            writer.close()
-            await writer.wait_closed()
-        except:
+        except asyncio.CancelledError:
+            raise
+        except TimeoutError:
             pass
+        except ConnectionResetError:
+            pass
+        except Exception as e:
+            log.debug(f"Error in _handle_client: {e}")
+        finally:
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except:
+                pass
 
 _server_instance = None
 _server_stop_event = None
@@ -985,22 +1139,27 @@ async def _run(port: int, dc_opt: Dict[int, Optional[str]],
         except (OSError, AttributeError):
             pass
 
-    log.info("=" * 60)
-    log.info("  Telegram WS Bridge Proxy (Optimized)")
-    log.info("  Listening on   %s:%d", host, port)
-    log.info("  Target DC IPs:")
-    for dc in sorted(dc_opt.keys()):
-        ip = dc_opt.get(dc)
-        log.info("    DC%d: %s", dc, ip)
-    log.info("  Pool size: %d, Cooldown: %.1fs", _WS_POOL_SIZE, _DC_FAIL_COOLDOWN)
-    log.info("=" * 60)
+    log.info(json.dumps({
+        "event": "startup",
+        "host": host,
+        "port": port,
+        "dc_ips": {dc: ip for dc, ip in dc_opt.items()},
+        "pool_size": _WS_POOL_SIZE,
+        "cooldown": _DC_FAIL_COOLDOWN,
+        "max_connections": _MAX_CONNECTIONS,
+        "web_support": True
+    }))
+
     log_stats_task = None
     
     async def log_stats():
         try:
             while True:
                 await asyncio.sleep(60)
-                log.info("Stats: %s", _stats.summary())
+                log.info(json.dumps({
+                    "event": "stats",
+                    "stats": _stats.summary()
+                }))
         except asyncio.CancelledError:
             pass
     
@@ -1008,7 +1167,7 @@ async def _run(port: int, dc_opt: Dict[int, Optional[str]],
     
     if stop_event:
         await stop_event.wait()
-        log.info("Shutting down gracefully...")
+        log.info(json.dumps({"event": "shutdown", "status": "graceful"}))
         
         if log_stats_task:
             log_stats_task.cancel()
@@ -1026,10 +1185,13 @@ async def _run(port: int, dc_opt: Dict[int, Optional[str]],
         
         server.close()
         await server.wait_closed()
-        await asyncio.sleep(2)
+        await asyncio.sleep(1)
         await _ws_pool.cleanup()
         
-        log.info("Final stats: %s", _stats.summary())
+        log.info(json.dumps({
+            "event": "shutdown_complete",
+            "final_stats": _stats.summary()
+        }))
     else:
         if warmup_task and not warmup_task.done():
             await warmup_task
@@ -1039,7 +1201,7 @@ async def _run(port: int, dc_opt: Dict[int, Optional[str]],
         try:
             await server.serve_forever()
         except asyncio.CancelledError:
-            pass
+            log.info(json.dumps({"event": "server_cancelled"}))
         finally:
             if log_stats_task and not log_stats_task.done():
                 log_stats_task.cancel()
@@ -1071,7 +1233,7 @@ def run_proxy(port: int, dc_opt: Dict[int, str],
 
 def main():
     ap = argparse.ArgumentParser(
-        description='Telegram Desktop WebSocket Bridge Proxy (Optimized)')
+        description='Telegram Desktop & Web WebSocket Bridge Proxy (Optimized)')
     ap.add_argument('--port', type=int, default=DEFAULT_PORT,
                     help=f'Listen port (default {DEFAULT_PORT})')
     ap.add_argument('--host', type=str, default='127.0.0.1',
@@ -1084,8 +1246,7 @@ def main():
                         '4:149.154.167.91', '4:149.154.167.118', '4:149.154.167.92',
                         '5:91.108.56.100', '5:91.108.56.102', '5:91.108.56.126'
                     ],
-                    help='Target IP for a DC, e.g. --dc-ip 1:149.154.175.205'
-                         ' --dc-ip 2:149.154.167.220')
+                    help='Target IP for a DC, e.g. --dc-ip 1:149.154.175.205')
     ap.add_argument('-v', '--verbose', action='store_true',
                     help='Debug logging')
     args = ap.parse_args()
@@ -1096,16 +1257,13 @@ def main():
         log.error(str(e))
         sys.exit(1)
 
-    logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
-        format='%(asctime)s  %(levelname)-5s  %(message)s',
-        datefmt='%H:%M:%S',
-    )
+    if args.verbose:
+        log.setLevel(logging.DEBUG)
 
     try:
         asyncio.run(_run(args.port, dc_opt, host=args.host))
     except KeyboardInterrupt:
-        log.info("Shutting down. Final stats: %s", _stats.summary())
+        log.info(json.dumps({"event": "shutdown", "status": "keyboard_interrupt", "final_stats": _stats.summary()}))
 
 async def _run_async(port: int, dc_opt: Dict[int, Optional[str]],
                       stop_event: Optional[asyncio.Event] = None,
