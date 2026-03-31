@@ -22,7 +22,6 @@ def get_latest_version():
 try:
     current_version = get_latest_version()
     print(f"Версия Zapret: {current_version}")
-    
     print(f"Загрузка Zapret с GitHub...")
     with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_file:
         urllib.request.urlretrieve(GITHUB_URL, tmp_file.name)
@@ -45,7 +44,6 @@ try:
         
         source_dir = os.path.join(temp_dir, extracted_dirs[0])
         print(f"Найдена папка: {extracted_dirs[0]}")
-        
         print(f"Создание {ZIP_FILENAME}...")
         
         with zipfile.ZipFile(ZIP_FILENAME, 'w', zipfile.ZIP_DEFLATED) as new_zip:
@@ -86,13 +84,6 @@ try:
                     full_path = os.path.join(source_dir, file)
                     new_zip.write(full_path, file)
                     print(f"  Добавлен {file}")
-            
-            version_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt')
-            version_file.write(current_version)
-            version_file.close()
-            new_zip.write(version_file.name, "version.txt")
-            os.unlink(version_file.name)
-            print("  Добавлен version.txt")
     
     os.unlink(temp_zip)
     
