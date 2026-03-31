@@ -249,6 +249,7 @@ class StatsMonitor:
         self.disconnection_count = 0
         self.is_monitoring = False
         self._monitor_thread = None
+        self._cache_duration = 3.0
         self._stop_event = None
         self.last_up = 0
         self.last_down = 0
@@ -269,7 +270,7 @@ class StatsMonitor:
         
     def _get_network_stats(self):
         current_time = time.time()
-        if hasattr(self, '_cached_stats') and current_time - self._cached_time < 1:
+        if hasattr(self, '_cached_stats') and current_time - self._cached_time < self._cache_duration:
             return self._cached_stats
         
         try:
@@ -426,7 +427,7 @@ class TGProxyServer:
             )
             self._thread.start()
 
-            for attempt in range(20):
+            for attempt in range(10):
                 time.sleep(0.5)
                 if self._is_port_open(1080):
                     self._running = True
@@ -483,28 +484,77 @@ class TGProxyServer:
         if not self._running:
             return
         
-        if self._stop_event:
-            self._stop_event.set()
-        
-        time.sleep(1.0)
-        self._running = False
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=3)
-        
-        self._kill_process_on_port(1080)
-        
-        if self._loop and not self._loop.is_closed():
+        try:
+            # Останавливаем event loop
+            if self._stop_event:
+                try:
+                    self._stop_event.set()
+                except:
+                    pass
+            
+            # Даем время на завершение
+            time.sleep(0.5)
+            
+            # Останавливаем loop с игнорированием ошибок
+            if self._loop and not self._loop.is_closed():
+                try:
+                    # Отменяем все задачи
+                    def cancel_all():
+                        try:
+                            tasks = asyncio.all_tasks(self._loop)
+                            for task in tasks:
+                                if not task.done():
+                                    task.cancel()
+                            
+                            # Ждем завершения с игнорированием ошибок
+                            if tasks:
+                                self._loop.run_until_complete(
+                                    asyncio.gather(*tasks, return_exceptions=True)
+                                )
+                        except Exception:
+                            pass
+                        finally:
+                            try:
+                                self._loop.stop()
+                            except:
+                                pass
+                    
+                    self._loop.call_soon_threadsafe(cancel_all)
+                    time.sleep(0.5)
+                    
+                    # Закрываем loop
+                    def close_loop():
+                        try:
+                            if not self._loop.is_closed():
+                                self._loop.close()
+                        except:
+                            pass
+                    
+                    self._loop.call_soon_threadsafe(close_loop)
+                    time.sleep(0.3)
+                    
+                except Exception:
+                    pass
+                finally:
+                    self._loop = None
+            
+            # Ждем завершения потока
+            if self._thread and self._thread.is_alive():
+                self._thread.join(timeout=2)
+            
+            # Убиваем процесс на порту
             try:
-                def stop_loop():
-                    self._loop.stop()
-                self._loop.call_soon_threadsafe(stop_loop)
-                time.sleep(0.5)
-                
-                self._loop.call_soon_threadsafe(self._loop.close)
-            except Exception as e:
-                print(f"Error stopping loop: {e}")
-            finally:
-                self._loop = None
+                self._kill_process_on_port(1080)
+            except:
+                pass
+            
+        except Exception:
+            pass
+        finally:
+            self._running = False
+            self._stop_event = None
+            self._thread = None
+            self._loop = None
 
 class ZapretCore:
     def __init__(self, parent):
@@ -789,7 +839,7 @@ class ZapretLauncher:
         self.update_timer_id = None
 
         self.rtt_timer_id = None
-        self.rtt_update_interval = 5000
+        self.rtt_update_interval = 10000
 
         self.traffic_history = {}
         self.traffic_history_vpn = {}
@@ -809,6 +859,10 @@ class ZapretLauncher:
 
         self._cached_processes = []
         self._last_process_time = 0
+        self.hostname_cache_maxsize = 100
+        self.traffic_history_maxsize = 50
+
+        self.dns_cache_ttl = 240
 
         try:
             icon_paths = [
@@ -899,21 +953,42 @@ class ZapretLauncher:
 
     def on_closing(self):
         try:
-            self.zapret.stop_current_strategy()
-            self.tg_proxy.stop()
-            if self.byedpi_enabled:
-                self.byedpi.stop()
+            # Останавливаем все компоненты
+            try:
+                self.zapret.stop_current_strategy()
+            except:
+                pass
             
-            time.sleep(2)
+            try:
+                if hasattr(self, 'tg_proxy'):
+                    self.tg_proxy.stop()
+            except:
+                pass
             
+            try:
+                if self.byedpi_enabled:
+                    self.byedpi.stop()
+            except:
+                pass
+            
+            time.sleep(1)
+            
+            # Принудительно убиваем процессы
+            try:
+                subprocess.run('taskkill /F /IM winws.exe', shell=True, capture_output=True)
+                subprocess.run('taskkill /F /IM python.exe', shell=True, capture_output=True)
+            except:
+                pass
+            
+            # Убиваем процессы на портах
             for port in [1080, 10801]:
                 try:
                     result = subprocess.run(
-                        f'netstat -ano | findstr :{port} | findstr LISTENING',
+                        f'netstat -ano | findstr :{port}',
                         shell=True, capture_output=True, text=True
                     )
                     for line in result.stdout.split('\n'):
-                        if line.strip():
+                        if 'LISTENING' in line:
                             parts = line.split()
                             if len(parts) >= 5:
                                 pid = parts[-1]
@@ -923,10 +998,15 @@ class ZapretLauncher:
                                     pass
                 except:
                     pass
-        except:
-            pass
-        self.root.destroy()
-        os._exit(0)
+            
+        except Exception as e:
+            print(f"On closing error: {e}")
+        finally:
+            try:
+                self.root.destroy()
+            except:
+                pass
+            os._exit(0)
 
     def center_window(self):
         if not self.is_fullscreen:
@@ -1786,15 +1866,29 @@ class ZapretLauncher:
             notification = tk.Toplevel(self.root)
             notification.overrideredirect(True)
             notification.configure(bg=self.colors['bg_medium'])
-            
             notification.transient(self.root)
             
+            # Сохраняем ссылку на уведомление
+            notification._is_alive = True
+            
             def on_iconify():
-                notification.withdraw()
+                if notification and notification.winfo_exists() and notification._is_alive:
+                    try:
+                        notification.withdraw()
+                    except:
+                        pass
             
             def on_deiconify():
-                if self.root.winfo_viewable():
-                    notification.deiconify()
+                if notification and notification.winfo_exists() and notification._is_alive and self.root.winfo_viewable():
+                    try:
+                        notification.deiconify()
+                    except:
+                        pass
+            
+            # Удаляем старые привязки, чтобы не накапливались
+            for binding in self.root.bindtags():
+                if '<Map>' in binding or '<Unmap>' in binding:
+                    pass
             
             self.root.bind('<Map>', lambda e: on_deiconify(), add=True)
             self.root.bind('<Unmap>', lambda e: on_iconify(), add=True)
@@ -1825,13 +1919,17 @@ class ZapretLauncher:
             
             def fade_in(alpha=0.0):
                 if not self.root.winfo_viewable():
-                    notification.destroy()
+                    try:
+                        notification.destroy()
+                    except:
+                        pass
                     return
                 if alpha < 0.95:
                     alpha += 0.1
                     try:
-                        notification.attributes('-alpha', alpha)
-                        notification.after(30, lambda: fade_in(alpha))
+                        if notification and notification.winfo_exists() and notification._is_alive:
+                            notification.attributes('-alpha', alpha)
+                            notification.after(30, lambda: fade_in(alpha))
                     except:
                         pass
                 else:
@@ -1841,13 +1939,16 @@ class ZapretLauncher:
                 if alpha > 0.0:
                     alpha -= 0.1
                     try:
-                        notification.attributes('-alpha', alpha)
-                        notification.after(30, lambda: fade_out(alpha))
+                        if notification and notification.winfo_exists() and notification._is_alive:
+                            notification.attributes('-alpha', alpha)
+                            notification.after(30, lambda: fade_out(alpha))
                     except:
                         pass
                 else:
                     try:
-                        notification.destroy()
+                        if notification and notification.winfo_exists():
+                            notification._is_alive = False
+                            notification.destroy()
                     except:
                         pass
             
@@ -2703,56 +2804,131 @@ class ZapretLauncher:
         self.connect_btn.set_enabled(False)
         self.root.update()
         
-        def stop_all():
-            self.zapret.stop_current_strategy()
-            
-            self.tg_proxy.stop()
-            
-            if self.byedpi_enabled:
-                self.byedpi.stop()
-                self.byedpi_enabled = False
-                self.byedpi_var.set(False)
-            
-            time.sleep(2)
-            
-            self.tg_proxy._kill_process_on_port(1080)
-            
-            self.byedpi.base._kill_process_on_port(10801)
-            
-            self._stop_windivert_service()
-            self.stats.end_session()
-            
-            self.root.after(0, self.finish_disconnect)
+        # Останавливаем мониторинг RTT
+        self.stop_rtt_monitoring()
         
+        def stop_all():
+            try:
+                # Останавливаем Zapret
+                try:
+                    self.zapret.stop_current_strategy()
+                except Exception as e:
+                    print(f"Zapret stop error: {e}")
+                
+                # Останавливаем TG Proxy
+                try:
+                    if hasattr(self, 'tg_proxy') and self.tg_proxy:
+                        self.tg_proxy.stop()
+                except Exception as e:
+                    print(f"TGProxy stop error: {e}")
+                
+                # Останавливаем ByeDPI
+                try:
+                    if self.byedpi_enabled:
+                        self.byedpi.stop()
+                        self.byedpi_enabled = False
+                        self.byedpi_var.set(False)
+                except Exception as e:
+                    print(f"ByeDPI stop error: {e}")
+                
+                # Даем время на завершение
+                time.sleep(1.5)
+                
+                # Принудительно убиваем все связанные процессы
+                try:
+                    # Убиваем все winws.exe
+                    subprocess.run('taskkill /F /IM winws.exe', shell=True, capture_output=True)
+                    # Убиваем все python процессы (осторожно, может убить другие экземпляры)
+                    # subprocess.run('taskkill /F /IM python.exe', shell=True, capture_output=True)
+                except:
+                    pass
+                
+                # Убиваем процессы на портах
+                for port in [1080, 10801]:
+                    try:
+                        result = subprocess.run(
+                            f'netstat -ano | findstr :{port}',
+                            shell=True, capture_output=True, text=True
+                        )
+                        for line in result.stdout.split('\n'):
+                            if 'LISTENING' in line:
+                                parts = line.split()
+                                if len(parts) >= 5:
+                                    pid = parts[-1]
+                                    try:
+                                        subprocess.run(f'taskkill /F /PID {pid}', shell=True, capture_output=True)
+                                    except:
+                                        pass
+                    except:
+                        pass
+                
+                # Останавливаем WinDivert
+                try:
+                    self._stop_windivert_service()
+                except Exception as e:
+                    print(f"WinDivert stop error: {e}")
+                
+                # Завершаем сессию статистики
+                try:
+                    self.stats.end_session()
+                except:
+                    pass
+                
+                # Обновляем UI в главном потоке
+                self.root.after(0, self.finish_disconnect)
+                
+            except Exception as e:
+                print(f"Error in stop_all: {e}")
+                self.root.after(0, self.finish_disconnect)
+        
+        # Запускаем в отдельном потоке
         threading.Thread(target=stop_all, daemon=True).start()
 
     def finish_disconnect(self):
-        self._cached_processes = []
-        self.is_connected = False
-        self.current_strategy = None
-        self.mode_label.config(text="Не выбран", fg=self.colors['text_secondary'])
-        self.update_status("Готов к работе", self.colors['text_secondary'])
-        self.update_ui_state()
-        self.connect_btn.set_enabled(True)
-
-        if hasattr(self, '_traffic_update_timer') and self._traffic_update_timer:
-            try:
-                self.root.after_cancel(self._traffic_update_timer)
-            except:
-                pass
-            self._traffic_update_timer = None
-
-        self.traffic_history = {}
-        self.traffic_history_vpn = {}
-        self.traffic_history_direct = {}
-        self.traffic_speed_history = {}
-        self.traffic_speed_vpn_history = {}
-        self.traffic_speed_direct_history = {}
-        self.traffic_last_update = time.time()
-        self._traffic_collecting = False
-        self._traffic_update_scheduled = False
-        self.hostname_cache = {}
-        self.hostname_cache_time = {}
+        try:
+            self._cached_processes = []
+            self.is_connected = False
+            self.current_strategy = None
+            
+            if hasattr(self, 'mode_label'):
+                self.mode_label.config(text="Не выбран", fg=self.colors['text_secondary'])
+            
+            self.update_status("Готов к работе", self.colors['text_secondary'])
+            self.update_ui_state()
+            self.connect_btn.set_enabled(True)
+            
+            # Очищаем таймеры
+            if hasattr(self, '_traffic_update_timer') and self._traffic_update_timer:
+                try:
+                    self.root.after_cancel(self._traffic_update_timer)
+                except:
+                    pass
+                self._traffic_update_timer = None
+            
+            if hasattr(self, 'rtt_timer_id') and self.rtt_timer_id:
+                try:
+                    self.root.after_cancel(self.rtt_timer_id)
+                except:
+                    pass
+                self.rtt_timer_id = None
+            
+            # Очищаем кэши
+            self.traffic_history = {}
+            self.traffic_history_vpn = {}
+            self.traffic_history_direct = {}
+            self.traffic_speed_history = {}
+            self.traffic_speed_vpn_history = {}
+            self.traffic_speed_direct_history = {}
+            self.hostname_cache = {}
+            self.hostname_cache_time = {}
+            
+            # Принудительный сбор мусора несколько раз
+            import gc
+            for _ in range(3):
+                gc.collect()
+            
+        except Exception as e:
+            print(f"Finish disconnect error: {e}")
 
     def run_service_command(self, command):
         if not check_zapret_folder():
@@ -2892,7 +3068,7 @@ class ZapretLauncher:
         current_time = time.time()
         time_diff = current_time - self.traffic_last_update
 
-        if hasattr(self, '_cached_processes') and (current_time - self._last_process_time < 0.5):
+        if hasattr(self, '_cached_processes') and (current_time - self._last_process_time < 1.5):
             return self._cached_processes
         
         if time_diff < 0.1:
@@ -3065,7 +3241,7 @@ class ZapretLauncher:
                 })
             
             processes.sort(key=lambda x: (x['connections'], self._parse_speed_value(x['speed'])), reverse=True)
-            processes = processes[:50]
+            processes = processes[:40]
             
         except Exception as e:
             self.log_to_diagnostic(f"Ошибка сбора трафика: {e}")
@@ -3122,7 +3298,14 @@ class ZapretLauncher:
         
         current_time = time.time()
         
-        if ip in self.hostname_cache and (current_time - self.hostname_cache_time.get(ip, 0)) < 300:
+        if len(self.hostname_cache) > self.hostname_cache_maxsize:
+            to_remove = len(self.hostname_cache) - self.hostname_cache_maxsize
+            oldest = sorted(self.hostname_cache_time.items(), key=lambda x: x[1])[:to_remove + 10]
+            for ip_key, _ in oldest:
+                self.hostname_cache.pop(ip_key, None)
+                self.hostname_cache_time.pop(ip_key, None)
+        
+        if ip in self.hostname_cache and (current_time - self.hostname_cache_time.get(ip, 0)) < self.dns_cache_ttl:
             return self.hostname_cache[ip]
         
         try:
@@ -3439,16 +3622,22 @@ class ZapretLauncher:
                 self.tooltip_widget = tk.Toplevel(self.root)
                 self.tooltip_widget.overrideredirect(True)
                 self.tooltip_widget.configure(bg=self.colors['accent'])
-                
                 self.tooltip_widget.transient(self.root)
+                self.tooltip_widget._is_alive = True
                 
                 def on_iconify():
-                    if self.tooltip_widget and self.tooltip_widget.winfo_exists():
-                        self.tooltip_widget.withdraw()
+                    if self.tooltip_widget and self.tooltip_widget.winfo_exists() and self.tooltip_widget._is_alive:
+                        try:
+                            self.tooltip_widget.withdraw()
+                        except:
+                            pass
                 
                 def on_deiconify():
-                    if self.tooltip_widget and self.tooltip_widget.winfo_exists() and self.root.winfo_viewable():
-                        self.tooltip_widget.deiconify()
+                    if self.tooltip_widget and self.tooltip_widget.winfo_exists() and self.tooltip_widget._is_alive and self.root.winfo_viewable():
+                        try:
+                            self.tooltip_widget.deiconify()
+                        except:
+                            pass
                 
                 self.root.bind('<Map>', lambda e: on_deiconify(), add=True)
                 self.root.bind('<Unmap>', lambda e: on_iconify(), add=True)
@@ -3489,8 +3678,9 @@ class ZapretLauncher:
                     if alpha < 0.95:
                         alpha += 0.1
                         try:
-                            self.tooltip_widget.attributes('-alpha', alpha)
-                            self.tooltip_widget.after(30, lambda: fade_in(alpha))
+                            if self.tooltip_widget and self.tooltip_widget.winfo_exists() and self.tooltip_widget._is_alive:
+                                self.tooltip_widget.attributes('-alpha', alpha)
+                                self.tooltip_widget.after(30, lambda: fade_in(alpha))
                         except:
                             pass
                 
@@ -3516,17 +3706,21 @@ class ZapretLauncher:
                 self.tooltip_after_id = None
             
             if self.tooltip_widget and self.tooltip_widget.winfo_exists():
+                self.tooltip_widget._is_alive = False
+                
                 def fade_out(alpha=0.95):
                     if alpha > 0.0:
                         alpha -= 0.1
                         try:
-                            self.tooltip_widget.attributes('-alpha', alpha)
-                            self.tooltip_widget.after(30, lambda: fade_out(alpha))
+                            if self.tooltip_widget and self.tooltip_widget.winfo_exists():
+                                self.tooltip_widget.attributes('-alpha', alpha)
+                                self.tooltip_widget.after(30, lambda: fade_out(alpha))
                         except:
                             pass
                     else:
                         try:
-                            self.tooltip_widget.destroy()
+                            if self.tooltip_widget and self.tooltip_widget.winfo_exists():
+                                self.tooltip_widget.destroy()
                         except:
                             pass
                         self.tooltip_widget = None
