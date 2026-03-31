@@ -2,6 +2,8 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from byedpi_optimizer import ByeDPIOptimizer
 from pages import Pages, check_zapret_folder
+from typing import List, Optional
+from custom_provider_manager import load_custom_provider
 from theme import get_theme
 from network_optimizer import (
     optimize_network_latency,
@@ -37,16 +39,17 @@ from typing import Optional, List, Tuple
 import webbrowser
 
 APPDATA_DIR = Path(os.getenv('LOCALAPPDATA')) / 'ZapretLauncher'
+CUSTOM_PROVIDER_FILE = APPDATA_DIR / "custom_provider.json"
 CONFIG_FILE = APPDATA_DIR / 'config.json'
 ZAPRET_RESOURCES_ZIP = "zapret_resources.zip"
 ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
 ZAPRET_API_URL = "https://api.github.com/repos/flowseal/zapret-discord-youtube/releases/latest"
-CURRENT_VERSION = "2.6c"
+CURRENT_VERSION = "2.7"
 
 PROVIDER_PARAMS = {
-    "Ростелеком/Дом.ru/Tele2": ["--split", "1", "--disorder", "-1"],
+    "Телеком/Дом.ru/Tele2": ["--split", "1", "--disorder", "-1"],
     "МТС/Yota": ["-7", "-e1", "-q"],
     "Мегафон": ["-s0", "-o1", "-d1", "-r1+s", "-Ar", "-o1", "-At", "-f-1", "-r1+s", "-As"],
     "Билайн": ["--split", "1", "--disorder", "1", "--fake", "-1", "--ttl", "8"],
@@ -376,6 +379,7 @@ class TGProxyServer:
         self._host = '127.0.0.1'
         self._process = None
         self._loop = None
+        self._reconnect_attempts = 0
         
     def _kill_process_on_port(self, port):
         try:
@@ -422,10 +426,11 @@ class TGProxyServer:
             )
             self._thread.start()
 
-            for _ in range(10):
+            for attempt in range(20):
                 time.sleep(0.5)
                 if self._is_port_open(1080):
                     self._running = True
+                    self._reconnect_attempts = 0
                     return True
             return False  
         except Exception as e:
@@ -444,12 +449,24 @@ class TGProxyServer:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             self._loop = loop
-            loop.run_until_complete(self._run_proxy_async(port, dc_opt, stop_event, host))
+            
+            try:
+                loop.run_until_complete(self._run_proxy_async(port, dc_opt, stop_event, host))
+            except KeyboardInterrupt:
+                pass
+            except asyncio.CancelledError:
+                pass
+            finally:
+                pending = asyncio.all_tasks(loop)
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                
+                loop.close()
         except Exception as e:
             print(f"TGProxy run error: {e}")
         finally:
-            if self._loop and not self._loop.is_closed():
-                self._loop.close()
             self._loop = None
     
     async def _run_proxy_async(self, port, dc_opt, stop_event, host):
@@ -468,10 +485,26 @@ class TGProxyServer:
         
         if self._stop_event:
             self._stop_event.set()
+        
+        time.sleep(1.0)
         self._running = False
         if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=5)
+            self._thread.join(timeout=3)
+        
         self._kill_process_on_port(1080)
+        
+        if self._loop and not self._loop.is_closed():
+            try:
+                def stop_loop():
+                    self._loop.stop()
+                self._loop.call_soon_threadsafe(stop_loop)
+                time.sleep(0.5)
+                
+                self._loop.call_soon_threadsafe(self._loop.close)
+            except Exception as e:
+                print(f"Error stopping loop: {e}")
+            finally:
+                self._loop = None
 
 class ZapretCore:
     def __init__(self, parent):
@@ -557,11 +590,12 @@ class ZapretCore:
                 stderr=subprocess.DEVNULL
             )
             
-            time.sleep(1.5)
-            if self.is_winws_running():
-                return True, f"Запущена стратегия: {self.get_strategy_display_name(strategy_name)}"
-            else:
-                return False, "Стратегия запущена, но winws.exe не обнаружен"
+            time.sleep(2.5)
+            for _ in range(5):
+                if self.is_winws_running():
+                    return True, f"Запущена стратегия: {self.get_strategy_display_name(strategy_name)}"
+                time.sleep(0.5)
+            return False, "Стратегия запущена, но winws.exe не обнаружен"
         except Exception as e:
             return False, f"Ошибка запуска: {str(e)}"
             
@@ -692,14 +726,26 @@ class SystemTrayIcon:
 class ByeDPIWithProvider:
     def __init__(self, app_data_dir):
         self.base = ByeDPIOptimizer(app_data_dir)
-        self.current_provider = "Ростелеком/Дом.ru/Tele2"
+        self.current_provider = "Телеком/Дом.ru/Tele2"
+        self._load_custom_params()
+    
+    def _load_custom_params(self):
+        custom = load_custom_provider()
+        if custom:
+            pass
     
     def set_provider(self, provider):
         self.current_provider = provider
-        params = PROVIDER_PARAMS.get(provider, PROVIDER_PARAMS["Ростелеком/Дом.ru/Tele2"])
+        custom = load_custom_provider()
+        
+        if custom and provider == custom.get("name"):
+            params = custom["params"]
+        else:
+            params = PROVIDER_PARAMS.get(provider, PROVIDER_PARAMS["Телеком/Дом.ru/Tele2"])
+        
         full_params = params + ["-i", "127.0.0.1", "-p", "10801"]
         self.base.set_params(full_params)
-        
+    
     def start(self):
         return self.base.start()
     
@@ -708,6 +754,9 @@ class ByeDPIWithProvider:
     
     def get_status(self):
         return self.base.get_status()
+    
+    def restart(self):
+        return self.base.restart()
 
 class ZapretLauncher:
     def __init__(self, root):
@@ -721,11 +770,18 @@ class ZapretLauncher:
         self.PROVIDER_PARAMS = PROVIDER_PARAMS
 
         self.strategy_var = tk.StringVar()
-        self.provider_var = tk.StringVar(value="Ростелеком/Дом.ru/Tele2")
+        self.provider_var = tk.StringVar(value="Телеком/Дом.ru/Tele2")
         self.tgws_var = tk.BooleanVar(value=False)
         self.byedpi_var = tk.BooleanVar(value=False)
 
         self._tg_instruction = False
+        self._show_tooltip = True
+        self.is_fullscreen = False
+
+        self._notification_queue = []
+        self._notification_active = False
+        self.tooltip_widget = None
+        self.tooltip_after_id = None
 
         self.update_intervals = [0, 5, 10, 30, 60, None]
         self.update_interval_index = 0
@@ -787,7 +843,7 @@ class ZapretLauncher:
         self.window_width = 1200
         self.window_height = 800
         self.root.geometry(f"{self.window_width}x{self.window_height}")
-        self.root.resizable(False, False)
+        self.root.resizable(True, True)
         
         self.root.protocol("WM_DELETE_WINDOW", self.hide_window)
         
@@ -799,6 +855,8 @@ class ZapretLauncher:
         self.colors = get_theme('dark')
         self.setup_scrollbar_style()
         self.root.configure(bg=self.colors['bg_dark'])
+        self.root.bind("<F11>", self.toggle_fullscreen)
+        self.root.bind("<Escape>", lambda e: self.toggle_fullscreen() if self.is_fullscreen else None)
         
         if not is_admin():
             result = messagebox.askyesno(
@@ -821,7 +879,7 @@ class ZapretLauncher:
         self.is_connected = False
         self.current_strategy = None
         self.current_page = "main"
-        self.current_provider = "Ростелеком/Дом.ru/Tele2"
+        self.current_provider = "Телеком/Дом.ru/Tele2"
         
         self.ensure_appdata_dir()
         self.load_settings()
@@ -871,9 +929,18 @@ class ZapretLauncher:
         os._exit(0)
 
     def center_window(self):
-        x = (self.root.winfo_screenwidth() // 2) - (self.window_width // 2)
-        y = (self.root.winfo_screenheight() // 2) - (self.window_height // 2)
-        self.root.geometry(f'{self.window_width}x{self.window_height}+{x}+{y}')
+        if not self.is_fullscreen:
+            x = (self.root.winfo_screenwidth() // 2) - (self.window_width // 2)
+            y = (self.root.winfo_screenheight() // 2) - (self.window_height // 2)
+            self.root.geometry(f'{self.window_width}x{self.window_height}+{x}+{y}')
+
+    def toggle_fullscreen(self, event=None):
+        self.is_fullscreen = not self.is_fullscreen
+        self.root.attributes('-fullscreen', self.is_fullscreen)
+        
+        if not self.is_fullscreen:
+            self.root.geometry(f"{self.window_width}x{self.window_height}")
+            self.center_window()
 
     def setup_ui(self):
         self.main_container = tk.Frame(self.root, bg=self.colors['bg_dark'])
@@ -892,6 +959,8 @@ class ZapretLauncher:
         logo_frame = tk.Frame(left_panel, bg=self.colors['bg_medium'], height=140)
         logo_frame.pack(fill=tk.X, pady=(40, 20))
         logo_frame.pack_propagate(False)
+        self.tooltip_widget = None
+        self.tooltip_after_id = None
         
         try:
             icon_paths = [
@@ -914,6 +983,8 @@ class ZapretLauncher:
                 icon_label.bind("<Button-1>", lambda e: self.show_settings_page())
                 icon_label.bind("<Enter>", lambda e: icon_label.config(cursor="hand2"))
                 icon_label.bind("<Leave>", lambda e: icon_label.config(cursor=""))
+                
+                self._create_tooltip(icon_label)
             else:
                 raise Exception("Иконка не найдена")
                 
@@ -932,6 +1003,7 @@ class ZapretLauncher:
             logo_btn.pack(expand=True, pady=10)
             logo_btn.bind("<Enter>", lambda e: logo_btn.config(cursor="hand2"))
             logo_btn.bind("<Leave>", lambda e: logo_btn.config(cursor=""))
+            self._create_tooltip(logo_btn)
 
         nav_buttons = [
             ("Главная", self.show_main_page),
@@ -1003,6 +1075,8 @@ class ZapretLauncher:
         dialog.geometry("500x550")
         dialog.resizable(False, False)
         dialog.configure(bg=self.colors['bg_medium'])
+        dialog.transient(self.root)
+        dialog.grab_set()
         
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 250
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 275
@@ -1370,106 +1444,45 @@ class ZapretLauncher:
         cancel_btn.pack(side=tk.LEFT, padx=5)
 
     def show_provider_selector(self, mode):
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Выбор провайдера для ByeDPI")
-        dialog.geometry("400x350")
-        dialog.resizable(False, False)
-        dialog.configure(bg=self.colors['bg_medium'])
+        self.current_provider = self.provider_var.get()
+        self.byedpi.set_provider(self.current_provider)
         
-        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 200
-        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 175
-        dialog.geometry(f"+{x}+{y}")
+        if hasattr(self, 'connect_btn'):
+            self.connect_btn.set_enabled(False)
         
-        tk.Label(dialog, text="Выберите вашего провайдера", 
-                font=("Segoe UI", 14, "bold"),
-                fg=self.colors['text_primary'], 
-                bg=self.colors['bg_medium']).pack(pady=(20, 10))
+        self.update_status("Запуск ByeDPI...", self.colors['accent'])
+        self.root.update()
         
-        providers = list(PROVIDER_PARAMS.keys())
+        def run_byedpi():
+            success, msg = self.byedpi.start()
+            self.root.after(0, lambda: on_byedpi_result(success, msg))
         
-        listbox_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
-        listbox_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
-        
-        scrollbar = tk.Scrollbar(listbox_frame)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        provider_listbox = tk.Listbox(listbox_frame, height=6, font=("Segoe UI", 10),
-                                    bg=self.colors['bg_light'], 
-                                    fg=self.colors['text_primary'],
-                                    selectbackground=self.colors['accent'],
-                                    yscrollcommand=scrollbar.set)
-        provider_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.config(command=provider_listbox.yview)
-        
-        for provider in providers:
-            provider_listbox.insert(tk.END, provider)
-        
-        try:
-            idx = providers.index(self.current_provider)
-            provider_listbox.selection_set(idx)
-            provider_listbox.see(idx)
-        except:
-            pass
-        
-        def start_with_provider():
-            selection = provider_listbox.curselection()
-            if selection:
-                provider = providers[selection[0]]
-                self.current_provider = provider
-                self.provider_var.set(provider)
-                self.byedpi.set_provider(provider)
-            
-            dialog.destroy()
-            
-            if hasattr(self, 'connect_btn'):
-                self.connect_btn.set_enabled(False)
-            
-            self.update_status("Запуск ByeDPI...", self.colors['accent'])
-            self.root.update()
-            
-            def run_byedpi():
-                success, msg = self.byedpi.start()
-                self.root.after(0, lambda: on_byedpi_result(success, msg))
-            
-            def on_byedpi_result(success, msg):
-                if not success:
-                    self.update_status("Ошибка запуска", self.colors['accent_red'])
-                    messagebox.showerror("Ошибка ByeDPI", msg)
-                    if hasattr(self, 'connect_btn'):
-                        self.connect_btn.set_enabled(True)
-                    return
-                
-                self.byedpi_enabled = True
-                self.byedpi_var.set(True)
-                self.is_connected = True
-                
-                self.stats.start_session()
-                self.start_stats_monitoring()
-                
-                mode_name = f"ByeDPI ({self.current_provider})"
-                self.mode_label.config(text=mode_name, fg=self.colors['accent_green'])
-                self.update_status(f"Подключено: {mode_name}", self.colors['accent_green'])
-                self.update_ui_state()
-                self.save_settings()
-                self.root.after(100, self.update_stats_display)
-                
+        def on_byedpi_result(success, msg):
+            if not success:
+                self.update_status("Ошибка запуска", self.colors['accent_red'])
+                messagebox.showerror("Ошибка ByeDPI", msg)
                 if hasattr(self, 'connect_btn'):
                     self.connect_btn.set_enabled(True)
+                return
             
-            threading.Thread(target=run_byedpi, daemon=True).start()
+            self.byedpi_enabled = True
+            self.byedpi_var.set(True)
+            self.is_connected = True
+            
+            self.stats.start_session()
+            self.start_stats_monitoring()
+            
+            mode_name = f"ByeDPI ({self.current_provider})"
+            self.mode_label.config(text=mode_name, fg=self.colors['accent_green'])
+            self.update_status(f"Подключено: {mode_name}", self.colors['accent_green'])
+            self.update_ui_state()
+            self.save_settings()
+            self.root.after(100, self.update_stats_display)
+            
+            if hasattr(self, 'connect_btn'):
+                self.connect_btn.set_enabled(True)
         
-        btn_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
-        btn_frame.pack(pady=15)
-        
-        start_btn = RoundedButton(btn_frame, text="Запустить", command=start_with_provider,
-                                width=120, height=35, bg=self.colors['accent'],
-                                font=("Segoe UI", 10), corner_radius=8)
-        start_btn.pack(side=tk.LEFT, padx=5)
-        
-        cancel_btn = RoundedButton(btn_frame, text="Отмена", command=dialog.destroy,
-                                width=80, height=35, bg=self.colors['button_bg'],
-                                font=("Segoe UI", 10), corner_radius=8)
-        cancel_btn.pack(side=tk.LEFT, padx=5)
+        threading.Thread(target=run_byedpi, daemon=True).start()
 
     def show_custom_selector(self):
         dialog = tk.Toplevel(self.root)
@@ -1670,13 +1683,15 @@ class ZapretLauncher:
             self.stats_speed_down_label.config(text=f"⬇ {stats['speed_down_str']}")
 
     def _update_rtt(self):
-        if hasattr(self, 'stats_rtt_label'):
-            rtt = self.measure_rtt()
-            if rtt > 0:
-                self.stats_rtt_label.config(text=f"{rtt:.0f} ms", fg=self.colors['accent'])
-            else:
-                self.stats_rtt_label.config(text="-- ms", fg=self.colors['text_secondary'])
-        
+        try:
+            if hasattr(self, 'stats_rtt_label') and self.stats_rtt_label.winfo_exists():
+                rtt = self.measure_rtt()
+                if rtt > 0:
+                    self.stats_rtt_label.config(text=f"{rtt:.0f} ms", fg=self.colors['accent'])
+                else:
+                    self.stats_rtt_label.config(text="-- ms", fg=self.colors['text_secondary'])
+        except (tk.TclError, AttributeError):
+            return
         self.rtt_timer_id = self.root.after(self.rtt_update_interval, self._update_rtt)
 
     def start_rtt_monitoring(self):
@@ -1764,53 +1779,82 @@ class ZapretLauncher:
         self.update_timer_id = self.root.after(interval, self._schedule_stats_update)
 
     def show_notification(self, message, duration=2000):
-        notification = tk.Toplevel(self.root)
-        notification.overrideredirect(True)
-        
-        notification.configure(bg=self.colors['bg_medium'])
-        
         try:
-            notification.attributes('-alpha', 0.95)
-            notification.attributes('-topmost', True)
-        except:
-            pass
-        
-        x = self.root.winfo_x() + self.root.winfo_width() - 300
-        y = self.root.winfo_y() + 50
-        notification.geometry(f"280x40+{x}+{y}")
-        
-        frame = tk.Frame(notification, bg=self.colors['accent'], padx=1, pady=1)
-        frame.pack(fill=tk.BOTH, expand=True)
-        
-        inner = tk.Frame(frame, bg=self.colors['bg_medium'])
-        inner.pack(fill=tk.BOTH, expand=True)
-        
-        label = tk.Label(inner, text=message, 
-                        font=("Segoe UI", 10),
-                        fg=self.colors['text_primary'], 
-                        bg=self.colors['bg_medium'],
-                        padx=12, pady=8)
-        label.pack()
-        
-        notification.attributes('-alpha', 0.0)
-        
-        def fade_in(alpha=0.0):
-            if alpha < 0.95:
-                alpha += 0.1
-                notification.attributes('-alpha', alpha)
-                notification.after(30, lambda: fade_in(alpha))
-            else:
-                notification.after(duration, fade_out)
-        
-        def fade_out(alpha=0.95):
-            if alpha > 0.0:
-                alpha -= 0.1
-                notification.attributes('-alpha', alpha)
-                notification.after(30, lambda: fade_out(alpha))
-            else:
-                notification.destroy()
-        
-        fade_in()
+            if not self.root.winfo_viewable():
+                return
+            
+            notification = tk.Toplevel(self.root)
+            notification.overrideredirect(True)
+            notification.configure(bg=self.colors['bg_medium'])
+            
+            notification.transient(self.root)
+            
+            def on_iconify():
+                notification.withdraw()
+            
+            def on_deiconify():
+                if self.root.winfo_viewable():
+                    notification.deiconify()
+            
+            self.root.bind('<Map>', lambda e: on_deiconify(), add=True)
+            self.root.bind('<Unmap>', lambda e: on_iconify(), add=True)
+            
+            try:
+                notification.attributes('-alpha', 0.95)
+            except:
+                pass
+            
+            x = self.root.winfo_x() + self.root.winfo_width() - 300
+            y = self.root.winfo_y() + 50
+            notification.geometry(f"280x40+{x}+{y}")
+            
+            frame = tk.Frame(notification, bg=self.colors['accent'], padx=1, pady=1)
+            frame.pack(fill=tk.BOTH, expand=True)
+            
+            inner = tk.Frame(frame, bg=self.colors['bg_medium'])
+            inner.pack(fill=tk.BOTH, expand=True)
+            
+            label = tk.Label(inner, text=message, 
+                            font=("Segoe UI", 10),
+                            fg=self.colors['text_primary'], 
+                            bg=self.colors['bg_medium'],
+                            padx=12, pady=8)
+            label.pack()
+            notification.lift()
+            notification.attributes('-alpha', 0.0)
+            
+            def fade_in(alpha=0.0):
+                if not self.root.winfo_viewable():
+                    notification.destroy()
+                    return
+                if alpha < 0.95:
+                    alpha += 0.1
+                    try:
+                        notification.attributes('-alpha', alpha)
+                        notification.after(30, lambda: fade_in(alpha))
+                    except:
+                        pass
+                else:
+                    notification.after(duration, fade_out)
+            
+            def fade_out(alpha=0.95):
+                if alpha > 0.0:
+                    alpha -= 0.1
+                    try:
+                        notification.attributes('-alpha', alpha)
+                        notification.after(30, lambda: fade_out(alpha))
+                    except:
+                        pass
+                else:
+                    try:
+                        notification.destroy()
+                    except:
+                        pass
+            
+            fade_in()
+            
+        except Exception as e:
+            print(f"Notification error: {e}")
 
     def save_interval_setting(self):
         try:
@@ -2765,7 +2809,7 @@ class ZapretLauncher:
                     saved_strategy = data.get('current_strategy')
                     if saved_strategy and saved_strategy in self.zapret.available_strategies:
                         self.current_strategy = saved_strategy
-                    self.current_provider = data.get('byedpi_provider', 'Ростелеком/Дом.ru/Tele2')
+                    self.current_provider = data.get('byedpi_provider', 'Телеком/Дом.ru/Tele2')
                     self.provider_var.set(self.current_provider)
                     self.byedpi.set_provider(self.current_provider)
                     
@@ -2782,6 +2826,13 @@ class ZapretLauncher:
                             self.stop_stats_monitoring()
 
                     self._tg_instruction = data.get('tg_instruction', False)
+                    self._show_tooltip = data.get('show_tooltip', True)
+                    custom = load_custom_provider()
+                    if custom and custom.get("name") not in PROVIDER_PARAMS:
+                        PROVIDER_PARAMS[custom["name"]] = custom.get("params", [])
+                        
+                        if self.current_provider == custom.get("name"):
+                            self.byedpi.set_provider(custom.get("name"))
         except:
             pass
 
@@ -2792,7 +2843,8 @@ class ZapretLauncher:
                 'byedpi_provider': self.current_provider,
                 'autostart_enabled': self.check_autostart_status(),
                 'update_interval': self.update_interval_index,
-                'tg_instruction': getattr(self, '_tg_instruction', False)
+                'tg_instruction': getattr(self, '_tg_instruction', False),
+                'show_tooltip': getattr(self, '_show_tooltip', True)
             }
             with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
                 json.dump(settings, f, indent=2)
@@ -3325,7 +3377,7 @@ class ZapretLauncher:
             bg=self.colors['button_bg'],
             fg=self.colors['text_secondary'],
             font=("Segoe UI", 10),
-            corner_radius=8
+            corner_radius=8,
         )
         cancel_btn.pack(side=tk.LEFT, padx=5)
         
@@ -3371,6 +3423,117 @@ class ZapretLauncher:
         
         self.update_status("Готов к работе", self.colors['text_secondary'])
         self.connect_btn.set_enabled(True)
+
+    def _create_tooltip(self, widget):
+        def show_tooltip():
+            try:
+                if not self._show_tooltip:
+                    return
+
+                if not self.root.winfo_viewable():
+                    return
+                
+                if self.tooltip_widget and self.tooltip_widget.winfo_exists():
+                    return
+                
+                self.tooltip_widget = tk.Toplevel(self.root)
+                self.tooltip_widget.overrideredirect(True)
+                self.tooltip_widget.configure(bg=self.colors['accent'])
+                
+                self.tooltip_widget.transient(self.root)
+                
+                def on_iconify():
+                    if self.tooltip_widget and self.tooltip_widget.winfo_exists():
+                        self.tooltip_widget.withdraw()
+                
+                def on_deiconify():
+                    if self.tooltip_widget and self.tooltip_widget.winfo_exists() and self.root.winfo_viewable():
+                        self.tooltip_widget.deiconify()
+                
+                self.root.bind('<Map>', lambda e: on_deiconify(), add=True)
+                self.root.bind('<Unmap>', lambda e: on_iconify(), add=True)
+                
+                x = widget.winfo_rootx() + widget.winfo_width() // 2 - 100
+                y = widget.winfo_rooty() - 20
+                self.tooltip_widget.geometry(f"200x35+{x}+{y}")
+                
+                try:
+                    self.tooltip_widget.attributes('-alpha', 0.95)
+                except:
+                    pass
+                
+                self.tooltip_widget.lift()
+                
+                frame = tk.Frame(self.tooltip_widget, bg=self.colors['accent'], padx=2, pady=2)
+                frame.pack(fill=tk.BOTH, expand=True)
+                
+                inner = tk.Frame(frame, bg=self.colors['bg_medium'])
+                inner.pack(fill=tk.BOTH, expand=True)
+                
+                label = tk.Label(
+                    inner, 
+                    text="Здесь настройки лаунчера", 
+                    font=("Segoe UI", 10),
+                    fg=self.colors['text_primary'],
+                    bg=self.colors['bg_medium'],
+                    padx=10, pady=8
+                )
+                label.pack()
+                
+                self.tooltip_widget.attributes('-alpha', 0.0)
+                
+                def fade_in(alpha=0.0):
+                    if not self.root.winfo_viewable():
+                        self._hide_tooltip()
+                        return
+                    if alpha < 0.95:
+                        alpha += 0.1
+                        try:
+                            self.tooltip_widget.attributes('-alpha', alpha)
+                            self.tooltip_widget.after(30, lambda: fade_in(alpha))
+                        except:
+                            pass
+                
+                fade_in()
+                self.tooltip_after_id = self.root.after(60000, self._hide_tooltip)
+            except Exception as e:
+                print(f"Tooltip error: {e}")
+        
+        def on_enter_settings(*args):
+            self._show_tooltip = False
+            self.save_settings()
+            self._hide_tooltip()
+            self.show_settings_page()
+        
+        if hasattr(widget, 'bind'):
+            widget.bind("<Button-1>", on_enter_settings)
+        self.root.after(3000, show_tooltip)
+
+    def _hide_tooltip(self):
+        try:
+            if self.tooltip_after_id:
+                self.root.after_cancel(self.tooltip_after_id)
+                self.tooltip_after_id = None
+            
+            if self.tooltip_widget and self.tooltip_widget.winfo_exists():
+                def fade_out(alpha=0.95):
+                    if alpha > 0.0:
+                        alpha -= 0.1
+                        try:
+                            self.tooltip_widget.attributes('-alpha', alpha)
+                            self.tooltip_widget.after(30, lambda: fade_out(alpha))
+                        except:
+                            pass
+                    else:
+                        try:
+                            self.tooltip_widget.destroy()
+                        except:
+                            pass
+                        self.tooltip_widget = None
+                
+                fade_out()
+        except Exception as e:
+            print(f"Hide tooltip error: {e}")
 
 if __name__ == "__main__":
     root = tk.Tk()
