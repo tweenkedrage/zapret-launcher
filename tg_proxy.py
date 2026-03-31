@@ -36,17 +36,17 @@ console_handler.setFormatter(JSONFormatter())
 log.addHandler(console_handler)
 
 _TCP_NODELAY = True
-_RECV_BUF = 524288
-_SEND_BUF = 524288
-_WS_POOL_SIZE = 32
-_WS_POOL_MAX_AGE = 600.0
-_MAX_MSG_SIZE = 5 * 1024 * 1024
+_RECV_BUF = 262144
+_SEND_BUF = 262144
+_WS_POOL_SIZE = 22
+_WS_POOL_MAX_AGE = 360.0
+_MAX_MSG_SIZE = 3 * 1024 * 1024
 _HEARTBEAT_INTERVAL = 30.0
 _CONNECTION_TIMEOUT = 90.0
 _MAX_RETRIES = 5
 _RETRY_DELAY = 1.0
 _DC_FAIL_COOLDOWN = 30.0
-_MAX_CONNECTIONS = 300
+_MAX_CONNECTIONS = 180
 _SOCKET_BUFFER_MULTIPLIER = 2
 _WS_KEEPALIVE_INTERVAL = 25.0
 _MAX_RECONNECT_ATTEMPTS = 5
@@ -748,21 +748,24 @@ async def _bridge_ws(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
                         chunk = await reader.read(_RECV_BUF)
                 except TimeoutError:
                     continue
+                except (ConnectionResetError, BrokenPipeError):
+                    break
                 if not chunk:
                     break
                 _stats.bytes_up += len(chunk)
-                if splitter:
-                    parts = splitter.split(chunk)
-                    if len(parts) > 1:
-                        await ws.send_batch(parts)
+                try:
+                    if splitter:
+                        parts = splitter.split(chunk)
+                        if len(parts) > 1:
+                            await ws.send_batch(parts)
+                        else:
+                            await ws.send(parts[0])
                     else:
-                        await ws.send(parts[0])
-                else:
-                    await ws.send(chunk)
+                        await ws.send(chunk)
+                except (ConnectionResetError, BrokenPipeError):
+                    break
         except asyncio.CancelledError:
             raise
-        except (ConnectionError, OSError):
-            pass
         except Exception as e:
             log.debug(f"tcp_to_ws error: {e}")
         finally:
@@ -782,19 +785,22 @@ async def _bridge_ws(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
                 if data is None:
                     break
                 _stats.bytes_down += len(data)
-                writer.write(data)
-                if writer.transport.get_write_buffer_size() > _SEND_BUF // 2:
-                    await writer.drain()
+                try:
+                    writer.write(data)
+                    if writer.transport.get_write_buffer_size() > _SEND_BUF // 2:
+                        await writer.drain()
+                except (ConnectionResetError, BrokenPipeError):
+                    break
         except asyncio.CancelledError:
             raise
-        except (ConnectionError, OSError):
-            pass
         except Exception as e:
             log.debug(f"ws_to_tcp error: {e}")
         finally:
             try:
                 writer.close()
                 await writer.wait_closed()
+            except (ConnectionResetError, OSError):
+                pass
             except:
                 pass
 
@@ -863,15 +869,20 @@ async def _bridge_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
                         data = await src.read(_RECV_BUF)
                 except TimeoutError:
                     continue
+                except (ConnectionResetError, BrokenPipeError):
+                    break
                 if not data:
                     break
                 if 'up' in tag:
                     _stats.bytes_up += len(data)
                 else:
                     _stats.bytes_down += len(data)
-                dst_w.write(data)
-                if dst_w.transport.get_write_buffer_size() > _SEND_BUF // 2:
-                    await dst_w.drain()
+                try:
+                    dst_w.write(data)
+                    if dst_w.transport.get_write_buffer_size() > _SEND_BUF // 2:
+                        await dst_w.drain()
+                except (ConnectionResetError, BrokenPipeError):
+                    break
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -898,18 +909,26 @@ async def _bridge_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
 async def _pipe(r: asyncio.StreamReader, w: asyncio.StreamWriter):
     try:
         while True:
-            data = await r.read(_RECV_BUF)
-            if not data:
+            try:
+                data = await r.read(_RECV_BUF)
+                if not data:
+                    break
+                w.write(data)
+                await w.drain()
+            except (ConnectionResetError, BrokenPipeError, OSError):
+                # Игнорируем ошибки при передаче данных
                 break
-            w.write(data)
-            await w.drain()
+            except asyncio.CancelledError:
+                raise
     except asyncio.CancelledError:
         raise
     finally:
         try:
             w.close()
             await w.wait_closed()
-        except:
+        except (ConnectionResetError, OSError, asyncio.CancelledError):
+            pass
+        except Exception:
             pass
 
 def _socks5_reply(status: int) -> bytes:
@@ -1001,7 +1020,23 @@ async def _handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWri
                             try:
                                 await task
                             except asyncio.CancelledError:
+                                raise
+                            except TimeoutError:
                                 pass
+                            except ConnectionResetError:
+                                # Игнорируем ошибки сброса соединения
+                                pass
+                            except Exception as e:
+                                log.debug(f"Error in _handle_client: {e}")
+                            finally:
+                                try:
+                                    writer.close()
+                                    await writer.wait_closed()
+                                except (ConnectionResetError, OSError, asyncio.CancelledError):
+                                    # Игнорируем ошибки при закрытии
+                                    pass
+                                except Exception:
+                                    pass
                 return
 
             writer.write(_socks5_reply(0x00))
