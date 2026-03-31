@@ -43,7 +43,7 @@ ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
 ZAPRET_API_URL = "https://api.github.com/repos/flowseal/zapret-discord-youtube/releases/latest"
-CURRENT_VERSION = "2.6b"
+CURRENT_VERSION = "2.6c"
 
 PROVIDER_PARAMS = {
     "Ростелеком/Дом.ru/Tele2": ["--split", "1", "--disorder", "-1"],
@@ -103,7 +103,6 @@ def check_launcher_updates(parent, silent=False):
                 if not silent:
                     messagebox.showinfo("Обновления", "У вас установлена последняя версия лаунчера")
                 return False
-                
     except Exception as e:
         if not silent:
             messagebox.showerror("Ошибка", f"Не удалось проверить обновления: {str(e)}")
@@ -233,8 +232,7 @@ def update_zapret_core(parent, version):
                 parent.strategy_var.set(parent.zapret.available_strategies[0])
         
         parent.update_status("Готов к работе")
-        messagebox.showinfo("Успех", f"Zapret успешно обновлен до версии {version}")
-        
+        messagebox.showinfo("Успех", f"Zapret успешно обновлен до версии {version}") 
     except Exception as e:
         messagebox.showerror("Ошибка", f"Не удалось обновить Zapret: {str(e)}")
         parent.update_status("Готов к работе")
@@ -645,6 +643,7 @@ class SystemTrayIcon:
             image = Image.new('RGBA', (64, 64), color='#d0a2e9')
             draw = ImageDraw.Draw(image)
             draw.text((20, 20), "Z", fill='white', font=None)
+
         self.update_menu(image)
         
     def update_menu(self, image=None):
@@ -693,15 +692,14 @@ class SystemTrayIcon:
 class ByeDPIWithProvider:
     def __init__(self, app_data_dir):
         self.base = ByeDPIOptimizer(app_data_dir)
-        self.current_provider = "Ростелеком"
+        self.current_provider = "Ростелеком/Дом.ru/Tele2"
     
     def set_provider(self, provider):
         self.current_provider = provider
         params = PROVIDER_PARAMS.get(provider, PROVIDER_PARAMS["Ростелеком/Дом.ru/Tele2"])
         full_params = params + ["-i", "127.0.0.1", "-p", "10801"]
-        print(f"Параметры ByeDPI для {provider}: {full_params}")
         self.base.set_params(full_params)
-    
+        
     def start(self):
         return self.base.start()
     
@@ -783,7 +781,6 @@ class ZapretLauncher:
             
             if not icon_loaded:
                 print("Иконка не загружена")
-                
         except Exception as e:
             print(f"Ошибка загрузки иконки: {e}")
         
@@ -824,7 +821,7 @@ class ZapretLauncher:
         self.is_connected = False
         self.current_strategy = None
         self.current_page = "main"
-        self.current_provider = "Ростелеком"
+        self.current_provider = "Ростелеком/Дом.ru/Tele2"
         
         self.ensure_appdata_dir()
         self.load_settings()
@@ -2372,7 +2369,7 @@ class ZapretLauncher:
         self.log_to_diagnostic("Проверка статуса ByeDPI...")
         status = self.byedpi.get_status()
         if status['running']:
-            self.log_to_diagnostic(f"ByeDPI запущен (версия {status['version']}, выбранный провайдер: {self.current_provider})")
+            self.log_to_diagnostic(f"ByeDPI запущен (провайдер: {self.current_provider})")
         else:
             if status['binary_exists']:
                 self.log_to_diagnostic("ByeDPI не запущен (файл есть)")
@@ -2733,21 +2730,31 @@ class ZapretLauncher:
             result = subprocess.run(
                 ['sc', 'query', 'WinDivert'],
                 capture_output=True, text=True,
-                creationflags=subprocess.CREATE_NO_WINDOW
+                creationflags=subprocess.CREATE_NO_WINDOW,
+                timeout=5
             )
             
             if 'RUNNING' in result.stdout:
                 subprocess.run(
                     ['sc', 'stop', 'WinDivert'],
                     capture_output=True, text=True,
-                    creationflags=subprocess.CREATE_NO_WINDOW
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                    timeout=10
                 )
-                time.sleep(1)
-                return True
+                
+                time.sleep(2)
+                
+                verify = subprocess.run(
+                    ['sc', 'query', 'WinDivert'],
+                    capture_output=True, text=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                    timeout=5
+                )
+                
+                return 'RUNNING' not in verify.stdout
             else:
-                return False
-        except Exception as e:
-            self.log_to_diagnostic(f"Ошибка остановки WinDivert: {e}")
+                return True   
+        except (subprocess.TimeoutExpired, Exception):
             return False
 
     def load_settings(self):
@@ -2758,7 +2765,7 @@ class ZapretLauncher:
                     saved_strategy = data.get('current_strategy')
                     if saved_strategy and saved_strategy in self.zapret.available_strategies:
                         self.current_strategy = saved_strategy
-                    self.current_provider = data.get('byedpi_provider', 'Ростелеком')
+                    self.current_provider = data.get('byedpi_provider', 'Ростелеком/Дом.ru/Tele2')
                     self.provider_var.set(self.current_provider)
                     self.byedpi.set_provider(self.current_provider)
                     
