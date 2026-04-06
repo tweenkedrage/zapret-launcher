@@ -3,9 +3,6 @@ import zipfile
 import urllib.request
 import tempfile
 import json
-from pathlib import Path
-
-print("Создание zapret_resources.zip...")
 
 ZIP_FILENAME = "zapret_resources.zip"
 GITHUB_URL = "https://github.com/Flowseal/zapret-discord-youtube/archive/refs/heads/master.zip"
@@ -21,19 +18,15 @@ def get_latest_version():
 
 try:
     current_version = get_latest_version()
-    print(f"Версия Zapret: {current_version}")
-    print(f"Загрузка Zapret с GitHub...")
     with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_file:
         urllib.request.urlretrieve(GITHUB_URL, tmp_file.name)
         temp_zip = tmp_file.name
         file_size = os.path.getsize(temp_zip)
-        print(f"Загружено, размер: {file_size} байт")
         
         if file_size < 100000:
             raise Exception(f"Файл слишком маленький ({file_size} байт)")
     
     with tempfile.TemporaryDirectory() as temp_dir:
-        print(f"Распаковка Zapret...")
         
         with zipfile.ZipFile(temp_zip, 'r') as zipf:
             zipf.extractall(temp_dir)
@@ -43,8 +36,6 @@ try:
             raise Exception("Архив пуст")
         
         source_dir = os.path.join(temp_dir, extracted_dirs[0])
-        print(f"Найдена папка: {extracted_dirs[0]}")
-        print(f"Создание {ZIP_FILENAME}...")
         
         with zipfile.ZipFile(ZIP_FILENAME, 'w', zipfile.ZIP_DEFLATED) as new_zip:
             bin_path = os.path.join(source_dir, "bin")
@@ -54,7 +45,6 @@ try:
                         full_path = os.path.join(root, file)
                         rel_path = os.path.relpath(full_path, source_dir)
                         new_zip.write(full_path, rel_path)
-                print("  Добавлена папка bin/")
             
             lists_path = os.path.join(source_dir, "lists")
             if os.path.exists(lists_path):
@@ -63,7 +53,6 @@ try:
                         full_path = os.path.join(root, file)
                         rel_path = os.path.relpath(full_path, source_dir)
                         new_zip.write(full_path, rel_path)
-                print("  Добавлена папка lists/")
             
             utils_path = os.path.join(source_dir, "utils")
             if os.path.exists(utils_path):
@@ -72,28 +61,24 @@ try:
                         full_path = os.path.join(root, file)
                         rel_path = os.path.relpath(full_path, source_dir)
                         new_zip.write(full_path, rel_path)
-                print("  Добавлена папка utils/")
             
             service_bat = os.path.join(source_dir, "service.bat")
             if os.path.exists(service_bat):
                 new_zip.write(service_bat, "service.bat")
-                print("  Добавлен service.bat")
             
             for file in os.listdir(source_dir):
                 if file.startswith("general") and file.endswith(".bat"):
                     full_path = os.path.join(source_dir, file)
                     new_zip.write(full_path, file)
-                    print(f"  Добавлен {file}")
     
     os.unlink(temp_zip)
     
     if os.path.exists(ZIP_FILENAME):
-        print(f"Готово! Создан файл: {ZIP_FILENAME}")
+        print(f"Создан файл: {ZIP_FILENAME}")
         print(f"Размер: {os.path.getsize(ZIP_FILENAME)} байт")
-        print(f"Путь: {os.path.abspath(ZIP_FILENAME)}")
     else:
         print("Ошибка: файл не создан")
         
 except Exception as e:
     print(f"Ошибка: {e}")
-input("Нажми Enter для выхода...")
+input("Нажмите Enter для выхода")
