@@ -47,8 +47,8 @@ class ByeDPIOptimizer:
             if not target.exists() or source != target:
                 try:
                     shutil.copy2(source, target)
-                except Exception as e:
-                    print(f"Не удалось скопировать бинарник: {e}")
+                except Exception:
+                    pass
             self._binary_path = target
     
     def set_params(self, params: list):
@@ -60,8 +60,8 @@ class ByeDPIOptimizer:
             config_file = self.byedpi_dir / "config.json"
             with open(config_file, 'w', encoding='utf-8') as f:
                 json.dump({'params': self.rostel_params}, f, indent=2)
-        except Exception as e:
-            print(f"Ошибка сохранения параметров: {e}")
+        except Exception:
+                    pass
     
     def _load_params(self):
         try:
@@ -71,8 +71,8 @@ class ByeDPIOptimizer:
                     data = json.load(f)
                     if 'params' in data:
                         self.rostel_params = data['params']
-        except Exception as e:
-            print(f"Ошибка загрузки параметров: {e}")
+        except Exception:
+                    pass
     
     def get_binary_path(self) -> Optional[Path]:
         if self._binary_path is not None and self._binary_path.exists():
@@ -155,11 +155,8 @@ class ByeDPIOptimizer:
                     'taskkill /F /IM ciadpi.exe',
                     shell=True, capture_output=True, timeout=3
                 )
-                
-        except subprocess.TimeoutExpired:
-            print(f"Таймаут при поиске процессов на порту {port}")
-        except Exception as e:
-            print(f"Ошибка при очистке порта {port}: {e}")
+        except Exception:
+                    pass
     
     def _wait_port_release(self, port: int, timeout: float = 3.0) -> bool:
         start_time = time.time()
@@ -189,8 +186,6 @@ class ByeDPIOptimizer:
 
         try:
             args = [str(binary)] + self.rostel_params
-            
-            print(f"Запуск ByeDPI: {' '.join(args)}")
             self.process = subprocess.Popen(
                 args,
                 creationflags=subprocess.CREATE_NO_WINDOW,
@@ -210,11 +205,6 @@ class ByeDPIOptimizer:
                 if self._is_port_open(10801):
                     self.is_running = True
                     return True, "ByeDPI запущен"
-                
-                if attempt == 10:
-                    print("Ожидание открытия порта 10801...")
-                elif attempt == 20:
-                    print("ByeDPI всё ещё запускается...")
             
             if self.process.poll() is None:
                 self.stop()
@@ -242,8 +232,7 @@ class ByeDPIOptimizer:
                 self.is_running = False
                 result = True
                 msg = "Остановлен"
-            except Exception as e:
-                print(f"Ошибка остановки процесса: {e}")
+            except Exception:
                 self.process = None
         
         self._kill_process_on_port(10801)
