@@ -2,38 +2,95 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
-import logging
 import os
 import socket as _socket
 import ssl
 import struct
 import sys
 import time
-import json
-from datetime import datetime
 from collections import deque
 from typing import Dict, List, Optional, Set, Tuple
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 DEFAULT_PORT = 1080
 
-class JSONFormatter(logging.Formatter):
-    def format(self, record):
-        log_entry = {
-            "timestamp": datetime.now().isoformat(),
-            "level": record.levelname,
-            "name": record.name,
-            "message": record.getMessage(),
-        }
-        if hasattr(record, 'extra'):
-            log_entry.update(record.extra)
-        return json.dumps(log_entry, ensure_ascii=False)
+TG_MODE_FAST = "fast"
+TG_MODE_STABLE = "stable"
+CURRENT_MODE = TG_MODE_STABLE
 
-log = logging.getLogger('tg-ws-proxy')
-log.setLevel(logging.INFO)
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(JSONFormatter())
-log.addHandler(console_handler)
+_TCP_KEEPIDLE = 30
+_TCP_KEEPINTVL = 5
+_TCP_KEEPCNT = 3
+
+TG_CONFIGS = {
+    TG_MODE_FAST: {
+        "ws_pool_size": 44,
+        "ws_pool_max_age": 180.0,
+        "max_connections": 360,
+        "heartbeat_interval": 15.0,
+        "connection_timeout": 60.0,
+        "recv_buf": 524288,
+        "send_buf": 524288,
+        "max_reconnect_attempts": 3,
+        "reconnect_delay": 1.0,
+        "ws_keepalive_interval": 20.0,
+        "retry_delay": 0.5,
+        "max_retries": 4,
+        "dc_fail_cooldown": 20.0,
+        "socket_buffer_multiplier": 4,
+    },
+    TG_MODE_STABLE: {
+        "ws_pool_size": 22,
+        "ws_pool_max_age": 360.0,
+        "max_connections": 180,
+        "heartbeat_interval": 30.0,
+        "connection_timeout": 90.0,
+        "recv_buf": 262144,
+        "send_buf": 262144,
+        "max_reconnect_attempts": 5,
+        "reconnect_delay": 2.0,
+        "ws_keepalive_interval": 25.0,
+        "retry_delay": 1.0,
+        "max_retries": 6,
+        "dc_fail_cooldown": 30.0,
+        "socket_buffer_multiplier": 2,
+    }
+}
+
+def set_tg_mode(mode: str) -> bool:
+    global CURRENT_MODE, _WS_POOL_SIZE, _WS_POOL_MAX_AGE, _MAX_CONNECTIONS
+    global _HEARTBEAT_INTERVAL, _CONNECTION_TIMEOUT, _RECV_BUF, _SEND_BUF
+    global _MAX_RECONNECT_ATTEMPTS, _RECONNECT_DELAY, _WS_KEEPALIVE_INTERVAL
+    global _RETRY_DELAY, _MAX_RETRIES, _DC_FAIL_COOLDOWN, _connection_semaphore
+    
+    if mode not in TG_CONFIGS:
+        return False
+    
+    CURRENT_MODE = mode
+    config = TG_CONFIGS[mode]
+    
+    _WS_POOL_SIZE = config["ws_pool_size"]
+    _WS_POOL_MAX_AGE = config["ws_pool_max_age"]
+    _MAX_CONNECTIONS = config["max_connections"]
+    _HEARTBEAT_INTERVAL = config["heartbeat_interval"]
+    _CONNECTION_TIMEOUT = config["connection_timeout"]
+    _RECV_BUF = config["recv_buf"]
+    _SEND_BUF = config["send_buf"]
+    _MAX_RECONNECT_ATTEMPTS = config["max_reconnect_attempts"]
+    _RECONNECT_DELAY = config["reconnect_delay"]
+    _WS_KEEPALIVE_INTERVAL = config["ws_keepalive_interval"]
+    _RETRY_DELAY = config["retry_delay"]
+    _MAX_RETRIES = config["max_retries"]
+    _DC_FAIL_COOLDOWN = config["dc_fail_cooldown"]
+    
+    _connection_semaphore = asyncio.Semaphore(_MAX_CONNECTIONS)
+    return True
+
+def get_current_mode() -> str:
+    return CURRENT_MODE
+
+def get_mode_config() -> dict:
+    return TG_CONFIGS.get(CURRENT_MODE, TG_CONFIGS[TG_MODE_STABLE])
 
 _TCP_NODELAY = True
 _RECV_BUF = 262144
@@ -150,8 +207,9 @@ def _set_sock_opts(transport):
         sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_RCVBUF, _RECV_BUF)
         sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_SNDBUF, _SEND_BUF)
         sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_KEEPALIVE, 1)
-        sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_KEEPALIVE, 1)
-        sock.ioctl(_socket.SIO_KEEPALIVE_VALS, (1, 30000, 5000))
+        sock.setsockopt(_socket.IPPROTO_TCP, _socket.TCP_KEEPIDLE, _TCP_KEEPIDLE)
+        sock.setsockopt(_socket.IPPROTO_TCP, _socket.TCP_KEEPINTVL, _TCP_KEEPINTVL)
+        sock.setsockopt(_socket.IPPROTO_TCP, _socket.TCP_KEEPCNT, _TCP_KEEPCNT)
     except (OSError, AttributeError):
         pass
 
@@ -211,9 +269,8 @@ class RawWebSocket:
                 
             except asyncio.CancelledError:
                 break
-            except Exception as e:
-                log.debug(f"Heartbeat error: {e}")
-                break
+            except Exception:
+                pass
 
     async def _keepalive(self):
         while not self._closed:
@@ -224,7 +281,6 @@ class RawWebSocket:
                 
                 now = time.monotonic()
                 if now - self._last_heartbeat > _HEARTBEAT_INTERVAL * 3:
-                    log.debug("Keepalive timeout, closing connection")
                     await self.close()
                     break
                     
@@ -240,8 +296,8 @@ class RawWebSocket:
             frame = self._build_frame(self.OP_PING, b'', mask=True)
             self.writer.write(frame)
             await self.writer.drain()
-        except Exception as e:
-            log.debug(f"Ping error: {e}")
+        except Exception:
+            pass
 
     @staticmethod
     async def connect(ip: str, domain: str, path: str = '/apiws',
@@ -299,7 +355,6 @@ class RawWebSocket:
                     ws = RawWebSocket(reader, writer)
                     ws._heartbeat_task = asyncio.create_task(ws._heartbeat())
                     ws._keepalive_task = asyncio.create_task(ws._keepalive())
-                    log.debug(f"WebSocket connected to {domain}:{path}")
                     return ws
 
                 headers: dict[str, str] = {}
@@ -334,8 +389,7 @@ class RawWebSocket:
             self.writer.write(frame)
             await self.writer.drain()
             self._last_activity = time.monotonic()
-        except Exception as e:
-            log.debug(f"Send error: {e}")
+        except Exception:
             self._closed = True
             raise
 
@@ -349,8 +403,7 @@ class RawWebSocket:
             self.writer.write(frames)
             await self.writer.drain()
             self._last_activity = time.monotonic()
-        except Exception as e:
-            log.debug(f"Send batch error: {e}")
+        except Exception:
             self._closed = True
             raise
 
@@ -766,8 +819,8 @@ async def _bridge_ws(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
                     break
         except asyncio.CancelledError:
             raise
-        except Exception as e:
-            log.debug(f"tcp_to_ws error: {e}")
+        except Exception:
+            pass
         finally:
             try:
                 await ws.close()
@@ -793,8 +846,8 @@ async def _bridge_ws(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
                     break
         except asyncio.CancelledError:
             raise
-        except Exception as e:
-            log.debug(f"ws_to_tcp error: {e}")
+        except Exception:
+            pass
         finally:
             try:
                 writer.close()
@@ -1024,8 +1077,8 @@ async def _handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWri
                                 pass
                             except ConnectionResetError:
                                 pass
-                            except Exception as e:
-                                log.debug(f"Error in _handle_client: {e}")
+                            except Exception:
+                                pass
                             finally:
                                 try:
                                     writer.close()
@@ -1055,7 +1108,6 @@ async def _handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWri
             if dc is None and is_web:
                 dc = 2
                 is_media = False
-                log.debug(f"Using fallback DC2 for web.telegram.org: {dst}")
 
             if dc is None and dst in _IP_TO_DC:
                 result = _IP_TO_DC.get(dst)
@@ -1137,8 +1189,8 @@ async def _handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWri
             pass
         except ConnectionResetError:
             pass
-        except Exception as e:
-            log.debug(f"Error in _handle_client: {e}")
+        except Exception:
+            pass
         finally:
             try:
                 writer.close()
@@ -1155,7 +1207,6 @@ async def _run(port: int, dc_opt: Dict[int, Optional[str]],
     global _dc_opt, _server_instance, _server_stop_event
     
     if not is_port_available(host, port):
-        log.error(f"Port {port} is already in use on {host}")
         return
     
     _dc_opt = dc_opt
@@ -1170,43 +1221,11 @@ async def _run(port: int, dc_opt: Dict[int, Optional[str]],
             sock.setsockopt(_socket.IPPROTO_TCP, _socket.TCP_NODELAY, 1)
         except (OSError, AttributeError):
             pass
-
-    log.info(json.dumps({
-        "event": "startup",
-        "host": host,
-        "port": port,
-        "dc_ips": {dc: ip for dc, ip in dc_opt.items()},
-        "pool_size": _WS_POOL_SIZE,
-        "cooldown": _DC_FAIL_COOLDOWN,
-        "max_connections": _MAX_CONNECTIONS,
-        "web_support": True
-    }))
-
-    log_stats_task = None
-    
-    async def log_stats():
-        try:
-            while True:
-                await asyncio.sleep(60)
-                log.info(json.dumps({
-                    "event": "stats",
-                    "stats": _stats.summary()
-                }))
-        except asyncio.CancelledError:
-            pass
     
     warmup_task = asyncio.create_task(_ws_pool.warmup(dc_opt))
     
     if stop_event:
         await stop_event.wait()
-        log.info(json.dumps({"event": "shutdown", "status": "graceful"}))
-        
-        if log_stats_task:
-            log_stats_task.cancel()
-            try:
-                await log_stats_task
-            except asyncio.CancelledError:
-                pass
         
         if not warmup_task.done():
             warmup_task.cancel()
@@ -1219,28 +1238,14 @@ async def _run(port: int, dc_opt: Dict[int, Optional[str]],
         await server.wait_closed()
         await asyncio.sleep(1)
         await _ws_pool.cleanup()
-        
-        log.info(json.dumps({
-            "event": "shutdown_complete",
-            "final_stats": _stats.summary()
-        }))
     else:
         if warmup_task and not warmup_task.done():
             await warmup_task
         
-        log_stats_task = asyncio.create_task(log_stats())
-        
         try:
             await server.serve_forever()
-        except asyncio.CancelledError:
-            log.info(json.dumps({"event": "server_cancelled"}))
-        finally:
-            if log_stats_task and not log_stats_task.done():
-                log_stats_task.cancel()
-                try:
-                    await log_stats_task
-                except asyncio.CancelledError:
-                    pass
+        except Exception:
+            pass
     
     _server_instance = None
 
@@ -1265,11 +1270,13 @@ def run_proxy(port: int, dc_opt: Dict[int, str],
 
 def main():
     ap = argparse.ArgumentParser(
-        description='Telegram Desktop & Web WebSocket Bridge Proxy (Optimized)')
+        description='Telegram Proxy')
     ap.add_argument('--port', type=int, default=DEFAULT_PORT,
                     help=f'Listen port (default {DEFAULT_PORT})')
     ap.add_argument('--host', type=str, default='127.0.0.1',
                     help='Listen host (default 127.0.0.1)')
+    ap.add_argument('--mode', type=str, choices=['fast', 'stable'], default='stable',
+                    help='Mode: fast (high CPU/RAM usage) or stable (balanced)')
     ap.add_argument('--dc-ip', metavar='DC:IP', action='append',
                     default=[
                         '1:149.154.175.50', '1:149.154.175.52', '1:149.154.175.53',
@@ -1279,43 +1286,41 @@ def main():
                         '5:91.108.56.100', '5:91.108.56.102', '5:91.108.56.126'
                     ],
                     help='Target IP for a DC, e.g. --dc-ip 1:149.154.175.205')
-    ap.add_argument('-v', '--verbose', action='store_true',
-                    help='Debug logging')
     args = ap.parse_args()
 
     try:
         dc_opt = parse_dc_ip_list(args.dc_ip)
-    except ValueError as e:
-        log.error(str(e))
+    except ValueError:
         sys.exit(1)
-
-    if args.verbose:
-        log.setLevel(logging.DEBUG)
+    
+    set_tg_mode(args.mode)
 
     try:
         asyncio.run(_run(args.port, dc_opt, host=args.host))
-    except KeyboardInterrupt:
-        log.info(json.dumps({"event": "shutdown", "status": "keyboard_interrupt", "final_stats": _stats.summary()}))
+    except Exception:
+        pass
 
 async def _run_async(port: int, dc_opt: Dict[int, Optional[str]],
                       stop_event: Optional[asyncio.Event] = None,
-                      host: str = '127.0.0.1'):
+                      host: str = '127.0.0.1',
+                      mode: str = TG_MODE_STABLE):
+    set_tg_mode(mode)
     await _run(port, dc_opt, stop_event, host)
 
 def run_proxy_async(port: int, dc_opt: Dict[int, str],
                      stop_event: Optional[asyncio.Event] = None,
-                     host: str = '127.0.0.1'):
+                     host: str = '127.0.0.1',
+                     mode: str = TG_MODE_STABLE):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        loop.run_until_complete(_run_async(port, dc_opt, stop_event, host))
+        loop.run_until_complete(_run_async(port, dc_opt, stop_event, host, mode))
     except KeyboardInterrupt:
-        print("\nShutting down...")
         if stop_event:
             stop_event.set()
         loop.run_until_complete(asyncio.sleep(1))
-    except Exception as e:
-        print(f"TGProxy error: {e}")
+    except Exception:
+        pass
     finally:
         loop.close()
 
