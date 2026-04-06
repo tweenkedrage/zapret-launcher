@@ -12,8 +12,8 @@ def load_custom_provider() -> Optional[Dict[str, Any]]:
         if CUSTOM_PROVIDER_FILE.exists():
             with open(CUSTOM_PROVIDER_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
-    except Exception as e:
-        print(f"Ошибка загрузки кастомного провайдера: {e}")
+    except Exception:
+        pass
     return None
 
 def save_custom_provider(name: str, params: List[str]) -> bool:
@@ -26,8 +26,8 @@ def save_custom_provider(name: str, params: List[str]) -> bool:
         with open(CUSTOM_PROVIDER_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
         return True
-    except Exception as e:
-        print(f"Ошибка сохранения кастомного провайдера: {e}")
+    except Exception:
+        pass
         return False
 
 def delete_custom_provider() -> bool:
@@ -35,6 +35,6 @@ def delete_custom_provider() -> bool:
         if CUSTOM_PROVIDER_FILE.exists():
             CUSTOM_PROVIDER_FILE.unlink()
             return True
-    except Exception as e:
-        print(f"Ошибка удаления кастомного провайдера: {e}")
+    except Exception:
+        pass
     return False
