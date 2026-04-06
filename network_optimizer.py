@@ -1,11 +1,12 @@
 import subprocess
 import time
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 import winreg
 import re
 import ctypes
 
 DNS_SERVERS = [
+    {"name": "Cloudflare Malware", "primary": "1.1.1.2", "secondary": "1.0.0.2"},
     {"name": "Cloudflare", "primary": "1.1.1.1", "secondary": "1.0.0.1"},
     {"name": "Google", "primary": "8.8.8.8", "secondary": "8.8.4.4"},
     {"name": "OpenDNS", "primary": "208.67.222.222", "secondary": "208.67.220.220"},
@@ -37,8 +38,8 @@ def list_network_adapters() -> List[str]:
                     if name and 'Loopback' not in name:
                         if name not in adapters:
                             adapters.append(name)
-    except Exception as e:
-        print(f"Ошибка получения адаптеров: {e}")
+    except Exception:
+        pass
     
     if not adapters:
         try:
