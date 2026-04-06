@@ -65,7 +65,56 @@ class Pages:
                 
                 if page_name == "settings" and hasattr(self, '_refresh_provider_card'):
                     self._refresh_provider_card()
+
+    def show_page_with_animation(self, page_name):
+        if page_name == self.current_page:
+            return
         
+        if hasattr(self, '_animation_running') and self._animation_running:
+            return
+        
+        self._animation_running = True
+        self.app._animation_running = True
+        
+        overlay = tk.Toplevel(self.app.root)
+        overlay.overrideredirect(True)
+        overlay.configure(bg='black')
+        
+        x = self.app.content_panel.winfo_rootx()
+        y = self.app.content_panel.winfo_rooty()
+        width = self.app.content_panel.winfo_width()
+        height = self.app.content_panel.winfo_height()
+        overlay.geometry(f"{width}x{height}+{x}+{y}")
+        self._animate_fade_out(overlay, page_name)
+
+    def _animate_fade_out(self, overlay, page_name, alpha=0.0):
+        if alpha <= 1.0:
+            try:
+                overlay.attributes('-alpha', alpha)
+                self.app.root.after(16, lambda: self._animate_fade_out(overlay, page_name, alpha + 0.08))
+            except:
+                self._animation_running = False
+                self.app._animation_running = False
+        else:
+            self.show_page(page_name)
+            self._animate_fade_in(overlay)
+
+    def _animate_fade_in(self, overlay, alpha=1.0):
+        if alpha >= 0.0:
+            try:
+                overlay.attributes('-alpha', alpha)
+                self.app.root.after(16, lambda: self._animate_fade_in(overlay, alpha - 0.08))
+            except:
+                self._animation_running = False
+                self.app._animation_running = False
+        else:
+            try:
+                overlay.destroy()
+            except:
+                pass
+            self._animation_running = False
+            self.app._animation_running = False
+                    
     def create_main_page(self, parent):
         self.main_page = tk.Frame(parent, bg=self.colors['bg_dark'])
         
@@ -200,12 +249,12 @@ class Pages:
                 if cmd == "check_launcher":
                     btn = RoundedButton(card, text=btn_text, 
                                     command=lambda: self.app.check_launcher_updates(self.app, silent=False),
-                                    width=220, height=35, bg=self.colors['button_bg'],
+                                    width=200, height=35, bg=self.colors['button_bg'],
                                     font=self.font_primary, corner_radius=8)
                 elif cmd == "check_zapret":
                     btn = RoundedButton(card, text=btn_text, 
                                     command=lambda: self.app.check_zapret_updates(self.app, silent=False),
-                                    width=220, height=35, bg=self.colors['button_bg'],
+                                    width=200, height=35, bg=self.colors['button_bg'],
                                     font=self.font_primary, corner_radius=8)
                 else:
                     btn = RoundedButton(card, text=btn_text, 
@@ -265,140 +314,151 @@ class Pages:
     def create_diagnostic_page(self, parent):
         self.diagnostic_page = tk.Frame(parent, bg=self.colors['bg_dark'])
         
-        tk.Label(self.diagnostic_page, text="Диагностика", font=("Segoe UI", 32, "bold"),
-                fg=self.colors['text_primary'], bg=self.colors['bg_dark']).pack(anchor='w', pady=(30, 12), padx=30)
+        header_frame = tk.Frame(self.diagnostic_page, bg=self.colors['bg_dark'])
+        header_frame.pack(fill=tk.X, pady=(20, 10), padx=30)
+        
+        tk.Label(header_frame, text="Диагностика", font=("Segoe UI", 28, "bold"),
+                fg=self.colors['text_primary'], bg=self.colors['bg_dark']).pack(side=tk.LEFT)
         
         main_container = tk.Frame(self.diagnostic_page, bg=self.colors['bg_dark'])
-        main_container.pack(fill=tk.BOTH, expand=True, padx=30, pady=4)
+        main_container.pack(fill=tk.BOTH, expand=True, padx=30, pady=5)
         
-        cards_frame = tk.Frame(main_container, bg=self.colors['bg_dark'])
-        cards_frame.pack(fill=tk.BOTH, expand=True)
+        left_panel = tk.Frame(main_container, bg=self.colors['bg_dark'], width=420)
+        left_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 15), anchor='n')
+
+        right_panel = tk.Frame(main_container, bg=self.colors['bg_dark'])
+        right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, anchor='n')
         
-        left_column = tk.Frame(cards_frame, bg=self.colors['bg_dark'])
-        left_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 12))
-        
-        right_column = tk.Frame(cards_frame, bg=self.colors['bg_dark'])
-        right_column.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(12, 0))
-        
-        self._create_card(left_column, "Zapret", [
+        self._create_diagnostic_card(left_panel, "Zapret", [
             ("Проверить статус", self.app.check_zapret_status),
             ("Логи winws.exe", self.app.check_zapret_logs),
-            ("Перезапустить Zapret", self.app.restart_zapret),
+            ("Перезапустить", self.app.restart_zapret),
             ("Авто-подбор", self.app.auto_select_strategy),
         ])
         
-        self._create_card(left_column, "TGProxy", [
+        self._create_diagnostic_card(left_panel, "TGProxy", [
             ("Проверить статус", self.app.check_tgproxy_status),
-            ("Перезапустить TGProxy", self.app.restart_tgproxy),
+            ("Перезапустить", self.app.restart_tgproxy),
         ])
         
-        self._create_card(left_column, "ByeDPI", [
+        self._create_diagnostic_card(left_panel, "ByeDPI", [
             ("Проверить статус", self.app.check_byedpi_status),
-            ("Перезапустить ByeDPI", self.app.restart_byedpi),
+            ("Перезапустить", self.app.restart_byedpi),
         ])
         
-        self._create_card(right_column, "Система", [
+        self._create_diagnostic_card(left_panel, "Система", [
             ("Папка AppData", self.app.open_appdata_folder),
             ("Автозапуск", self.app.toggle_autostart),
             ("Оптимизация сети", self.app.optimize_network_latency),
-            ("Найти подходящий DNS", self.app.find_and_set_best_dns),
-            ("Очистить DNS кеш", self.app.flush_dns_cache_command),
+            ("Найти DNS", self.app.find_and_set_best_dns),
+            ("Очистить DNS", self.app.flush_dns_cache_command),
             ("Сбросить настройки", self.app.restore_network_defaults_command),
         ])
         
-        self._create_card(right_column, "Состояние интернета", [
-            ("Пинг до Google", self.app.check_ping_google),
-            ("Пинг до YouTube", self.app.check_ping_youtube),
-            ("Пинг до Discord", self.app.check_ping_discord),
-            ("Проверить сайт", self.app.check_custom_site),
-        ])
-        
-        self._create_card(right_column, "Общая диагностика", [
+        self._create_diagnostic_card(left_panel, "Общая диагностика", [
             ("Полная проверка", self.app.run_full_diagnostic),
             ("Сохранить отчет", self.app.save_diagnostic_report),
             ("Проверка файлов", self.app.check_file_integrity),
             ("Очистить кеш", self.app.clear_cache),
         ])
         
-        result_frame = tk.Frame(main_container, bg=self.colors['bg_light'], height=280)
-        result_frame.pack(fill=tk.BOTH, expand=True, pady=(15, 0))
-        result_frame.pack_propagate(False)
+        result_frame = tk.Frame(right_panel, bg=self.colors['bg_medium'])
+        result_frame.pack(fill=tk.BOTH, expand=True)
         
-        result_header = tk.Frame(result_frame, bg=self.colors['bg_light'], height=32)
+        result_header = tk.Frame(result_frame, bg=self.colors['bg_medium'], height=35)
         result_header.pack(fill=tk.X)
         result_header.pack_propagate(False)
         
-        tk.Label(result_header, text="Результаты диагностики:", font=("Segoe UI", 12, "bold"),
-                fg=self.colors['text_primary'], bg=self.colors['bg_light']).pack(anchor='w', padx=12, pady=6)
+        tk.Label(
+            result_header, 
+            text="Результаты диагностики", 
+            font=("Segoe UI", 12, "bold"),
+            fg=self.colors['accent'], 
+            bg=self.colors['bg_medium']
+        ).pack(side=tk.LEFT, padx=12, pady=6)
         
         sep = tk.Frame(result_frame, bg=self.colors['separator'], height=1)
         sep.pack(fill=tk.X, padx=12)
         
-        text_container = tk.Frame(result_frame, bg=self.colors['bg_light'])
+        text_container = tk.Frame(result_frame, bg=self.colors['bg_medium'])
         text_container.pack(fill=tk.BOTH, expand=True, padx=12, pady=8)
         
-        self.app.diagnostic_text = tk.Text(text_container, 
-                                        bg=self.colors['bg_dark'],
-                                        fg=self.colors['text_primary'],
-                                        font=("Consolas", 9),
-                                        wrap=tk.WORD,
-                                        borderwidth=1,
-                                        relief=tk.FLAT,
-                                        highlightthickness=1,
-                                        highlightbackground=self.colors['separator'],
-                                        highlightcolor=self.colors['accent'])
+        self.app.diagnostic_text = tk.Text(
+            text_container, 
+            bg=self.colors['bg_dark'],
+            fg=self.colors['text_primary'],
+            font=("Consolas", 9),
+            wrap=tk.WORD,
+            borderwidth=0,
+            relief=tk.FLAT,
+            highlightthickness=1,
+            highlightbackground=self.colors['separator'],
+            highlightcolor=self.colors['accent'],
+            selectbackground=self.colors['accent'],
+            selectforeground='white',
+            padx=8,
+            pady=8
+        )
         
-        scrollbar = ttk.Scrollbar(text_container, command=self.app.diagnostic_text.yview, style="Custom.Vertical.TScrollbar")
+        scrollbar = ttk.Scrollbar(
+            text_container, 
+            command=self.app.diagnostic_text.yview, 
+            style="Custom.Vertical.TScrollbar"
+        )
         self.app.diagnostic_text.configure(yscrollcommand=scrollbar.set)
         
         self.app.diagnostic_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
         return self.diagnostic_page
 
-    def _create_card(self, parent, title, buttons):
-        card = tk.Frame(parent, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0, cursor="")
+    def _create_diagnostic_card(self, parent, title, buttons):
+        card = tk.Frame(parent, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
         card.pack(fill=tk.X, pady=4)
         
-        inner = tk.Frame(card, bg=self.colors['bg_light'], cursor="")
-        inner.pack(fill=tk.X, padx=8, pady=6)
+        inner = tk.Frame(card, bg=self.colors['bg_light'])
+        inner.pack(fill=tk.X, padx=10, pady=6)
         
-        title_frame = tk.Frame(inner, bg=self.colors['bg_light'], cursor="")
-        title_frame.pack(fill=tk.X, pady=(0, 4))
+        title_label = tk.Label(
+            inner, 
+            text=title, 
+            font=("Segoe UI", 11, "bold"),
+            fg=self.colors['accent'], 
+            bg=self.colors['bg_light']
+        )
+        title_label.pack(anchor='w', pady=(0, 5))
         
-        title_label = tk.Label(title_frame, text=title, font=("Segoe UI", 12, "bold"),
-                            fg=self.colors['accent'], bg=self.colors['bg_light'], cursor="")
-        title_label.pack(side=tk.LEFT)
+        sep = tk.Frame(inner, bg=self.colors['separator'], height=1)
+        sep.pack(fill=tk.X, pady=(0, 5))
         
-        title_sep = tk.Frame(inner, bg=self.colors['separator'], height=1, cursor="")
-        title_sep.pack(fill=tk.X, pady=(0, 4))
-        
-        buttons_container = tk.Frame(inner, bg=self.colors['bg_light'], cursor="")
+        buttons_container = tk.Frame(inner, bg=self.colors['bg_light'])
         buttons_container.pack(fill=tk.X)
         
-        for i in range(0, len(buttons), 2):
-            row = tk.Frame(buttons_container, bg=self.colors['bg_light'], cursor="")
-            row.pack(fill=tk.X, pady=1)
+        row = None
+        for i, (btn_text, btn_cmd) in enumerate(buttons):
+            if i % 2 == 0:
+                row = tk.Frame(buttons_container, bg=self.colors['bg_light'])
+                row.pack(fill=tk.X, pady=2)
             
-            btn1_text, btn1_cmd = buttons[i]
-            btn1 = RoundedButton(row, text=btn1_text,
-                                command=lambda cmd=btn1_cmd: self.app.safe_command(cmd),
-                                width=130, height=26,
-                                bg=self.colors['button_bg'],
-                                fg=self.colors['text_secondary'],
-                                font=("Segoe UI", 9),
-                                corner_radius=6)
-            btn1.pack(side=tk.LEFT, padx=(0, 6))
+            btn = RoundedButton(
+                row if row else buttons_container,
+                text=btn_text,
+                command=lambda cmd=btn_cmd: self.app.safe_command(cmd),
+                width=130, height=26,
+                bg=self.colors['button_bg'],
+                fg=self.colors['text_secondary'],
+                font=("Segoe UI", 8),
+                corner_radius=5
+            )
             
-            if i + 1 < len(buttons):
-                btn2_text, btn2_cmd = buttons[i + 1]
-                btn2 = RoundedButton(row, text=btn2_text,
-                                    command=lambda cmd=btn2_cmd: self.app.safe_command(cmd),
-                                    width=130, height=26,
-                                    bg=self.colors['button_bg'],
-                                    fg=self.colors['text_secondary'],
-                                    font=("Segoe UI", 9),
-                                    corner_radius=6)
-                btn2.pack(side=tk.LEFT, padx=(6, 0))
+            if i % 2 == 0:
+                btn.pack(side=tk.LEFT, padx=(0, 6), expand=True, fill=tk.X)
+            else:
+                btn.pack(side=tk.LEFT, expand=True, fill=tk.X)
+        
+        if len(buttons) % 2 == 1 and row:
+            filler = tk.Frame(row, bg=self.colors['bg_light'])
+            filler.pack(side=tk.LEFT, expand=True, fill=tk.X)
 
     def create_traffic_page(self, parent):
         self.traffic_page = tk.Frame(parent, bg=self.colors['bg_dark'])
