@@ -7,14 +7,12 @@ if TYPE_CHECKING:
 
 from list_editor import ListEditor
 from widgets import RoundedButton
-from custom_provider_manager import load_custom_provider, save_custom_provider, delete_custom_provider
-from custom_provider import edit_custom_provider
 import os
-import time
 from pathlib import Path
 
 APPDATA_DIR = Path(os.getenv('LOCALAPPDATA')) / 'ZapretLauncher'
 ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
+ZAPRET_LAUNCHER_DIR = APPDATA_DIR
 
 def check_zapret_folder():
     if not ZAPRET_CORE_DIR.exists():
@@ -31,7 +29,7 @@ def open_zapret_folder():
     if not check_zapret_folder():
         return
     try:
-        os.startfile(ZAPRET_CORE_DIR)
+        os.startfile(ZAPRET_LAUNCHER_DIR)
     except Exception as e:
         messagebox.showerror("Ошибка", f"Не удалось открыть папку: {str(e)}")
 
@@ -45,6 +43,13 @@ class Pages:
         
         self.current_page = "main"
         self.pages = {}
+
+        self.shutdown_status_label = None
+        self.shutdown_last_update_label = None
+        self.shutdown_tree = None
+
+        self._pending_page = None
+        self._animation_active = False
         
     def show_page(self, page_name):
         if page_name == self.current_page:
@@ -62,19 +67,21 @@ class Pages:
                 new_page.tkraise()
                 new_page.config(cursor="")
                 self.current_page = page_name
-                
-                if page_name == "settings" and hasattr(self, '_refresh_provider_card'):
-                    self._refresh_provider_card()
 
     def show_page_with_animation(self, page_name):
-        if page_name == self.current_page:
+        if page_name == self.current_page and not self._animation_active:
             return
         
-        if hasattr(self, '_animation_running') and self._animation_running:
+        self._pending_page = page_name
+        
+        if self._animation_active:
             return
         
-        self._animation_running = True
-        self.app._animation_running = True
+        self._start_animation(page_name)
+
+    def _start_animation(self, page_name):
+        self._animation_active = True
+        self._pending_page = None
         
         overlay = tk.Toplevel(self.app.root)
         overlay.overrideredirect(True)
@@ -85,6 +92,7 @@ class Pages:
         width = self.app.content_panel.winfo_width()
         height = self.app.content_panel.winfo_height()
         overlay.geometry(f"{width}x{height}+{x}+{y}")
+        
         self._animate_fade_out(overlay, page_name)
 
     def _animate_fade_out(self, overlay, page_name, alpha=0.0):
@@ -93,8 +101,7 @@ class Pages:
                 overlay.attributes('-alpha', alpha)
                 self.app.root.after(16, lambda: self._animate_fade_out(overlay, page_name, alpha + 0.08))
             except:
-                self._animation_running = False
-                self.app._animation_running = False
+                self._finish_animation()
         else:
             self.show_page(page_name)
             self._animate_fade_in(overlay)
@@ -105,21 +112,40 @@ class Pages:
                 overlay.attributes('-alpha', alpha)
                 self.app.root.after(16, lambda: self._animate_fade_in(overlay, alpha - 0.08))
             except:
-                self._animation_running = False
-                self.app._animation_running = False
+                self._finish_animation()
         else:
             try:
                 overlay.destroy()
             except:
                 pass
-            self._animation_running = False
-            self.app._animation_running = False
+            self._finish_animation()
+
+    def _finish_animation(self):
+        self._animation_active = False
+        
+        if self._pending_page and self._pending_page != self.current_page:
+            self._start_animation(self._pending_page)
                     
     def create_main_page(self, parent):
         self.main_page = tk.Frame(parent, bg=self.colors['bg_dark'])
         
-        tk.Label(self.main_page, text="Главная", font=("Segoe UI", 32, "bold"), 
-                fg=self.colors['text_primary'], bg=self.colors['bg_dark']).pack(anchor='w', pady=(30, 20), padx=20)
+        title_label = tk.Label(
+            self.main_page, 
+            text="Главная", 
+            font=("Inter", 20, "bold"),
+            fg=self.colors['text_primary'], 
+            bg=self.colors['bg_dark']
+        )
+        title_label.pack(anchor='w', pady=(30, 5), padx=30)
+        
+        desc_label = tk.Label(
+            self.main_page,
+            text="Управление подключением и мониторинг состояния",
+            font=("Inter", 10),
+            fg=self.colors['text_secondary'],
+            bg=self.colors['bg_dark']
+        )
+        desc_label.pack(anchor='w', pady=(0, 20), padx=30)
         
         status_frame = tk.Frame(self.main_page, bg=self.colors['bg_light'])
         status_frame.pack(fill=tk.X, padx=30, pady=(0, 20))
@@ -144,23 +170,23 @@ class Pages:
         self.app.stats_frame = tk.Frame(self.main_page, bg=self.colors['bg_medium'])
         self.app.stats_frame.pack(fill=tk.X, padx=30, pady=(0, 20), ipadx=20, ipady=15)
         
-        tk.Label(self.app.stats_frame, text="Статистика сессии", font=("Segoe UI", 14, "bold"),
+        tk.Label(self.app.stats_frame, text="Статистика сессии", font=("Inter", 14, "bold"),
                 fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(anchor='w', padx=15, pady=(0, 10))
         
         stats_row1 = tk.Frame(self.app.stats_frame, bg=self.colors['bg_medium'])
         stats_row1.pack(fill=tk.X, padx=15, pady=2)
         
-        self.app.stats_time_label = tk.Label(stats_row1, text="00:00:00", font=("Segoe UI", 18, "bold"),
+        self.app.stats_time_label = tk.Label(stats_row1, text="00:00:00", font=("Inter", 18, "bold"),
                                             fg=self.colors['accent'], bg=self.colors['bg_medium'])
         self.app.stats_time_label.pack(side=tk.LEFT)
         
         tk.Label(stats_row1, text="время работы", font=self.font_primary,
                 fg=self.colors['text_secondary'], bg=self.colors['bg_medium']).pack(side=tk.LEFT, padx=(5, 20))
         
-        self.app.stats_traffic_label = tk.Label(stats_row1, text="⬇ 0 B  |  ⬆ 0 B", font=("Segoe UI", 12),
+        self.app.stats_traffic_label = tk.Label(stats_row1, text="⬇ 0 B  |  ⬆ 0 B", font=("Inter", 12),
                                                 fg=self.colors['text_primary'], bg=self.colors['bg_medium'])
         self.app.stats_traffic_label.pack(side=tk.LEFT, padx=(0, 20))
-        self.app.stats_total_label = tk.Label(stats_row1, text="0 B", font=("Segoe UI", 12),
+        self.app.stats_total_label = tk.Label(stats_row1, text="0 B", font=("Inter", 12),
                                             fg=self.colors['text_secondary'], bg=self.colors['bg_medium'])
         self.app.stats_total_label.pack(side=tk.LEFT)
         
@@ -191,7 +217,7 @@ class Pages:
         tk.Label(rtt_frame, text="Задержка (RTT):", font=self.font_bold,
                 fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(anchor='w')
         
-        self.app.stats_rtt_label = tk.Label(rtt_frame, text="-- ms", font=("Segoe UI", 16, "bold"),
+        self.app.stats_rtt_label = tk.Label(rtt_frame, text="-- ms", font=("Inter", 16, "bold"),
                                             fg=self.colors['accent'], bg=self.colors['bg_medium'])
         self.app.stats_rtt_label.pack(anchor='w', pady=(5, 0))
         
@@ -204,7 +230,7 @@ class Pages:
         self.interval_warning_label = tk.Label(
             info_frame,
             text="Чем выше скорость обновления интерфейса, тем больше степень нагрузки на ЦП",
-            font=("Segoe UI", 9),
+            font=("Inter", 9),
             fg=self.colors['text_secondary'],
             bg=self.colors['bg_medium'],
             justify=tk.LEFT
@@ -216,7 +242,7 @@ class Pages:
         
         self.app.connect_btn = RoundedButton(button_frame, text="ПОДКЛЮЧИТЬСЯ", command=self.app.toggle_connection,
                                     width=350, height=60, bg='#6c5579', 
-                                    font=("Segoe UI", 18, "bold"), corner_radius=15)
+                                    font=("Inter", 18, "bold"), corner_radius=15)
         self.app.connect_btn.hover_color = '#3D3D45'
         self.app.connect_btn.pack()
         return self.main_page
@@ -224,8 +250,23 @@ class Pages:
     def create_service_page(self, parent):
         self.service_page = tk.Frame(parent, bg=self.colors['bg_dark'])
         
-        tk.Label(self.service_page, text="Сервис", font=("Segoe UI", 32, "bold"),
-                fg=self.colors['text_primary'], bg=self.colors['bg_dark']).pack(anchor='w', pady=(30, 20), padx=30)
+        title_label = tk.Label(
+            self.service_page,
+            text="Сервис",
+            font=("Inter", 20, "bold"),
+            fg=self.colors['text_primary'],
+            bg=self.colors['bg_dark']
+        )
+        title_label.pack(anchor='w', pady=(30, 5), padx=30)
+        
+        desc_label = tk.Label(
+            self.service_page,
+            text="Дополнительные сервисы и функции программы",
+            font=("Inter", 10),
+            fg=self.colors['text_secondary'],
+            bg=self.colors['bg_dark']
+        )
+        desc_label.pack(anchor='w', pady=(0, 20), padx=30)
         
         functions = [
             ("Фильтры", [
@@ -242,7 +283,7 @@ class Pages:
             card = tk.Frame(self.service_page, bg=self.colors['bg_medium'])
             card.pack(fill=tk.X, padx=30, pady=10, ipadx=20, ipady=10)
             
-            tk.Label(card, text=title, font=("Segoe UI", 14, "bold"),
+            tk.Label(card, text=title, font=("Inter", 14, "bold"),
                     fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(anchor='w', padx=15, pady=(10, 5))
             
             for btn_text, cmd in items:
@@ -267,8 +308,23 @@ class Pages:
     def create_lists_page(self, parent):
         self.lists_page = tk.Frame(parent, bg=self.colors['bg_dark'])
         
-        tk.Label(self.lists_page, text="Редактор", font=("Segoe UI", 32, "bold"),
-                fg=self.colors['text_primary'], bg=self.colors['bg_dark']).pack(anchor='w', pady=(30, 30), padx=30)
+        title_label = tk.Label(
+            self.lists_page,
+            text="Редактор списков",
+            font=("Inter", 20, "bold"),
+            fg=self.colors['text_primary'],
+            bg=self.colors['bg_dark']
+        )
+        title_label.pack(anchor='w', pady=(30, 5), padx=30)
+        
+        desc_label = tk.Label(
+            self.lists_page,
+            text="Редактирование списков для обхода блокировок",
+            font=("Inter", 10),
+            fg=self.colors['text_secondary'],
+            bg=self.colors['bg_dark']
+        )
+        desc_label.pack(anchor='w', pady=(0, 20), padx=30)
         
         lists_content = tk.Frame(self.lists_page, bg=self.colors['bg_light'])
         lists_content.pack(fill=tk.X, padx=30, pady=10)
@@ -280,9 +336,9 @@ class Pages:
             text_frame = tk.Frame(frame, bg=self.colors['bg_light'])
             text_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
             
-            tk.Label(text_frame, text=label, font=("Segoe UI", 14, "bold"), 
+            tk.Label(text_frame, text=label, font=("Inter", 14, "bold"), 
                     fg=self.colors['text_primary'], bg=self.colors['bg_light'], anchor='w', cursor="").pack(anchor='w')
-            tk.Label(text_frame, text=filename, font=("Segoe UI", 11), 
+            tk.Label(text_frame, text=filename, font=("Inter", 11), 
                     fg=self.colors['text_secondary'], bg=self.colors['bg_light'], anchor='w', cursor="").pack(anchor='w', pady=(5, 0))
             
             btn_frame = tk.Frame(frame, bg=self.colors['bg_light'], cursor="")
@@ -291,16 +347,16 @@ class Pages:
             edit_btn = RoundedButton(btn_frame, text="ИЗМЕНИТЬ", 
                                     command=lambda f=filename: self.edit_list_file(f),
                                     width=100, height=35, bg=self.colors['button_bg'], 
-                                    font=("Segoe UI", 10, "bold"), corner_radius=8)
+                                    font=("Inter", 10, "bold"), corner_radius=8)
             edit_btn.pack()
         
         folder_frame = tk.Frame(self.lists_page, bg=self.colors['bg_dark'], cursor="")
         folder_frame.pack(fill=tk.X, padx=30, pady=(20, 10))
         
-        open_folder_btn = RoundedButton(folder_frame, text="Открыть папку с Zapret", 
+        open_folder_btn = RoundedButton(folder_frame, text="Расположение ZL", 
                                     command=open_zapret_folder,
                                     width=300, height=40, bg=self.colors['button_bg'], 
-                                    font=("Segoe UI", 11, "bold"), corner_radius=10)
+                                    font=("Inter", 11, "bold"), corner_radius=10)
         open_folder_btn.pack()
         return self.lists_page
     
@@ -314,11 +370,26 @@ class Pages:
     def create_diagnostic_page(self, parent):
         self.diagnostic_page = tk.Frame(parent, bg=self.colors['bg_dark'])
         
+        title_label = tk.Label(
+            self.diagnostic_page,
+            text="Диагностика",
+            font=("Inter", 20, "bold"),
+            fg=self.colors['text_primary'],
+            bg=self.colors['bg_dark']
+        )
+        title_label.pack(anchor='w', pady=(30, 5), padx=30)
+        
+        desc_label = tk.Label(
+            self.diagnostic_page,
+            text="Проверка состояния компонентов и диагностика сети",
+            font=("Inter", 10),
+            fg=self.colors['text_secondary'],
+            bg=self.colors['bg_dark']
+        )
+        desc_label.pack(anchor='w', pady=(0, 20), padx=30)
+        
         header_frame = tk.Frame(self.diagnostic_page, bg=self.colors['bg_dark'])
         header_frame.pack(fill=tk.X, pady=(20, 10), padx=30)
-        
-        tk.Label(header_frame, text="Диагностика", font=("Segoe UI", 28, "bold"),
-                fg=self.colors['text_primary'], bg=self.colors['bg_dark']).pack(side=tk.LEFT)
         
         main_container = tk.Frame(self.diagnostic_page, bg=self.colors['bg_dark'])
         main_container.pack(fill=tk.BOTH, expand=True, padx=30, pady=5)
@@ -339,11 +410,6 @@ class Pages:
         self._create_diagnostic_card(left_panel, "TGProxy", [
             ("Проверить статус", self.app.check_tgproxy_status),
             ("Перезапустить", self.app.restart_tgproxy),
-        ])
-        
-        self._create_diagnostic_card(left_panel, "ByeDPI", [
-            ("Проверить статус", self.app.check_byedpi_status),
-            ("Перезапустить", self.app.restart_byedpi),
         ])
         
         self._create_diagnostic_card(left_panel, "Система", [
@@ -372,7 +438,7 @@ class Pages:
         tk.Label(
             result_header, 
             text="Результаты диагностики", 
-            font=("Segoe UI", 12, "bold"),
+            font=("Inter", 12, "bold"),
             fg=self.colors['accent'], 
             bg=self.colors['bg_medium']
         ).pack(side=tk.LEFT, padx=12, pady=6)
@@ -422,7 +488,7 @@ class Pages:
         title_label = tk.Label(
             inner, 
             text=title, 
-            font=("Segoe UI", 11, "bold"),
+            font=("Inter", 11, "bold"),
             fg=self.colors['accent'], 
             bg=self.colors['bg_light']
         )
@@ -447,7 +513,7 @@ class Pages:
                 width=130, height=26,
                 bg=self.colors['button_bg'],
                 fg=self.colors['text_secondary'],
-                font=("Segoe UI", 8),
+                font=("Inter", 8),
                 corner_radius=5
             )
             
@@ -460,11 +526,146 @@ class Pages:
             filler = tk.Frame(row, bg=self.colors['bg_light'])
             filler.pack(side=tk.LEFT, expand=True, fill=tk.X)
 
+    def create_shutdown_sites_page(self, parent):
+        page = tk.Frame(parent, bg=self.app.colors['bg_dark'])
+        
+        main_container = tk.Frame(page, bg=self.app.colors['bg_dark'])
+        main_container.pack(fill=tk.BOTH, expand=True, padx=30, pady=20)
+        
+        title_label = tk.Label(
+            main_container,
+            text="Сбои интернета",
+            font=("Inter", 20, "bold"),
+            fg=self.app.colors['text_primary'],
+            bg=self.app.colors['bg_dark']
+        )
+        title_label.pack(anchor='w', pady=(0, 5))
+        
+        desc_label = tk.Label(
+            main_container,
+            text="Проверка доступности популярных сервисов и провайдеров",
+            font=("Inter", 10),
+            fg=self.app.colors['text_secondary'],
+            bg=self.app.colors['bg_dark']
+        )
+        desc_label.pack(anchor='w', pady=(0, 20))
+        
+        top_frame = tk.Frame(main_container, bg=self.app.colors['bg_dark'])
+        top_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        self.shutdown_refresh_btn = RoundedButton(
+            top_frame,
+            text="Обновить",
+            command=lambda: self.app.refresh_all_shutdown_status(manual=True),
+            width=120, height=35,
+            bg=self.app.colors['accent'],
+            fg=self.app.colors['text_primary'],
+            font=("Inter", 10),
+            corner_radius=8
+        )
+        self.shutdown_refresh_btn.pack(side=tk.LEFT, padx=(0, 15))
+        
+        self.shutdown_status_label = tk.Label(
+            top_frame,
+            text="Активен",
+            font=("Inter", 10),
+            fg=self.app.colors['accent_green'],
+            bg=self.app.colors['bg_dark']
+        )
+        self.shutdown_status_label.pack(side=tk.LEFT, padx=(0, 10))
+        
+        self.shutdown_update_info = tk.Label(
+            top_frame,
+            text="Данные обновляются в течение 60 секунд",
+            font=("Inter", 9),
+            fg=self.app.colors['text_secondary'],
+            bg=self.app.colors['bg_dark']
+        )
+        self.shutdown_update_info.pack(side=tk.LEFT, padx=(10, 0))
+        
+        self.shutdown_last_update_label = tk.Label(
+            top_frame,
+            text="Последнее обновление: --:--:--",
+            font=("Inter", 9),
+            fg=self.app.colors['text_secondary'],
+            bg=self.app.colors['bg_dark']
+        )
+        self.shutdown_last_update_label.pack(side=tk.RIGHT)
+        
+        table_card = tk.Frame(main_container, bg=self.app.colors['bg_light'], relief=tk.FLAT, bd=0)
+        table_card.pack(fill=tk.BOTH, expand=True)
+        
+        table_inner = tk.Frame(table_card, bg=self.app.colors['bg_light'])
+        table_inner.pack(fill=tk.BOTH, expand=True, padx=1, pady=1)
+        
+        tree_frame = tk.Frame(table_inner, bg=self.app.colors['bg_light'])
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
+        
+        v_scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", style="Custom.Vertical.TScrollbar")
+        v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        h_scrollbar = ttk.Scrollbar(tree_frame, orient="horizontal", style="Custom.Horizontal.TScrollbar")
+        h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+        
+        self.shutdown_tree = ttk.Treeview(
+            tree_frame,
+            columns=("service", "status", "source"),
+            show="headings",
+            height=18,
+            yscrollcommand=v_scrollbar.set,
+            xscrollcommand=h_scrollbar.set,
+            style="Custom.Treeview"
+        )
+        
+        self.shutdown_tree.heading("service", text="Сервис/Сайт")
+        self.shutdown_tree.heading("status", text="Статус")
+        self.shutdown_tree.heading("source", text="Источник")
+        self.shutdown_tree.column("service", width=250, anchor='w')
+        self.shutdown_tree.column("status", width=150, anchor='center')
+        self.shutdown_tree.column("source", width=300, anchor='w')
+        self.shutdown_tree.pack(fill=tk.BOTH, expand=True)
+        
+        v_scrollbar.config(command=self.shutdown_tree.yview)
+        h_scrollbar.config(command=self.shutdown_tree.xview)
+        
+        style = ttk.Style()
+        style.configure(
+            "Custom.Treeview",
+            background=self.app.colors['bg_light'],
+            foreground=self.app.colors['text_primary'],
+            fieldbackground=self.app.colors['bg_light'],
+            rowheight=28,
+            font=("Inter", 9)
+        )
+        style.configure(
+            "Custom.Treeview.Heading",
+            background=self.app.colors['bg_medium'],
+            foreground=self.app.colors['text_primary'],
+            font=("Inter", 10, "bold")
+        )
+        style.map('Custom.Treeview', background=[('selected', self.app.colors['accent'])])
+        return page
+
     def create_traffic_page(self, parent):
         self.traffic_page = tk.Frame(parent, bg=self.colors['bg_dark'])
         
-        tk.Label(self.traffic_page, text="Трафик по процессам", font=("Segoe UI", 32, "bold"),
-                fg=self.colors['text_primary'], bg=self.colors['bg_dark']).pack(anchor='w', pady=(30, 20), padx=30)
+        title_label = tk.Label(
+            self.traffic_page,
+            text="Трафик",
+            font=("Inter", 20, "bold"),
+            fg=self.colors['text_primary'],
+            bg=self.colors['bg_dark']
+        )
+        title_label.pack(anchor='w', pady=(30, 5), padx=30)
+        
+        desc_label = tk.Label(
+            self.traffic_page,
+            text="Мониторинг сетевого трафика по процессам",
+            font=("Inter", 10),
+            fg=self.colors['text_secondary'],
+            bg=self.colors['bg_dark']
+        )
+        desc_label.pack(anchor='w', pady=(0, 20), padx=30)
         
         table_frame = tk.Frame(self.traffic_page, bg=self.colors['bg_light'])
         table_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=10)
@@ -477,7 +678,7 @@ class Pages:
         style.configure("Treeview.Heading",
                         background=self.colors['bg_medium'],
                         foreground=self.colors['text_primary'],
-                        font=("Segoe UI", 10, "bold"),
+                        font=("Inter", 10, "bold"),
                         relief="flat")
         style.map("Treeview.Heading",
                 background=[('active', self.colors['bg_medium'])],
@@ -488,7 +689,7 @@ class Pages:
                         foreground=self.colors['text_primary'],
                         rowheight=25,
                         fieldbackground=self.colors['bg_light'],
-                        font=("Segoe UI", 9))
+                        font=("Inter", 9))
         
         style.map("Treeview",
                 background=[('selected', self.colors['accent'])],
@@ -518,7 +719,7 @@ class Pages:
         card = tk.Frame(parent, bg=self.colors['bg_light'], cursor="")
         card.pack(fill=tk.X, pady=(0, 4))
         
-        tk.Label(card, text=title, font=("Segoe UI", 11, "bold"),
+        tk.Label(card, text=title, font=("Inter", 11, "bold"),
                 fg=self.colors['text_primary'], bg=self.colors['bg_light'], cursor="").pack(anchor='w', padx=5, pady=(2, 0))
         
         separator = tk.Frame(card, bg=self.colors['separator'], height=1, cursor="")
@@ -537,7 +738,7 @@ class Pages:
                                 width=130, height=24,
                                 bg=self.colors['button_bg'],
                                 fg=self.colors['text_secondary'],
-                                font=("Segoe UI", 8),
+                                font=("Inter", 8),
                                 corner_radius=4)
             btn1.pack(side=tk.LEFT, padx=(0, 2))
             
@@ -548,7 +749,7 @@ class Pages:
                                     width=130, height=24,
                                     bg=self.colors['button_bg'],
                                     fg=self.colors['text_secondary'],
-                                    font=("Segoe UI", 8),
+                                    font=("Inter", 8),
                                     corner_radius=4)
                 btn2.pack(side=tk.LEFT, padx=(2, 0))
 
@@ -559,6 +760,7 @@ class Pages:
         self.diagnostic_page = self.create_diagnostic_page(parent)
         self.traffic_page = self.create_traffic_page(parent)
         self.settings_page = self.create_settings_page(parent)
+        self.shutsites_page = self.create_shutdown_sites_page(parent)
         
         self.pages = {
             "main": self.main_page,
@@ -566,17 +768,33 @@ class Pages:
             "lists": self.lists_page,
             "diagnostic": self.diagnostic_page,
             "traffic": self.traffic_page,
-            "settings": self.settings_page
+            "settings": self.settings_page,
+            "shutsites": self.shutsites_page
         }
         
         self.main_page.place(x=0, y=0, width=950, height=800)
         self.current_page = "main"
 
     def create_settings_page(self, parent):
-        self.settings_page = tk.Frame(parent, bg=self.colors['bg_dark'], cursor="")
+        self.settings_page = tk.Frame(parent, bg=self.colors['bg_dark'])
         
-        tk.Label(self.settings_page, text="Настройки лаунчера", font=("Segoe UI", 32, "bold"),
-                fg=self.colors['text_primary'], bg=self.colors['bg_dark']).pack(anchor='w', pady=(30, 12), padx=30)
+        title_label = tk.Label(
+            self.settings_page,
+            text="Настройки",
+            font=("Inter", 20, "bold"),
+            fg=self.colors['text_primary'],
+            bg=self.colors['bg_dark']
+        )
+        title_label.pack(anchor='w', pady=(30, 5), padx=30)
+        
+        desc_label = tk.Label(
+            self.settings_page,
+            text="Настройка интерфейса и параметров работы",
+            font=("Inter", 10),
+            fg=self.colors['text_secondary'],
+            bg=self.colors['bg_dark']
+        )
+        desc_label.pack(anchor='w', pady=(0, 20), padx=30)
         
         main_container = tk.Frame(self.settings_page, bg=self.colors['bg_dark'])
         main_container.pack(fill=tk.BOTH, expand=True, padx=30, pady=4)
@@ -599,7 +817,6 @@ class Pages:
             ("Не обновлять", self._set_update_interval_none),
         ])
 
-        self._create_provider_card(left_column)
         info_card = tk.Frame(left_column, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
         info_card.pack(fill=tk.X, pady=6)
         info_card.info_card = True
@@ -607,18 +824,13 @@ class Pages:
         info_inner = tk.Frame(info_card, bg=self.colors['bg_light'])
         info_inner.pack(fill=tk.X, padx=10, pady=8)
             
-        tk.Label(info_inner, text="Текущие настройки", font=("Segoe UI", 12, "bold"),
+        tk.Label(info_inner, text="Текущие настройки", font=("Inter", 12, "bold"),
             fg=self.colors['accent'], bg=self.colors['bg_light']).pack(anchor='w', pady=(0, 5))
             
         self.current_interval_label = tk.Label(info_inner, 
             text=f"Обновление интерфейса: {self._get_current_interval_text()}",
-            font=("Segoe UI", 10), fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
+            font=("Inter", 10), fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
         self.current_interval_label.pack(anchor='w', pady=2)
-            
-        self.current_provider_label = tk.Label(info_inner, 
-            text=f"Провайдер ByeDPI: {self.app.current_provider}",
-            font=("Segoe UI", 10), fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
-        self.current_provider_label.pack(anchor='w', pady=2)
         return self.settings_page
 
     def _get_current_interval_text(self):
@@ -631,211 +843,6 @@ class Pages:
             None: "отключено"
         }
         return intervals.get(self.app.update_interval, "10 секунд")
-    
-    def _create_provider_card(self, parent):
-        card = tk.Frame(parent, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0, cursor="")
-        card.pack(fill=tk.X, pady=4)
-        card.provider_card = True
-        
-        inner = tk.Frame(card, bg=self.colors['bg_light'], cursor="")
-        inner.pack(fill=tk.X, padx=8, pady=6)
-        
-        title_frame = tk.Frame(inner, bg=self.colors['bg_light'], cursor="")
-        title_frame.pack(fill=tk.X, pady=(0, 4))
-        
-        title_label = tk.Label(title_frame, text="Провайдер для ByeDPI", font=("Segoe UI", 12, "bold"),
-                            fg=self.colors['accent'], bg=self.colors['bg_light'], cursor="")
-        title_label.pack(side=tk.LEFT)
-        
-        title_sep = tk.Frame(inner, bg=self.colors['separator'], height=1, cursor="")
-        title_sep.pack(fill=tk.X, pady=(0, 4))
-        
-        providers_container = tk.Frame(inner, bg=self.colors['bg_light'], cursor="")
-        providers_container.pack(fill=tk.X)
-        
-        providers = list(self.app.PROVIDER_PARAMS.keys())
-        custom_provider = load_custom_provider()
-        has_custom = custom_provider is not None
-        
-        if has_custom:
-            custom_name = custom_provider.get("name", "Кастомный")
-            if custom_name not in providers:
-                providers.append(custom_name)
-        
-        rows = (len(providers) + 1) // 2
-        for i in range(rows):
-            row = tk.Frame(providers_container, bg=self.colors['bg_light'], cursor="")
-            row.pack(fill=tk.X, pady=1)
-            
-            provider_left = providers[i * 2] if i * 2 < len(providers) else None
-            if provider_left:
-                btn_left = RoundedButton(row, text=provider_left, 
-                                        command=lambda p=provider_left: self._set_provider(p),
-                                        width=130, height=26,
-                                        bg=self.colors['button_bg'],
-                                        fg=self.colors['text_secondary'],
-                                        font=("Segoe UI", 9),
-                                        corner_radius=6)
-                btn_left.pack(side=tk.LEFT, padx=(0, 6))
-                
-                if has_custom and provider_left == custom_name:
-                    delete_btn = RoundedButton(row, text="🗑", 
-                                            command=self._delete_custom_provider,
-                                            width=26, height=26,
-                                            bg=self.colors['accent_red'],
-                                            fg='white',
-                                            font=("Segoe UI", 12),
-                                            corner_radius=6)
-                    delete_btn.pack(side=tk.LEFT, padx=(2, 0))
-
-            provider_right = providers[i * 2 + 1] if i * 2 + 1 < len(providers) else None
-            if provider_right:
-                btn_right = RoundedButton(row, text=provider_right, 
-                                        command=lambda p=provider_right: self._set_provider(p),
-                                        width=130, height=26,
-                                        bg=self.colors['button_bg'],
-                                        fg=self.colors['text_secondary'],
-                                        font=("Segoe UI", 9),
-                                        corner_radius=6)
-                btn_right.pack(side=tk.LEFT, padx=(6, 0))
-                
-                if has_custom and provider_right == custom_name:
-                    delete_btn = RoundedButton(row, text="🗑", 
-                                            command=self._delete_custom_provider,
-                                            width=26, height=26,
-                                            bg=self.colors['accent_red'],
-                                            fg='white',
-                                            font=("Segoe UI", 12),
-                                            corner_radius=6)
-                    delete_btn.pack(side=tk.LEFT, padx=(2, 0))
-
-            elif provider_left and i * 2 + 1 >= len(providers):
-                if has_custom and provider_left == custom_name:
-                    for widget in row.winfo_children():
-                        widget.destroy()
-                    btn_left = RoundedButton(row, text=provider_left, 
-                                            command=lambda p=provider_left: self._set_provider(p),
-                                            width=130, height=26,
-                                            bg=self.colors['button_bg'],
-                                            fg=self.colors['text_secondary'],
-                                            font=("Segoe UI", 9),
-                                            corner_radius=6)
-                    btn_left.pack(side=tk.LEFT, padx=(0, 6))
-                    
-                    delete_btn = RoundedButton(row, text="🗑", 
-                                            command=self._delete_custom_provider,
-                                            width=26, height=26,
-                                            bg=self.colors['accent_red'],
-                                            fg='white',
-                                            font=("Segoe UI", 12),
-                                            corner_radius=6)
-                    delete_btn.pack(side=tk.LEFT, padx=(2, 0))
-        
-        create_frame = tk.Frame(providers_container, bg=self.colors['bg_light'], cursor="")
-        create_frame.pack(fill=tk.X, pady=(6, 0))
-
-        button_text = "Редактировать кастомный провайдер" if has_custom else "Создать кастомный провайдер"
-        
-        create_btn = RoundedButton(create_frame, text=button_text, 
-                                command=self._create_custom_provider,
-                                width=272, height=26,
-                                bg=self.colors['button_bg'],
-                                fg=self.colors['text_secondary'],
-                                font=("Segoe UI", 9),
-                                corner_radius=6)
-        create_btn.pack(anchor='w')
-
-    def _create_custom_provider(self):
-        if load_custom_provider() is not None:
-            self._edit_custom_provider()
-            return
-        
-        result = edit_custom_provider(self.app.root, self.colors)
-        if result:
-            if save_custom_provider(result["name"], result["params"]):
-                self.app.PROVIDER_PARAMS[result["name"]] = result["params"]
-                messagebox.showinfo("Успех", f"Провайдер '{result['name']}' создан")
-                self._refresh_provider_card()
-            else:
-                messagebox.showerror("Ошибка", "Не удалось сохранить провайдера")
-
-    def _edit_custom_provider(self):
-        custom = load_custom_provider()
-        if not custom:
-            return
-        
-        result = edit_custom_provider(self.app.root, self.colors, custom)
-        if result:
-            if save_custom_provider(result["name"], result["params"]):
-                old_name = custom["name"]
-                if old_name in self.app.PROVIDER_PARAMS:
-                    del self.app.PROVIDER_PARAMS[old_name]
-                self.app.PROVIDER_PARAMS[result["name"]] = result["params"]
-                
-                if self.app.current_provider == old_name:
-                    self.app.current_provider = result["name"]
-                    self.app.provider_var.set(result["name"])
-                    self.app.byedpi.set_provider(result["name"])
-                    if hasattr(self, 'current_provider_label'):
-                        self.current_provider_label.config(text=f"Провайдер ByeDPI: {result['name']}")
-                
-                messagebox.showinfo("Успех", f"Провайдер '{result['name']}' обновлён")
-                self._refresh_provider_card()
-            else:
-                messagebox.showerror("Ошибка", "Не удалось сохранить провайдера")
-
-    def _delete_custom_provider(self):
-        custom = load_custom_provider()
-        if not custom:
-            return
-        
-        result = messagebox.askyesno("Подтверждение", 
-            f"Удалить кастомный провайдер '{custom['name']}'?\n\n"
-            "Это действие нельзя отменить.")
-        
-        if result:
-            if delete_custom_provider():
-                if custom["name"] in self.app.PROVIDER_PARAMS:
-                    del self.app.PROVIDER_PARAMS[custom["name"]]
-                
-                default_provider = "Телеком/Дом.ru/Tele2"
-                self.app.current_provider = default_provider
-                self.app.provider_var.set(default_provider)
-                self.app.byedpi.set_provider(default_provider)
-                self.app.save_settings()
-                
-                if hasattr(self, 'current_provider_label'):
-                    self.current_provider_label.config(text=f"Провайдер ByeDPI: {default_provider}")
-                
-                self._refresh_provider_card()
-                messagebox.showinfo("Успех", "Кастомный провайдер удалён")
-            else:
-                messagebox.showerror("Ошибка", "Не удалось удалить провайдера")
-
-    def _refresh_provider_card(self):
-        for widget in self.settings_page.winfo_children():
-            if isinstance(widget, tk.Frame):
-                for cards_frame in widget.winfo_children():
-                    if isinstance(cards_frame, tk.Frame):
-                        for left_column in cards_frame.winfo_children():
-                            if isinstance(left_column, tk.Frame):
-                                for child in left_column.winfo_children():
-                                    if hasattr(child, 'provider_card') and child.provider_card:
-                                        child.destroy()
-                                self._create_provider_card(left_column)
-                                
-                                info_card = None
-                                for child in left_column.winfo_children():
-                                    if hasattr(child, 'info_card') and child.info_card:
-                                        info_card = child
-                                        break
-                                
-                                if info_card:
-                                    info_card.pack_forget()
-                                    info_card.pack(fill=tk.X, pady=8)
-                                
-                                self.settings_page.update_idletasks()
-                                return
 
     def _create_settings_card(self, parent, title, options):
         card = tk.Frame(parent, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0, cursor="")
@@ -847,7 +854,7 @@ class Pages:
         title_frame = tk.Frame(inner, bg=self.colors['bg_light'], cursor="")
         title_frame.pack(fill=tk.X, pady=(0, 4))
         
-        title_label = tk.Label(title_frame, text=title, font=("Segoe UI", 12, "bold"),
+        title_label = tk.Label(title_frame, text=title, font=("Inter", 12, "bold"),
                             fg=self.colors['accent'], bg=self.colors['bg_light'], cursor="")
         title_label.pack(side=tk.LEFT)
         
@@ -867,7 +874,7 @@ class Pages:
                                     width=130, height=26,
                                     bg=self.colors['button_bg'],
                                     fg=self.colors['text_secondary'],
-                                    font=("Segoe UI", 9),
+                                    font=("Inter", 9),
                                     corner_radius=6)
                 btn1.pack(side=tk.LEFT, padx=(0, 6))
             
@@ -878,52 +885,11 @@ class Pages:
                                         width=130, height=26,
                                         bg=self.colors['button_bg'],
                                         fg=self.colors['text_secondary'],
-                                        font=("Segoe UI", 9),
+                                        font=("Inter", 9),
                                         corner_radius=6)
                     btn2.pack(side=tk.LEFT, padx=(6, 0))
             else:
                 pass
-
-    def _set_provider(self, provider):
-        if provider == self.app.current_provider:
-            return
-        
-        self.app.current_provider = provider
-        self.app.provider_var.set(provider)
-        self.app.byedpi.set_provider(provider)
-        self.app.save_settings()
-        
-        if hasattr(self, 'current_provider_label'):
-            self.current_provider_label.config(text=f"Провайдер ByeDPI: {provider}")
-        
-        if self.app.byedpi_enabled:
-            self.app.byedpi.stop()
-            time.sleep(0.5)
-            success, msg = self.app.byedpi.start()
-            if not success:
-                self.app.log_to_diagnostic(f"Ошибка перезапуска ByeDPI с провайдером {provider}: {msg}")
-                self.app.byedpi_enabled = False
-                self.app.byedpi_var.set(False)
-            else:
-                self.app.log_to_diagnostic(f"Провайдер ByeDPI изменен на: {provider}")
-        
-        self._update_provider_buttons_highlight(provider)
-        self.app.show_notification(f"Провайдер ByeDPI: {provider}")
-
-    def _update_provider_buttons_highlight(self, selected_provider, parent=None):
-        if parent is None:
-            parent = self.settings_page
-        
-        for widget in parent.winfo_children():
-            if isinstance(widget, tk.Frame):
-                for child in widget.winfo_children():
-                    if isinstance(child, tk.Frame):
-                        for btn in child.winfo_children():
-                            if hasattr(btn, 'get_text') and btn.get_text() in self.app.PROVIDER_PARAMS:
-                                if btn.get_text() == selected_provider:
-                                    btn.update_colors(self.colors['accent'], self.colors['text_primary'], self.colors['accent_hover'])
-                                else:
-                                    btn.update_colors(self.colors['button_bg'], self.colors['text_secondary'], self.colors['button_bg'])
 
     def _set_update_interval_0(self):
         if self.app.update_interval_index == 0:
