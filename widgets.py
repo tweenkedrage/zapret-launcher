@@ -56,7 +56,7 @@ class ModernSwitch(tk.Canvas):
 class RoundedButton(tk.Canvas):
     def __init__(self, parent, text, command, width=200, height=40, 
                 bg='#4361ee', fg='white', 
-                font=("Segoe UI", 11, "bold"), 
+                font=("Inter", 11, "bold"), 
                 corner_radius=8, hover_color=None, 
                 animation_steps=5):
         super().__init__(parent, width=width, height=height, 
