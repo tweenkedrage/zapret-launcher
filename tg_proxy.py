@@ -22,38 +22,69 @@ _TCP_KEEPIDLE = 30
 _TCP_KEEPINTVL = 5
 _TCP_KEEPCNT = 3
 
+if sys.version_info < (3, 11):
+    class _TimeoutManager:
+        def __init__(self, timeout):
+            self.timeout = timeout
+            self._task = None
+            self._cancel_handle = None
+            
+        async def __aenter__(self):
+            if self.timeout is None:
+                return self
+            self._task = asyncio.current_task()
+            self._cancel_handle = asyncio.get_running_loop().call_later(
+                self.timeout, self._cancel_task
+            )
+            return self
+            
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            if self._cancel_handle:
+                self._cancel_handle.cancel()
+            if exc_type is asyncio.CancelledError and self.timeout is not None:
+                raise asyncio.TimeoutError()
+            
+        def _cancel_task(self):
+            if self._task and not self._task.done():
+                self._task.cancel()
+    
+    def timeout(delay):
+        return _TimeoutManager(delay)
+    
+    asyncio.timeout = timeout
+
 TG_CONFIGS = {
     TG_MODE_FAST: {
-        "ws_pool_size": 44,
+        "ws_pool_size": 48,
         "ws_pool_max_age": 180.0,
-        "max_connections": 360,
+        "max_connections": 400,
         "heartbeat_interval": 15.0,
-        "connection_timeout": 60.0,
-        "recv_buf": 524288,
-        "send_buf": 524288,
-        "max_reconnect_attempts": 3,
-        "reconnect_delay": 1.0,
+        "connection_timeout": 120.0,
+        "recv_buf": 2097152,
+        "send_buf": 2097152,
+        "max_reconnect_attempts": 5,
+        "reconnect_delay": 0.5,
         "ws_keepalive_interval": 20.0,
         "retry_delay": 0.5,
-        "max_retries": 4,
-        "dc_fail_cooldown": 20.0,
-        "socket_buffer_multiplier": 4,
+        "max_retries": 5,
+        "dc_fail_cooldown": 15.0,
+        "socket_buffer_multiplier": 8,
     },
     TG_MODE_STABLE: {
-        "ws_pool_size": 22,
-        "ws_pool_max_age": 360.0,
-        "max_connections": 180,
-        "heartbeat_interval": 30.0,
-        "connection_timeout": 90.0,
-        "recv_buf": 262144,
-        "send_buf": 262144,
-        "max_reconnect_attempts": 5,
-        "reconnect_delay": 2.0,
-        "ws_keepalive_interval": 25.0,
-        "retry_delay": 1.0,
+        "ws_pool_size": 32,
+        "ws_pool_max_age": 300.0,
+        "max_connections": 250,
+        "heartbeat_interval": 25.0,
+        "connection_timeout": 150.0,
+        "recv_buf": 1048576,
+        "send_buf": 1048576,
+        "max_reconnect_attempts": 6,
+        "reconnect_delay": 1.0,
+        "ws_keepalive_interval": 30.0,
+        "retry_delay": 0.8,
         "max_retries": 6,
         "dc_fail_cooldown": 30.0,
-        "socket_buffer_multiplier": 2,
+        "socket_buffer_multiplier": 6,
     }
 }
 
@@ -93,25 +124,25 @@ def get_mode_config() -> dict:
     return TG_CONFIGS.get(CURRENT_MODE, TG_CONFIGS[TG_MODE_STABLE])
 
 _TCP_NODELAY = True
-_RECV_BUF = 262144
-_SEND_BUF = 262144
-_WS_POOL_SIZE = 22
-_WS_POOL_MAX_AGE = 360.0
-_MAX_MSG_SIZE = 3 * 1024 * 1024
-_HEARTBEAT_INTERVAL = 30.0
-_CONNECTION_TIMEOUT = 90.0
-_MAX_RETRIES = 5
-_RETRY_DELAY = 1.0
+_RECV_BUF = 1048576
+_SEND_BUF = 1048576
+_WS_POOL_SIZE = 32
+_WS_POOL_MAX_AGE = 300.0
+_MAX_MSG_SIZE = 10 * 1024 * 1024
+_HEARTBEAT_INTERVAL = 25.0
+_CONNECTION_TIMEOUT = 150.0
+_MAX_RETRIES = 6
+_RETRY_DELAY = 0.8
 _DC_FAIL_COOLDOWN = 30.0
-_MAX_CONNECTIONS = 180
-_SOCKET_BUFFER_MULTIPLIER = 2
-_WS_KEEPALIVE_INTERVAL = 25.0
-_MAX_RECONNECT_ATTEMPTS = 5
-_RECONNECT_DELAY = 2.0
+_MAX_CONNECTIONS = 250
+_SOCKET_BUFFER_MULTIPLIER = 6
+_WS_KEEPALIVE_INTERVAL = 30.0
+_MAX_RECONNECT_ATTEMPTS = 6
+_RECONNECT_DELAY = 1.0
 
 _connection_semaphore = asyncio.Semaphore(_MAX_CONNECTIONS)
 _telegram_ip_cache: Dict[str, bool] = {}
-_CACHE_MAX_SIZE = 1000
+_CACHE_MAX_SIZE = 2000
 
 _TG_RANGES = [
     (struct.unpack('!I', _socket.inet_aton('185.76.151.0'))[0],
@@ -160,14 +191,63 @@ _TELEGRAM_WEB_DOMAINS = [
     'webk.telegram.org',
     'web.telegram.org/z',
     'web.telegram.org/k',
-    'web.telegram.org/a'
+    'web.telegram.org/a',
+    'pl.web.telegram.org',
+    'pl2.web.telegram.org',
 ]
 
 _TELEGRAM_WEB_PATHS = [
     '/apiws',
     '/apiwsp',
-    '/apiwss'
+    '/apiwss',
+    '/apiws/v1',
+    '/apiws/v2',
 ]
+
+_MEDIA_DOMAINS = [
+    't.me',
+    'tdesktop.com',
+    'telegram.org',
+    'telegram.dog',
+    'telegra.ph',
+    'cdn-telegram.org',
+    'cdn4.telegram-cdn.org',
+    'cdn5.telegram-cdn.org',
+    'cdn6.telegram-cdn.org',
+    'cdn7.telegram-cdn.org',
+    'cdn8.telegram-cdn.org',
+    'cdn9.telegram-cdn.org',
+    'media.telegram.org',
+    'video.telegram.org',
+    'photos.telegram.org',
+    'docs.telegram.org',
+    'kws1.web.telegram.org',
+    'kws2.web.telegram.org',
+    'kws3.web.telegram.org',
+    'kws4.web.telegram.org',
+    'kws5.web.telegram.org',
+    'plweb1.telegram.org',
+    'plweb2.telegram.org',
+    'plweb3.telegram.org',
+    'plweb4.telegram.org',
+    'plweb5.telegram.org',
+]
+
+_IP_TO_DC.update({
+    '149.154.175.52': (1, True),
+    '149.154.167.151': (2, True),
+    '149.154.175.102': (3, True),
+    '149.154.167.118': (4, True),
+    '91.108.56.102': (5, True),
+    '149.154.167.222': (2, True),
+    '149.154.167.223': (2, True),
+    '149.154.164.250': (4, True),
+    '149.154.166.120': (4, True),
+    '149.154.166.121': (4, True),
+    '149.154.165.111': (4, True),
+    '91.108.56.128': (5, True),
+    '91.108.56.151': (5, True),
+})
 
 _dc_opt: Dict[int, Optional[str]] = {}
 _ws_blacklist: Set[Tuple[int, bool]] = set()
@@ -176,8 +256,34 @@ _dc_fail_until: Dict[Tuple[int, bool], float] = {}
 _ssl_ctx = ssl.create_default_context()
 _ssl_ctx.check_hostname = False
 _ssl_ctx.verify_mode = ssl.CERT_NONE
-_ssl_ctx.set_ciphers('HIGH:!aNULL:!kRSA:!PSK:!SRP:!MD5:!RC4')
-_ssl_ctx.options |= ssl.OP_NO_TICKET
+_ssl_ctx.set_ciphers('DEFAULT@SECLEVEL=1')
+_ssl_ctx.options |= ssl.OP_NO_SSLv2 | ssl.OP_NO_SSLv3 | ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1
+
+_dns_cache: Dict[str, Tuple[str, float]] = {}
+_dns_cache_lock = asyncio.Lock()
+
+async def _resolve_hostname(hostname: str) -> Optional[str]:
+    now = time.time()
+    
+    async with _dns_cache_lock:
+        if hostname in _dns_cache:
+            ip, expires = _dns_cache[hostname]
+            if now < expires:
+                return ip
+    
+    try:
+        loop = asyncio.get_running_loop()
+        ip = await loop.getaddrinfo(hostname, 443, 
+                                   family=_socket.AF_INET,
+                                   type=_socket.SOCK_STREAM)
+        if ip:
+            ip_addr = ip[0][4][0]
+            async with _dns_cache_lock:
+                _dns_cache[hostname] = (ip_addr, now + 300)
+            return ip_addr
+    except Exception:
+        pass
+    return None
 
 def is_port_available(host: str, port: int) -> bool:
     sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
@@ -242,10 +348,10 @@ class RawWebSocket:
     OP_PONG = 0xA
 
     __slots__ = ('reader', 'writer', '_closed', '_last_heartbeat', '_heartbeat_task', 
-                 '_keepalive_task', '_last_activity', '_reconnect_attempts')
+                 '_keepalive_task', '_last_activity', '_reconnect_attempts',
+                 '_send_buffer', '_send_lock', '_flush_task')
 
-    def __init__(self, reader: asyncio.StreamReader,
-                 writer: asyncio.StreamWriter):
+    def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         self.reader = reader
         self.writer = writer
         self._closed = False
@@ -254,6 +360,23 @@ class RawWebSocket:
         self._heartbeat_task = None
         self._keepalive_task = None
         self._reconnect_attempts = 0
+        self._send_buffer = bytearray()
+        self._send_lock = asyncio.Lock()
+        self._flush_task = None
+
+    async def _flush_buffer(self):
+        while not self._closed:
+            await asyncio.sleep(0.1)
+            async with self._send_lock:
+                if self._send_buffer:
+                    data = bytes(self._send_buffer)
+                    self._send_buffer.clear()
+                    try:
+                        self.writer.write(data)
+                        await self.writer.drain()
+                    except Exception:
+                        self._closed = True
+                        break
 
     async def _heartbeat(self):
         while not self._closed:
@@ -301,7 +424,21 @@ class RawWebSocket:
 
     @staticmethod
     async def connect(ip: str, domain: str, path: str = '/apiws',
-                      timeout: float = 10.0, is_web: bool = False) -> 'RawWebSocket':
+                    timeout: float = 15.0, is_web: bool = False) -> 'RawWebSocket':
+        if 'cdn' in domain or 'media' in domain:
+            timeout = 45.0
+            media_paths = ['/apiws', '/apiwss', '/apiws/v2', '/']
+            for media_path in media_paths:
+                try:
+                    return await RawWebSocket._connect_attempt(ip, domain, media_path, timeout, is_web)
+                except Exception:
+                    continue
+            raise ConnectionError("All media paths failed")
+        else:
+            return await RawWebSocket._connect_attempt(ip, domain, path, timeout, is_web)
+
+    @staticmethod
+    async def _connect_attempt(ip: str, domain: str, path: str, timeout: float, is_web: bool) -> 'RawWebSocket':
         last_error = None
         
         for attempt in range(_MAX_RECONNECT_ATTEMPTS):
@@ -355,6 +492,7 @@ class RawWebSocket:
                     ws = RawWebSocket(reader, writer)
                     ws._heartbeat_task = asyncio.create_task(ws._heartbeat())
                     ws._keepalive_task = asyncio.create_task(ws._keepalive())
+                    ws._flush_task = asyncio.create_task(ws._flush_buffer())
                     return ws
 
                 headers: dict[str, str] = {}
@@ -365,7 +503,7 @@ class RawWebSocket:
 
                 raise WsHandshakeError(status_code, first_line, headers,
                                         location=headers.get('location'))
-                                        
+                                            
             except Exception as e:
                 last_error = e
                 if writer:
@@ -386,8 +524,13 @@ class RawWebSocket:
             raise ConnectionError("WebSocket closed")
         try:
             frame = self._build_frame(self.OP_BINARY, data, mask=True)
-            self.writer.write(frame)
-            await self.writer.drain()
+            async with self._send_lock:
+                self._send_buffer.extend(frame)
+                if len(self._send_buffer) > _SEND_BUF // 2:
+                    to_send = bytes(self._send_buffer)
+                    self._send_buffer.clear()
+                    self.writer.write(to_send)
+                    await self.writer.drain()
             self._last_activity = time.monotonic()
         except Exception:
             self._closed = True
@@ -396,25 +539,32 @@ class RawWebSocket:
     async def send_batch(self, parts: List[bytes]):
         if self._closed:
             raise ConnectionError("WebSocket closed")
-        try:
-            frames = bytearray()
+        
+        if len(parts) == 1:
+            await self.send(parts[0])
+            return
+        
+        async with self._send_lock:
             for part in parts:
-                frames.extend(self._build_frame(self.OP_BINARY, part, mask=True))
-            self.writer.write(frames)
-            await self.writer.drain()
-            self._last_activity = time.monotonic()
-        except Exception:
-            self._closed = True
-            raise
+                frame = self._build_frame(self.OP_BINARY, part, mask=True)
+                self._send_buffer.extend(frame)
+            
+            if len(self._send_buffer) > _SEND_BUF // 2:
+                data = bytes(self._send_buffer)
+                self._send_buffer.clear()
+                self.writer.write(data)
+                await self.writer.drain()
+        
+        self._last_activity = time.monotonic()
 
     async def recv(self) -> Optional[bytes]:
         while not self._closed:
             try:
-                async with asyncio.timeout(15.0):
+                async with asyncio.timeout(30.0):
                     opcode, payload = await self._read_frame()
                 self._last_activity = time.monotonic()
                 self._last_heartbeat = time.monotonic()
-            except TimeoutError:
+            except asyncio.TimeoutError:
                 continue
             except ConnectionError:
                 self._closed = True
@@ -451,7 +601,7 @@ class RawWebSocket:
             return
         self._closed = True
         
-        for task in [self._heartbeat_task, self._keepalive_task]:
+        for task in [self._heartbeat_task, self._keepalive_task, self._flush_task]:
             if task and not task.done():
                 task.cancel()
                 try:
@@ -460,14 +610,19 @@ class RawWebSocket:
                     pass
         
         try:
-            self.writer.write(self._build_frame(self.OP_CLOSE, b'', mask=True))
+            close_frame = self._build_frame(self.OP_CLOSE, b'', mask=True)
+            self.writer.write(close_frame)
             await self.writer.drain()
+        except (ConnectionResetError, BrokenPipeError, OSError):
+            pass
         except Exception:
             pass
         
         try:
             self.writer.close()
             await self.writer.wait_closed()
+        except (ConnectionResetError, BrokenPipeError, OSError):
+            pass
         except Exception:
             pass
 
@@ -588,7 +743,7 @@ def _patch_init_dc(data: bytes, dc: int) -> bytes:
         return data
 
 class _MsgSplitter:
-    __slots__ = ('_dec',)
+    __slots__ = ('_dec', '_buffer')
     
     def __init__(self, init_data: bytes):
         key_raw = bytes(init_data[8:40])
@@ -596,9 +751,13 @@ class _MsgSplitter:
         cipher = Cipher(algorithms.AES(key_raw), modes.CTR(iv))
         self._dec = cipher.encryptor()
         self._dec.update(b'\x00' * 64)
+        self._buffer = b''
 
     def split(self, chunk: bytes) -> List[bytes]:
-        plain = self._dec.update(chunk)
+        self._buffer += chunk
+        plain = self._dec.update(self._buffer)
+        self._buffer = b''
+        
         boundaries = []
         pos = 0
         plain_len = len(plain)
@@ -606,6 +765,7 @@ class _MsgSplitter:
             first = plain[pos]
             if first == 0x7f:
                 if pos + 4 > plain_len:
+                    self._buffer = chunk[pos:]
                     break
                 msg_len = (struct.unpack_from('<I', plain, pos + 1)[0] & 0xFFFFFF) * 4
                 if msg_len > _MAX_MSG_SIZE:
@@ -615,11 +775,15 @@ class _MsgSplitter:
                 msg_len = first * 4
                 pos += 1
             if msg_len == 0 or pos + msg_len > plain_len:
+                if pos < plain_len:
+                    self._buffer = chunk[pos:]
                 break
             pos += msg_len
             boundaries.append(pos)
+        
         if len(boundaries) <= 1:
             return [chunk]
+        
         parts = []
         prev = 0
         for b in boundaries:
@@ -631,21 +795,21 @@ class _MsgSplitter:
 
 def _ws_domains(dc: int, is_media: Optional[bool], is_web: bool = False) -> List[str]:
     if is_web:
-        return [
-            'web.telegram.org',
-            'webk.telegram.org',
-            'web.telegram.org/z',
-            'web.telegram.org/k'
-        ]
-    if is_media is None or is_media:
-        return [f'kws{dc}-1.web.telegram.org', f'kws{dc}.web.telegram.org', f'kws{dc}-2.web.telegram.org']
-    return [f'kws{dc}.web.telegram.org', f'kws{dc}-1.web.telegram.org', f'kws{dc}-2.web.telegram.org']
+        return ['web.telegram.org', 'webk.telegram.org']
+    
+    domains = [f'kws{dc}.web.telegram.org']
+    if is_media:
+        domains.append(f'kws{dc}-1.web.telegram.org')
+        domains.append(f'plweb{dc}.telegram.org')
+        domains.append(f'cdn{dc}.telegram.org')
+    
+    return domains
 
 class Stats:
     __slots__ = ('connections_total', 'connections_ws', 'connections_tcp_fallback',
                  'connections_http_rejected', 'connections_passthrough', 'ws_errors',
                  'bytes_up', 'bytes_down', 'pool_hits', 'pool_misses', 'active_connections', 
-                 'start_time', 'reconnections')
+                 'start_time', 'reconnections', '_last_reset')
 
     def __init__(self):
         self.connections_total = 0
@@ -661,8 +825,24 @@ class Stats:
         self.active_connections = 0
         self.reconnections = 0
         self.start_time = time.time()
+        self._last_reset = time.time()
+
+    def reset_if_overflow(self):
+        now = time.time()
+        if now - self._last_reset > 3600:
+            self.connections_total = 0
+            self.connections_ws = 0
+            self.connections_tcp_fallback = 0
+            self.connections_http_rejected = 0
+            self.connections_passthrough = 0
+            self.ws_errors = 0
+            self.pool_hits = 0
+            self.pool_misses = 0
+            self.reconnections = 0
+            self._last_reset = now
 
     def summary(self) -> str:
+        self.reset_if_overflow()
         total_pool = self.pool_hits + self.pool_misses
         if total_pool == 0:
             pool_rate = "n/a"
@@ -683,19 +863,33 @@ class Stats:
 _stats = Stats()
 
 class _WsPool:
-    __slots__ = ('_idle', '_refilling', '_lock')
+    __slots__ = ('_idle', '_refilling', '_lock', '_recent')
     
     def __init__(self):
         self._idle: Dict[Tuple[int, bool], deque] = {}
         self._refilling: Set[Tuple[int, bool]] = set()
         self._lock = asyncio.Lock()
+        self._recent: Dict[Tuple[int, bool], deque] = {}
 
     async def get(self, dc: int, is_media: bool,
                   target_ip: str, domains: List[str]
                   ) -> Optional[RawWebSocket]:
         key = (dc, is_media)
         now = time.monotonic()
-
+        
+        recent = self._recent.get(key)
+        if recent:
+            while recent:
+                ws, created = recent.popleft()
+                age = now - created
+                if age > _WS_POOL_MAX_AGE * 0.3:
+                    asyncio.create_task(self._quiet_close(ws))
+                    continue
+                if not ws._closed:
+                    _stats.pool_hits += 1
+                    return ws
+                asyncio.create_task(self._quiet_close(ws))
+        
         async with self._lock:
             bucket = self._idle.get(key)
             if bucket:
@@ -706,9 +900,12 @@ class _WsPool:
                         asyncio.create_task(self._quiet_close(ws))
                         continue
                     _stats.pool_hits += 1
+                    if key not in self._recent:
+                        self._recent[key] = deque(maxlen=3)
+                    self._recent[key].append((ws, now))
                     self._schedule_refill(key, target_ip, domains)
                     return ws
-
+        
         _stats.pool_misses += 1
         self._schedule_refill(key, target_ip, domains)
         return None
@@ -728,8 +925,11 @@ class _WsPool:
                 if needed <= 0:
                     return
             
-            tasks = [asyncio.create_task(
-                self._connect_one(target_ip, domains)) for _ in range(needed)]
+            tasks = []
+            for _ in range(min(needed, 8)):
+                task = asyncio.create_task(self._connect_one(target_ip, domains))
+                tasks.append(task)
+            
             results = await asyncio.gather(*tasks, return_exceptions=True)
             
             async with self._lock:
@@ -750,7 +950,7 @@ class _WsPool:
             try:
                 for path in _TELEGRAM_WEB_PATHS:
                     try:
-                        ws = await RawWebSocket.connect(target_ip, domain, path=path, timeout=10, is_web=is_web)
+                        ws = await RawWebSocket.connect(target_ip, domain, path=path, timeout=15, is_web=is_web)
                         return ws
                     except WsHandshakeError:
                         continue
@@ -782,6 +982,10 @@ class _WsPool:
                 for ws, _ in bucket:
                     await self._quiet_close(ws)
                 self._idle[key] = deque()
+            for key, bucket in list(self._recent.items()):
+                for ws, _ in bucket:
+                    await self._quiet_close(ws)
+                self._recent[key] = deque()
 
 _ws_pool = _WsPool()
 
@@ -799,7 +1003,7 @@ async def _bridge_ws(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
                 try:
                     async with asyncio.timeout(_CONNECTION_TIMEOUT):
                         chunk = await reader.read(_RECV_BUF)
-                except TimeoutError:
+                except asyncio.TimeoutError:
                     continue
                 except (ConnectionResetError, BrokenPipeError):
                     break
@@ -833,7 +1037,7 @@ async def _bridge_ws(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
                 try:
                     async with asyncio.timeout(_CONNECTION_TIMEOUT):
                         data = await ws.recv()
-                except TimeoutError:
+                except asyncio.TimeoutError:
                     continue
                 if data is None:
                     break
@@ -896,13 +1100,17 @@ async def _bridge_ws(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
         
         try:
             await ws.close()
-        except:
+        except (ConnectionResetError, BrokenPipeError):
+            pass
+        except Exception:
             pass
         
         try:
             writer.close()
             await writer.wait_closed()
-        except:
+        except (ConnectionResetError, BrokenPipeError, OSError):
+            pass
+        except Exception:
             pass
         
         _stats.active_connections -= 1
@@ -920,7 +1128,7 @@ async def _bridge_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
                 try:
                     async with asyncio.timeout(_CONNECTION_TIMEOUT):
                         data = await src.read(_RECV_BUF)
-                except TimeoutError:
+                except asyncio.TimeoutError:
                     continue
                 except (ConnectionResetError, BrokenPipeError):
                     break
@@ -1008,195 +1216,223 @@ async def _tcp_fallback(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
     return True
 
 async def _handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-    async with _connection_semaphore:
-        _stats.connections_total += 1
-        peer = writer.get_extra_info('peername')
-        label = f"{peer[0]}:{peer[1]}" if peer else "?"
+    try:
+        async with asyncio.timeout(300):
+            async with _connection_semaphore:
+                _stats.connections_total += 1
+                peer = writer.get_extra_info('peername')
+                label = f"{peer[0]}:{peer[1]}" if peer else "?"
 
-        _set_sock_opts(writer.transport)
+                _set_sock_opts(writer.transport)
 
-        try:
-            async with asyncio.timeout(5):
-                hdr = await reader.readexactly(2)
-            if hdr[0] != 5:
-                return
-            nmethods = hdr[1]
-            await reader.readexactly(nmethods)
-            writer.write(b'\x05\x00')
-            await writer.drain()
-
-            async with asyncio.timeout(5):
-                req = await reader.readexactly(4)
-            _ver, cmd, _rsv, atyp = req
-            if cmd != 1:
-                writer.write(_socks5_reply(0x07))
-                await writer.drain()
-                return
-
-            if atyp == 1:
-                raw = await reader.readexactly(4)
-                dst = _socket.inet_ntoa(raw)
-            elif atyp == 3:
-                dlen = (await reader.readexactly(1))[0]
-                dst = (await reader.readexactly(dlen)).decode()
-            else:
-                writer.write(_socks5_reply(0x08))
-                await writer.drain()
-                return
-
-            port = struct.unpack('!H', await reader.readexactly(2))[0]
-            is_web = _is_telegram_web_host(dst)
-
-            if not _is_telegram_ip(dst) and not is_web:
-                _stats.connections_passthrough += 1
                 try:
-                    async with asyncio.timeout(8):
-                        rr, rw = await asyncio.open_connection(dst, port, limit=_RECV_BUF)
-                except Exception:
-                    writer.write(_socks5_reply(0x05))
-                    await writer.drain()
-                    return
-
-                writer.write(_socks5_reply(0x00))
-                await writer.drain()
-                
-                pipe1 = asyncio.create_task(_pipe(reader, rw))
-                pipe2 = asyncio.create_task(_pipe(rr, writer))
-                
-                try:
-                    await asyncio.wait([pipe1, pipe2], return_when=asyncio.FIRST_COMPLETED)
-                finally:
-                    for task in [pipe1, pipe2]:
-                        if not task.done():
-                            task.cancel()
-                            try:
-                                await task
-                            except asyncio.CancelledError:
-                                raise
-                            except TimeoutError:
-                                pass
-                            except ConnectionResetError:
-                                pass
-                            except Exception:
-                                pass
-                            finally:
-                                try:
-                                    writer.close()
-                                    await writer.wait_closed()
-                                except (ConnectionResetError, OSError, asyncio.CancelledError):
-                                    pass
-                                except Exception:
-                                    pass
-                return
-
-            writer.write(_socks5_reply(0x00))
-            await writer.drain()
-
-            try:
-                async with asyncio.timeout(10):
-                    init = await reader.readexactly(64)
-            except asyncio.IncompleteReadError:
-                return
-
-            if _is_http_transport(init):
-                _stats.connections_http_rejected += 1
-                return
-
-            dc, is_media = _dc_from_init(init)
-            init_patched = False
-
-            if dc is None and is_web:
-                dc = 2
-                is_media = False
-
-            if dc is None and dst in _IP_TO_DC:
-                result = _IP_TO_DC.get(dst)
-                if result:
-                    dc, is_media = result
-                    if dc in _dc_opt:
-                        init = _patch_init_dc(init, dc if is_media else -dc)
-                        init_patched = True
-
-            if dc is None or dc not in _dc_opt:
-                await _tcp_fallback(reader, writer, dst, port, init, label)
-                return
-
-            dc_key = (dc, is_media if is_media is not None else True)
-            now = time.monotonic()
-
-            if dc_key in _ws_blacklist:
-                await _tcp_fallback(reader, writer, dst, port, init,
-                                         label, dc=dc, is_media=is_media)
-                return
-
-            fail_until = _dc_fail_until.get(dc_key, 0)
-            if now < fail_until:
-                await _tcp_fallback(reader, writer, dst, port, init,
-                                         label, dc=dc, is_media=is_media)
-                return
-
-            domains = _ws_domains(dc, is_media, is_web=is_web)
-            target = _dc_opt[dc]
-            ws = None
-            ws_failed_redirect = False
-            all_redirects = True
-
-            ws = await _ws_pool.get(dc, is_media, target, domains)
-            if not ws:
-                for domain in domains:
                     try:
-                        ws = await RawWebSocket.connect(target, domain, timeout=8, is_web=is_web)
-                        all_redirects = False
-                        break
-                    except WsHandshakeError as exc:
-                        _stats.ws_errors += 1
-                        if exc.is_redirect:
-                            ws_failed_redirect = True
-                            continue
+                        hdr = await asyncio.wait_for(reader.readexactly(2), timeout=5)
+                    except asyncio.IncompleteReadError:
+                        return
+                    
+                    if hdr[0] != 5:
+                        writer.close()
+                        return
+                    nmethods = hdr[1]
+                    try:
+                        await asyncio.wait_for(reader.readexactly(nmethods), timeout=5)
+                    except asyncio.IncompleteReadError:
+                        return
+                    
+                    writer.write(b'\x05\x00')
+                    await writer.drain()
+
+                    try:
+                        req = await asyncio.wait_for(reader.readexactly(4), timeout=5)
+                    except asyncio.IncompleteReadError:
+                        return
+                    
+                    _ver, cmd, _rsv, atyp = req
+                    if cmd != 1:
+                        writer.write(_socks5_reply(0x07))
+                        await writer.drain()
+                        writer.close()
+                        return
+
+                    if atyp == 1:
+                        raw = await asyncio.wait_for(reader.readexactly(4), timeout=5)
+                        dst = _socket.inet_ntoa(raw)
+                    elif atyp == 3:
+                        dlen = (await asyncio.wait_for(reader.readexactly(1), timeout=5))[0]
+                        dst = (await asyncio.wait_for(reader.readexactly(dlen), timeout=5)).decode()
+                    else:
+                        writer.write(_socks5_reply(0x08))
+                        await writer.drain()
+                        writer.close()
+                        return
+
+                    port = struct.unpack('!H', await asyncio.wait_for(reader.readexactly(2), timeout=5))[0]
+                    is_web = _is_telegram_web_host(dst)
+                    
+                    is_media = False
+                    if any(domain in dst for domain in _MEDIA_DOMAINS):
+                        is_media = True
+                    elif 'cdn' in dst or 'media' in dst or 'video' in dst or 'photo' in dst:
+                        is_media = True
+                    elif port in [80, 443, 8080, 8443, 9443]:
+                        is_media = True
+
+                    if not _is_telegram_ip(dst) and not is_web and not is_media:
+                        _stats.connections_passthrough += 1
+                        try:
+                            rr, rw = await asyncio.wait_for(
+                                asyncio.open_connection(dst, port, limit=_RECV_BUF), 
+                                timeout=8
+                            )
+                        except Exception:
+                            writer.write(_socks5_reply(0x05))
+                            await writer.drain()
+                            writer.close()
+                            return
+
+                        writer.write(_socks5_reply(0x00))
+                        await writer.drain()
+                        
+                        pipe1 = asyncio.create_task(_pipe(reader, rw))
+                        pipe2 = asyncio.create_task(_pipe(rr, writer))
+                        
+                        try:
+                            await asyncio.wait([pipe1, pipe2], return_when=asyncio.FIRST_COMPLETED)
+                        finally:
+                            for task in [pipe1, pipe2]:
+                                if not task.done():
+                                    task.cancel()
+                                    try:
+                                        await task
+                                    except:
+                                        pass
+                        return
+
+                    writer.write(_socks5_reply(0x00))
+                    await writer.drain()
+
+                    try:
+                        init = await asyncio.wait_for(reader.readexactly(64), timeout=10)
+                    except asyncio.IncompleteReadError:
+                        return
+
+                    if _is_http_transport(init):
+                        _stats.connections_http_rejected += 1
+                        return
+
+                    dc, is_media_flag = _dc_from_init(init)
+                    init_patched = False
+
+                    if is_media:
+                        is_media_flag = True
+
+                    if dc is None and is_web:
+                        dc = 2
+                        is_media_flag = False
+
+                    if dc is None and dst in _IP_TO_DC:
+                        result = _IP_TO_DC.get(dst)
+                        if result:
+                            dc, is_media_flag = result
+                            if dc in _dc_opt:
+                                init = _patch_init_dc(init, dc if is_media_flag else -dc)
+                                init_patched = True
+
+                    if dc is None or dc not in _dc_opt:
+                        await _tcp_fallback(reader, writer, dst, port, init, label)
+                        return
+
+                    dc_key = (dc, is_media_flag if is_media_flag is not None else True)
+                    now = time.monotonic()
+
+                    if dc_key in _ws_blacklist:
+                        await _tcp_fallback(reader, writer, dst, port, init, label, dc=dc, is_media=is_media_flag)
+                        return
+
+                    fail_until = _dc_fail_until.get(dc_key, 0)
+                    if now < fail_until:
+                        await _tcp_fallback(reader, writer, dst, port, init, label, dc=dc, is_media=is_media_flag)
+                        return
+
+                    domains = _ws_domains(dc, is_media_flag, is_web=is_web)
+                    target = _dc_opt[dc]
+                    
+                    if target is None and dc in FULL_DC_OPT:
+                        target = FULL_DC_OPT[dc][0]
+                    
+                    if target is None:
+                        await _tcp_fallback(reader, writer, dst, port, init, label, dc=dc, is_media=is_media_flag)
+                        return
+                    
+                    ws = None
+                    ws_failed_redirect = False
+                    all_redirects = True
+
+                    ws = await _ws_pool.get(dc, is_media_flag, target, domains)
+                    if not ws:
+                        for domain in domains:
+                            try:
+                                ws = await RawWebSocket.connect(target, domain, timeout=15, is_web=is_web)
+                                all_redirects = False
+                                break
+                            except WsHandshakeError as exc:
+                                _stats.ws_errors += 1
+                                if exc.is_redirect:
+                                    ws_failed_redirect = True
+                                    continue
+                                else:
+                                    all_redirects = False
+                            except Exception:
+                                _stats.ws_errors += 1
+                                all_redirects = False
+
+                    if ws is None:
+                        if ws_failed_redirect and all_redirects:
+                            _ws_blacklist.add(dc_key)
                         else:
-                            all_redirects = False
-                    except Exception:
-                        _stats.ws_errors += 1
-                        all_redirects = False
+                            _dc_fail_until[dc_key] = now + _DC_FAIL_COOLDOWN
+                        await _tcp_fallback(reader, writer, dst, port, init, label, dc=dc, is_media=is_media_flag)
+                        return
 
-            if ws is None:
-                if ws_failed_redirect and all_redirects:
-                    _ws_blacklist.add(dc_key)
-                else:
-                    _dc_fail_until[dc_key] = now + _DC_FAIL_COOLDOWN
-                await _tcp_fallback(reader, writer, dst, port, init,
-                                         label, dc=dc, is_media=is_media)
-                return
+                    _dc_fail_until.pop(dc_key, None)
+                    _stats.connections_ws += 1
 
-            _dc_fail_until.pop(dc_key, None)
-            _stats.connections_ws += 1
+                    splitter = None
+                    if init_patched:
+                        try:
+                            splitter = _MsgSplitter(init)
+                        except Exception:
+                            pass
 
-            splitter = None
-            if init_patched:
-                try:
-                    splitter = _MsgSplitter(init)
+                    await ws.send(init)
+                    await _bridge_ws(reader, writer, ws, label,
+                                     dc=dc, dst=dst, port=port, is_media=is_media_flag,
+                                     splitter=splitter)
+
+                except asyncio.IncompleteReadError:
+                    return
+                except asyncio.TimeoutError:
+                    pass
+                except asyncio.CancelledError:
+                    raise
+                except (ConnectionResetError, BrokenPipeError):
+                    pass
                 except Exception:
                     pass
-
-            await ws.send(init)
-            await _bridge_ws(reader, writer, ws, label,
-                             dc=dc, dst=dst, port=port, is_media=is_media,
-                             splitter=splitter)
-
-        except asyncio.CancelledError:
-            raise
-        except TimeoutError:
-            pass
-        except ConnectionResetError:
-            pass
-        except Exception:
-            pass
-        finally:
-            try:
-                writer.close()
-                await writer.wait_closed()
-            except:
-                pass
+                finally:
+                    try:
+                        writer.close()
+                        await writer.wait_closed()
+                    except:
+                        pass
+                        
+    except asyncio.TimeoutError:
+        pass
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        pass   
 
 _server_instance = None
 _server_stop_event = None
@@ -1215,37 +1451,50 @@ async def _run(port: int, dc_opt: Dict[int, Optional[str]],
     server = await asyncio.start_server(
         _handle_client, host, port, limit=_RECV_BUF)
     _server_instance = server
-
-    for sock in server.sockets:
-        try:
-            sock.setsockopt(_socket.IPPROTO_TCP, _socket.TCP_NODELAY, 1)
-        except (OSError, AttributeError):
-            pass
     
     warmup_task = asyncio.create_task(_ws_pool.warmup(dc_opt))
     
     if stop_event:
-        await stop_event.wait()
-        
-        if not warmup_task.done():
-            warmup_task.cancel()
-            try:
-                await warmup_task
-            except asyncio.CancelledError:
-                pass
-        
-        server.close()
-        await server.wait_closed()
-        await asyncio.sleep(1)
-        await _ws_pool.cleanup()
-    else:
-        if warmup_task and not warmup_task.done():
-            await warmup_task
-        
         try:
-            await server.serve_forever()
+            await stop_event.wait()
+        except asyncio.CancelledError:
+            pass
         except Exception:
             pass
+        finally:
+            if not warmup_task.done():
+                warmup_task.cancel()
+                try:
+                    await asyncio.wait_for(warmup_task, timeout=0.5)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
+                except Exception:
+                    pass
+            
+            server.close()
+            try:
+                await asyncio.wait_for(server.wait_closed(), timeout=1.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
+            except Exception:
+                pass
+            
+            await asyncio.sleep(0.3)
+            
+            try:
+                await asyncio.wait_for(_ws_pool.cleanup(), timeout=0.5)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
+            except Exception:
+                pass
+    else:
+        try:
+            await server.serve_forever()
+        except asyncio.CancelledError:
+            pass
+        finally:
+            server.close()
+            await server.wait_closed()
     
     _server_instance = None
 
@@ -1298,7 +1547,7 @@ def main():
     try:
         asyncio.run(_run(args.port, dc_opt, host=args.host))
     except Exception:
-        pass
+        sys.exit(1)
 
 async def _run_async(port: int, dc_opt: Dict[int, Optional[str]],
                       stop_event: Optional[asyncio.Event] = None,
@@ -1319,8 +1568,6 @@ def run_proxy_async(port: int, dc_opt: Dict[int, str],
         if stop_event:
             stop_event.set()
         loop.run_until_complete(asyncio.sleep(1))
-    except Exception:
-        pass
     finally:
         loop.close()
 
