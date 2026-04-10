@@ -2228,7 +2228,6 @@ class ZapretLauncher:
         
         required_files = [
             ("zapret_resources.zip", Path(__file__).parent / "zapret_resources.zip"),
-            ("bin/ciadpi.exe", Path(__file__).parent / "bin" / "ciadpi.exe"),
         ]
         
         for name, path in required_files:
