@@ -344,10 +344,10 @@ class Pages:
             btn_frame = tk.Frame(frame, bg=self.colors['bg_light'], cursor="")
             btn_frame.pack(side=tk.RIGHT, padx=(10, 0))
             
-            edit_btn = RoundedButton(btn_frame, text="ИЗМЕНИТЬ", 
+            edit_btn = RoundedButton(btn_frame, text="Изменить", 
                                     command=lambda f=filename: self.edit_list_file(f),
                                     width=100, height=35, bg=self.colors['button_bg'], 
-                                    font=("Inter", 10, "bold"), corner_radius=8)
+                                    font=("Inter", 11), corner_radius=8)
             edit_btn.pack()
         
         folder_frame = tk.Frame(self.lists_page, bg=self.colors['bg_dark'], cursor="")
