@@ -59,14 +59,14 @@ TG_CONFIGS = {
         "ws_pool_max_age": 180.0,
         "max_connections": 400,
         "heartbeat_interval": 15.0,
-        "connection_timeout": 120.0,
-        "recv_buf": 2097152,
-        "send_buf": 2097152,
-        "max_reconnect_attempts": 5,
-        "reconnect_delay": 0.5,
+        "connection_timeout": 600.0,
+        "recv_buf": 8 * 1024 * 1024,
+        "send_buf": 8 * 1024 * 1024,
+        "max_reconnect_attempts": 3,
+        "reconnect_delay": 1.0,
         "ws_keepalive_interval": 20.0,
         "retry_delay": 0.5,
-        "max_retries": 5,
+        "max_retries": 3,
         "dc_fail_cooldown": 15.0,
         "socket_buffer_multiplier": 8,
     },
@@ -75,14 +75,14 @@ TG_CONFIGS = {
         "ws_pool_max_age": 300.0,
         "max_connections": 250,
         "heartbeat_interval": 25.0,
-        "connection_timeout": 150.0,
-        "recv_buf": 1048576,
-        "send_buf": 1048576,
-        "max_reconnect_attempts": 6,
+        "connection_timeout": 600.0,
+        "recv_buf": 8 * 1024 * 1024,
+        "send_buf": 8 * 1024 * 1024,
+        "max_reconnect_attempts": 3,
         "reconnect_delay": 1.0,
         "ws_keepalive_interval": 30.0,
         "retry_delay": 0.8,
-        "max_retries": 6,
+        "max_retries": 3,
         "dc_fail_cooldown": 30.0,
         "socket_buffer_multiplier": 6,
     }
@@ -124,20 +124,20 @@ def get_mode_config() -> dict:
     return TG_CONFIGS.get(CURRENT_MODE, TG_CONFIGS[TG_MODE_STABLE])
 
 _TCP_NODELAY = True
-_RECV_BUF = 1048576
-_SEND_BUF = 1048576
+_RECV_BUF = 8 * 1024 * 1024
+_SEND_BUF = 8 * 1024 * 1024
 _WS_POOL_SIZE = 32
 _WS_POOL_MAX_AGE = 300.0
 _MAX_MSG_SIZE = 10 * 1024 * 1024
-_HEARTBEAT_INTERVAL = 25.0
-_CONNECTION_TIMEOUT = 150.0
-_MAX_RETRIES = 6
+_HEARTBEAT_INTERVAL = 30.0
+_CONNECTION_TIMEOUT = 600.0
+_MAX_RETRIES = 3
 _RETRY_DELAY = 0.8
 _DC_FAIL_COOLDOWN = 30.0
 _MAX_CONNECTIONS = 250
 _SOCKET_BUFFER_MULTIPLIER = 6
-_WS_KEEPALIVE_INTERVAL = 30.0
-_MAX_RECONNECT_ATTEMPTS = 6
+_WS_KEEPALIVE_INTERVAL = 35.0
+_MAX_RECONNECT_ATTEMPTS = 3
 _RECONNECT_DELAY = 1.0
 
 _connection_semaphore = asyncio.Semaphore(_MAX_CONNECTIONS)
@@ -257,7 +257,12 @@ _ssl_ctx = ssl.create_default_context()
 _ssl_ctx.check_hostname = False
 _ssl_ctx.verify_mode = ssl.CERT_NONE
 _ssl_ctx.set_ciphers('DEFAULT@SECLEVEL=1')
-_ssl_ctx.options |= ssl.OP_NO_SSLv2 | ssl.OP_NO_SSLv3 | ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1
+_ssl_ctx.options |= (ssl.OP_NO_SSLv2 | ssl.OP_NO_SSLv3 | ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1)
+_ssl_ctx.options |= ssl.OP_NO_COMPRESSION
+_ssl_ctx.options |= ssl.OP_SINGLE_DH_USE
+_ssl_ctx.options |= ssl.OP_SINGLE_ECDH_USE
+_ssl_ctx.set_alpn_protocols(['http/1.1'])
+_ssl_ctx.verify_flags = ssl.VERIFY_X509_TRUSTED_FIRST
 
 _dns_cache: Dict[str, Tuple[str, float]] = {}
 _dns_cache_lock = asyncio.Lock()
@@ -349,7 +354,7 @@ class RawWebSocket:
 
     __slots__ = ('reader', 'writer', '_closed', '_last_heartbeat', '_heartbeat_task', 
                  '_keepalive_task', '_last_activity', '_reconnect_attempts',
-                 '_send_buffer', '_send_lock', '_flush_task')
+                 '_send_buffer', '_send_lock', '_flush_task', '_read_lock', '_recv_buffer')
 
     def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         self.reader = reader
@@ -363,6 +368,8 @@ class RawWebSocket:
         self._send_buffer = bytearray()
         self._send_lock = asyncio.Lock()
         self._flush_task = None
+        self._read_lock = asyncio.Lock()
+        self._recv_buffer = bytearray()
 
     async def _flush_buffer(self):
         while not self._closed:
@@ -558,42 +565,51 @@ class RawWebSocket:
         self._last_activity = time.monotonic()
 
     async def recv(self) -> Optional[bytes]:
-        while not self._closed:
-            try:
-                async with asyncio.timeout(30.0):
-                    opcode, payload = await self._read_frame()
-                self._last_activity = time.monotonic()
-                self._last_heartbeat = time.monotonic()
-            except asyncio.TimeoutError:
-                continue
-            except ConnectionError:
-                self._closed = True
-                return None
-                
-            if opcode == self.OP_CLOSE:
-                self._closed = True
+        async with self._read_lock:
+            while not self._closed:
                 try:
-                    reply = self._build_frame(self.OP_CLOSE, payload[:2] if payload else b'', mask=True)
-                    self.writer.write(reply)
-                    await self.writer.drain()
-                except Exception:
-                    pass
-                return None
+                    if self._recv_buffer:
+                        data = bytes(self._recv_buffer)
+                        self._recv_buffer.clear()
+                        return data
+                    
+                    async with asyncio.timeout(120.0):
+                        opcode, payload = await self._read_frame()
+                    
+                    self._last_activity = time.monotonic()
+                    self._last_heartbeat = time.monotonic()
+                    
+                    if opcode == self.OP_CLOSE:
+                        self._closed = True
+                        return None
 
-            if opcode == self.OP_PING:
-                try:
-                    pong = self._build_frame(self.OP_PONG, payload, mask=True)
-                    self.writer.write(pong)
-                    await self.writer.drain()
-                except Exception:
-                    pass
-                continue
+                    if opcode == self.OP_PING:
+                        try:
+                            pong = self._build_frame(self.OP_PONG, payload, mask=True)
+                            self.writer.write(pong)
+                            await self.writer.drain()
+                        except Exception:
+                            pass
+                        continue
 
-            if opcode == self.OP_PONG:
-                continue
+                    if opcode == self.OP_PONG:
+                        continue
 
-            if opcode in (self.OP_TEXT, self.OP_BINARY):
-                return payload
+                    if opcode in (self.OP_TEXT, self.OP_BINARY):
+                        return payload
+                        
+                except asyncio.TimeoutError:
+                    continue
+                except (ConnectionResetError, BrokenPipeError, OSError) as e:
+                    print(f"WebSocket connection lost: {e}")
+                    self._closed = True
+                    return None
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    print(f"WebSocket recv error: {e}")
+                    self._closed = True
+                    return None
         return None
 
     async def close(self):
@@ -653,6 +669,8 @@ class RawWebSocket:
             hdr = await self.reader.readexactly(2)
         except asyncio.IncompleteReadError as e:
             raise ConnectionError("Connection closed") from e
+        except (ConnectionResetError, BrokenPipeError, OSError):
+            raise ConnectionError("Connection reset")
         
         opcode = hdr[0] & 0x0F
         is_masked = bool(hdr[1] & 0x80)
@@ -882,7 +900,7 @@ class _WsPool:
             while recent:
                 ws, created = recent.popleft()
                 age = now - created
-                if age > _WS_POOL_MAX_AGE * 0.3:
+                if age > _WS_POOL_MAX_AGE * 0.3 or ws._closed:
                     asyncio.create_task(self._quiet_close(ws))
                     continue
                 if not ws._closed:
@@ -996,16 +1014,18 @@ async def _bridge_ws(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
                      splitter: Optional[_MsgSplitter] = None):
     
     _stats.active_connections += 1
+    running = True
     
     async def tcp_to_ws():
+        nonlocal running
         try:
-            while True:
+            while running:
                 try:
                     async with asyncio.timeout(_CONNECTION_TIMEOUT):
                         chunk = await reader.read(_RECV_BUF)
                 except asyncio.TimeoutError:
                     continue
-                except (ConnectionResetError, BrokenPipeError):
+                except (ConnectionResetError, BrokenPipeError, OSError, asyncio.CancelledError):
                     break
                 if not chunk:
                     break
@@ -1019,45 +1039,47 @@ async def _bridge_ws(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
                             await ws.send(parts[0])
                     else:
                         await ws.send(chunk)
-                except (ConnectionResetError, BrokenPipeError):
+                except (ConnectionResetError, BrokenPipeError, OSError, ssl.SSLError, asyncio.CancelledError):
                     break
         except asyncio.CancelledError:
-            raise
-        except Exception:
             pass
+        except Exception as e:
+            print(f"tcp_to_ws error: {e}")
         finally:
+            running = False
             try:
                 await ws.close()
             except:
                 pass
 
     async def ws_to_tcp():
+        nonlocal running
         try:
-            while True:
+            while running:
                 try:
                     async with asyncio.timeout(_CONNECTION_TIMEOUT):
                         data = await ws.recv()
                 except asyncio.TimeoutError:
                     continue
                 if data is None:
-                    break
+                    await asyncio.sleep(0.5)
+                    continue
                 _stats.bytes_down += len(data)
                 try:
                     writer.write(data)
                     if writer.transport.get_write_buffer_size() > _SEND_BUF // 2:
                         await writer.drain()
-                except (ConnectionResetError, BrokenPipeError):
+                except (ConnectionResetError, BrokenPipeError, OSError, ssl.SSLError, asyncio.CancelledError):
                     break
         except asyncio.CancelledError:
-            raise
-        except Exception:
             pass
+        except Exception as e:
+            print(f"ws_to_tcp error: {e}")
         finally:
+            running = False
             try:
                 writer.close()
                 await writer.wait_closed()
-            except (ConnectionResetError, OSError):
-                pass
             except:
                 pass
 
@@ -1065,52 +1087,27 @@ async def _bridge_ws(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
     ws_to_tcp_task = asyncio.create_task(ws_to_tcp())
     
     try:
-        done, pending = await asyncio.wait(
-            [tcp_to_ws_task, ws_to_tcp_task], 
-            return_when=asyncio.FIRST_COMPLETED
-        )
-        
-        for task in pending:
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-            except Exception:
-                pass
-                
+        await asyncio.wait([tcp_to_ws_task, ws_to_tcp_task], return_when=asyncio.FIRST_COMPLETED)
     except asyncio.CancelledError:
-        if tcp_to_ws_task and not tcp_to_ws_task.done():
-            tcp_to_ws_task.cancel()
-        if ws_to_tcp_task and not ws_to_tcp_task.done():
-            ws_to_tcp_task.cancel()
-        await asyncio.gather(tcp_to_ws_task, ws_to_tcp_task, return_exceptions=True)
-        raise
-        
+        pass
     finally:
         for task in [tcp_to_ws_task, ws_to_tcp_task]:
-            if task and not task.done():
+            if not task.done():
                 task.cancel()
                 try:
-                    await asyncio.wait_for(task, timeout=0.5)
-                except (TimeoutError, asyncio.CancelledError):
-                    pass
-                except Exception:
+                    await task
+                except:
                     pass
         
         try:
             await ws.close()
-        except (ConnectionResetError, BrokenPipeError):
-            pass
-        except Exception:
+        except:
             pass
         
         try:
             writer.close()
             await writer.wait_closed()
-        except (ConnectionResetError, BrokenPipeError, OSError):
-            pass
-        except Exception:
+        except:
             pass
         
         _stats.active_connections -= 1
@@ -1313,12 +1310,11 @@ async def _handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWri
                     await writer.drain()
 
                     try:
-                        init = await asyncio.wait_for(reader.readexactly(64), timeout=10)
+                        init = await asyncio.wait_for(reader.readexactly(64), timeout=15)
                     except asyncio.IncompleteReadError:
                         return
-
-                    if _is_http_transport(init):
-                        _stats.connections_http_rejected += 1
+                    except asyncio.TimeoutError:
+                        print(f"Timeout reading init from {label}")
                         return
 
                     dc, is_media_flag = _dc_from_init(init)
@@ -1405,7 +1401,16 @@ async def _handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWri
                         except Exception:
                             pass
 
-                    await ws.send(init)
+                    for attempt in range(3):
+                        try:
+                            await ws.send(init)
+                            break
+                        except Exception as e:
+                            if attempt == 2:
+                                raise
+                            await asyncio.sleep(0.5)
+                            continue
+
                     await _bridge_ws(reader, writer, ws, label,
                                      dc=dc, dst=dst, port=port, is_media=is_media_flag,
                                      splitter=splitter)
@@ -1416,7 +1421,7 @@ async def _handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWri
                     pass
                 except asyncio.CancelledError:
                     raise
-                except (ConnectionResetError, BrokenPipeError):
+                except (ConnectionResetError, BrokenPipeError, OSError):
                     pass
                 except Exception:
                     pass
@@ -1432,7 +1437,7 @@ async def _handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWri
     except asyncio.CancelledError:
         raise
     except Exception:
-        pass   
+        pass
 
 _server_instance = None
 _server_stop_event = None
@@ -1454,47 +1459,56 @@ async def _run(port: int, dc_opt: Dict[int, Optional[str]],
     
     warmup_task = asyncio.create_task(_ws_pool.warmup(dc_opt))
     
+    stop_task = None
+    
     if stop_event:
-        try:
+        async def wait_for_stop():
             await stop_event.wait()
-        except asyncio.CancelledError:
-            pass
-        except Exception:
-            pass
-        finally:
+            tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            
+            server.close()
+            await server.wait_closed()
+            
             if not warmup_task.done():
                 warmup_task.cancel()
                 try:
-                    await asyncio.wait_for(warmup_task, timeout=0.5)
-                except (asyncio.CancelledError, asyncio.TimeoutError):
-                    pass
-                except Exception:
+                    await warmup_task
+                except:
                     pass
             
-            server.close()
-            try:
-                await asyncio.wait_for(server.wait_closed(), timeout=1.0)
-            except (asyncio.CancelledError, asyncio.TimeoutError):
-                pass
-            except Exception:
-                pass
-            
-            await asyncio.sleep(0.3)
-            
-            try:
-                await asyncio.wait_for(_ws_pool.cleanup(), timeout=0.5)
-            except (asyncio.CancelledError, asyncio.TimeoutError):
-                pass
-            except Exception:
-                pass
-    else:
-        try:
+            await _ws_pool.cleanup()
+        
+        stop_task = asyncio.create_task(wait_for_stop())
+    
+    try:
+        if stop_event:
+            await stop_event.wait()
+        else:
             await server.serve_forever()
-        except asyncio.CancelledError:
-            pass
-        finally:
-            server.close()
-            await server.wait_closed()
+    except asyncio.CancelledError:
+        pass
+    finally:
+        if stop_task and not stop_task.done():
+            stop_task.cancel()
+            try:
+                await stop_task
+            except:
+                pass
+        
+        server.close()
+        await server.wait_closed()
+        
+        if not warmup_task.done():
+            warmup_task.cancel()
+            try:
+                await warmup_task
+            except:
+                pass
+        
+        await _ws_pool.cleanup()
     
     _server_instance = None
 
