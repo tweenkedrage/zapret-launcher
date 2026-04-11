@@ -44,7 +44,7 @@ ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
 ZAPRET_API_URL = "https://api.github.com/repos/flowseal/zapret-discord-youtube/releases/latest"
-CURRENT_VERSION = "3.0"
+CURRENT_VERSION = "3.0b"
 
 def is_admin():
     try:
@@ -368,10 +368,45 @@ class TGProxyServer:
         self._host = '127.0.0.1'
         self._current_mode = "stable"
         self._loop = None
+        self._health_check_started = False
         
     def set_mode(self, mode: str):
         self._current_mode = mode
+
+    def is_running_and_healthy(self):
+        if not self._running:
+            return False
         
+        if not self._is_port_open(1080):
+            self._running = False
+            return False
+        
+        return True
+
+    def health_check(self):
+        def check():
+            consecutive_failures = 0
+            while self._running:
+                time.sleep(15)
+                if not self._is_port_open(1080):
+                    consecutive_failures += 1
+                    if consecutive_failures >= 2:
+                        print("TG Proxy health check failed, restarting")
+                        self.restart()
+                        consecutive_failures = 0
+                else:
+                    consecutive_failures = 0
+        
+        threading.Thread(target=check, daemon=True).start()
+
+    def restart(self):
+        current_mode = self._current_mode
+        self.stop()
+        time.sleep(2)
+        self.set_mode(current_mode)
+        self.start()
+        self.wait_for_start(10)
+            
     def _kill_process_on_port(self, port):
         try:
             result = subprocess.run(
@@ -398,6 +433,7 @@ class TGProxyServer:
     def start(self):
         if self._running:
             self.stop()
+            time.sleep(1)
         
         try:
             self._stop_event = asyncio.Event()
@@ -416,9 +452,15 @@ class TGProxyServer:
                 daemon=True
             )
             self._thread.start()
-            return True
             
-        except Exception:
+            if not self._health_check_started:
+                self.health_check()
+                self._health_check_started = True
+            
+            return self.wait_for_start(10)
+            
+        except Exception as e:
+            print(f"Error start TG Proxy: {e}")
             return False
     
     def wait_for_start(self, timeout=5):
@@ -474,14 +516,32 @@ class TGProxyServer:
             if self._stop_event:
                 self._stop_event.set()
             
+            time.sleep(0.5)
+            
             if self._thread and self._thread.is_alive():
-                self._thread.join(timeout=2.0)
+                self._thread.join(timeout=3.0)
             
             self._running = False
             self._stop_event = None
             self._thread = None
             self._loop = None
+        
         self._kill_process_on_port(1080)
+        
+        try:
+            subprocess.run('taskkill /F /IM python.exe /FI "WINDOWTITLE eq TGProxy*"', 
+                        shell=True, capture_output=True)
+        except:
+            pass
+
+    def cleanup(self):
+        self.stop()
+        time.sleep(1)
+        try:
+            subprocess.run('taskkill /F /IM python.exe /FI "WINDOWTITLE eq TGProxy*"', 
+                        shell=True, capture_output=True)
+        except:
+            pass
     
     @property
     def is_running(self):
@@ -669,7 +729,7 @@ class SystemTrayIcon:
         menu = pystray.Menu(
             pystray.MenuItem("Открыть лаунчер", self.show_window, default=True),
             pystray.MenuItem(connection_text, self.toggle_connection),
-            pystray.MenuItem("Выход", self.quit_app)
+            pystray.MenuItem("Выход", self.quit_from_tray)
         )
         
         if self.icon:
@@ -683,18 +743,30 @@ class SystemTrayIcon:
                 draw.text((20, 20), "Z", fill='white', font=None)
             
             self.icon = pystray.Icon("zapret_launcher", image, "Zapret Launcher", menu)
+
+    def quit_from_tray(self):
+        self.icon.stop()
+        self.app.quit_from_tray()
         
     def show_window(self):
-        self.app.root.deiconify()
-        self.app.root.lift()
-        self.app.root.focus_force()
-        
         try:
-            hwnd = ctypes.windll.user32.GetParent(self.app.root.winfo_id())
-            ctypes.windll.user32.ShowWindow(hwnd, 5)
-            ctypes.windll.user32.SetForegroundWindow(hwnd)
-        except Exception:
-            pass
+            if not self.app.root.winfo_exists():
+                return
+            
+            self.app.root.deiconify()
+            self.app.root.lift()
+            self.app.root.focus_force()
+            
+            self.app.root.state('normal')
+            
+            try:
+                hwnd = ctypes.windll.user32.GetParent(self.app.root.winfo_id())
+                ctypes.windll.user32.ShowWindow(hwnd, 5)
+                ctypes.windll.user32.SetForegroundWindow(hwnd)
+            except Exception:
+                pass
+        except Exception as e:
+            print(f"Error showing window: {e}")
 
     def toggle_connection(self):
         if self.app.is_connected:
@@ -885,7 +957,7 @@ class ZapretLauncher:
         self.root.withdraw()
         try:
             hwnd = ctypes.windll.user32.GetParent(self.root.winfo_id())
-            ctypes.windll.user32.ShowWindow(hwnd, 6)
+            ctypes.windll.user32.ShowWindow(hwnd, 0)
         except Exception:
             pass
 
@@ -898,35 +970,33 @@ class ZapretLauncher:
 
     def on_closing(self):
         try:
-            try:
-                self.zapret.stop_current_strategy()
-            except:
-                pass
-            
-            try:
-                if hasattr(self, 'tg_proxy'):
-                    self.tg_proxy.stop()
-            except:
-                pass
-            
-            try:
-                if hasattr(self, 'tray_icon') and self.tray_icon.icon:
-                    self.tray_icon.icon.stop()
-            except:
-                pass
-            
+            self.root.withdraw()
+        except Exception:
+            self._force_exit()
+
+    def _force_exit(self):
+        try:
+            self.zapret.stop_current_strategy()
+            if hasattr(self, 'tg_proxy'):
+                self.tg_proxy.stop()
+            if hasattr(self, 'tray_icon') and self.tray_icon.icon:
+                self.tray_icon.icon.stop()
             time.sleep(0.5)
-            
-            try:
-                self.root.quit()
-                self.root.destroy()
-            except:
-                pass
-                
+            self.root.quit()
+            self.root.destroy()
         except Exception:
             pass
         finally:
             sys.exit(0)
+
+    def quit_from_tray(self):
+        result = messagebox.askyesno(
+            "Выход",
+            "Вы действительно хотите закрыть программу?\n\n"
+            "Подключение будет разорвано"
+        )
+        if result:
+            self._force_exit()
 
     def setup_ui(self):
         self.main_container = tk.Frame(self.root, bg=self.colors['bg_dark'])
@@ -1800,7 +1870,22 @@ class ZapretLauncher:
             if mode.get("tgproxy", False):
                 tg_mode = mode.get("tg_mode", "stable")
                 self.tg_proxy.set_mode(tg_mode)
+                
+                self.tg_proxy.stop()
+                time.sleep(1)
                 success = self.tg_proxy.start()
+                
+                if not success:
+                    errors.append("TG Proxy не удалось запустить")
+                else:
+                    max_wait = 10
+                    for i in range(max_wait):
+                        if self.tg_proxy._is_port_open(1080):
+                            self.tg_proxy._running = True
+                            break
+                        time.sleep(0.5)
+                    else:
+                        errors.append("TG Proxy таймаут запуска (порт не открыт)")
             
             if errors:
                 self.root.after(0, lambda: on_error("\n".join(errors)))
@@ -2790,7 +2875,7 @@ class ZapretLauncher:
             try:
                 try:
                     if hasattr(self, 'tg_proxy') and self.tg_proxy:
-                        self.tg_proxy.stop()
+                        self.tg_proxy.cleanup()
                         time.sleep(1.5)
                 except Exception:
                     pass
