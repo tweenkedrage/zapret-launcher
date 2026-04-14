@@ -44,7 +44,7 @@ ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
 ZAPRET_API_URL = "https://api.github.com/repos/flowseal/zapret-discord-youtube/releases/latest"
-CURRENT_VERSION = "3.0b"
+CURRENT_VERSION = "3.0c"
 
 def is_admin():
     try:
@@ -366,74 +366,38 @@ class TGProxyServer:
         self._running = False
         self._port = 1080
         self._host = '127.0.0.1'
-        self._current_mode = "stable"
         self._loop = None
-        self._health_check_started = False
+        self._error_count = 0
+        self._last_error_time = 0
         
-    def set_mode(self, mode: str):
-        self._current_mode = mode
-
     def is_running_and_healthy(self):
         if not self._running:
             return False
-        
-        if not self._is_port_open(1080):
-            self._running = False
-            return False
-        
-        return True
+        return self._is_port_open(1080)
 
-    def health_check(self):
-        def check():
-            consecutive_failures = 0
-            while self._running:
-                time.sleep(15)
-                if not self._is_port_open(1080):
-                    consecutive_failures += 1
-                    if consecutive_failures >= 2:
-                        print("TG Proxy health check failed, restarting")
-                        self.restart()
-                        consecutive_failures = 0
-                else:
-                    consecutive_failures = 0
-        
-        threading.Thread(target=check, daemon=True).start()
-
-    def restart(self):
-        current_mode = self._current_mode
-        self.stop()
-        time.sleep(2)
-        self.set_mode(current_mode)
-        self.start()
-        self.wait_for_start(10)
-            
-    def _kill_process_on_port(self, port):
+    def _is_port_open(self, port):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(0.5)
         try:
-            result = subprocess.run(
-                f'netstat -ano | findstr :{port}',
-                shell=True, capture_output=True, text=True, timeout=2
-            )
-            pids = set()
-            for line in result.stdout.split('\n'):
-                if line.strip() and 'LISTENING' in line:
-                    parts = line.split()
-                    if len(parts) >= 5:
-                        pid = parts[-1]
-                        if pid.isdigit():
-                            pids.add(pid)
-            
-            for pid in pids:
-                try:
-                    subprocess.run(f'taskkill /F /PID {pid}', shell=True, capture_output=True, timeout=1)
-                except:
-                    pass
-        except Exception:
-            pass
+            result = sock.connect_ex((self._host, port))
+            return result == 0
+        finally:
+            sock.close()
     
     def start(self):
         if self._running:
             self.stop()
             time.sleep(1)
+        
+        now = time.time()
+        if now - self._last_error_time < 10:
+            self._error_count += 1
+            if self._error_count > 3:
+                time.sleep(5)
+        else:
+            self._error_count = 0
+        
+        self._last_error_time = now
         
         try:
             self._stop_event = asyncio.Event()
@@ -446,21 +410,23 @@ class TGProxyServer:
                 5: '91.108.56.100',
             }
             
-            self._thread = threading.Thread(
-                target=self._run_proxy,
-                args=(self._port, dc_opt, self._stop_event, self._host, self._current_mode),
-                daemon=True
-            )
+            def run_proxy_thread():
+                try:
+                    asyncio.run(tg_proxy._run(self._port, dc_opt, self._stop_event, self._host))
+                except Exception as e:
+                    print(f"Telegram Proxy thread error: {e}")
+            
+            self._thread = threading.Thread(target=run_proxy_thread, daemon=True)
             self._thread.start()
             
-            if not self._health_check_started:
-                self.health_check()
-                self._health_check_started = True
-            
-            return self.wait_for_start(10)
+            if self.wait_for_start(10):
+                self._running = True
+                return True
+            else:
+                return False
             
         except Exception as e:
-            print(f"Error start TG Proxy: {e}")
+            print(f"Error start Telegram Proxy: {e}")
             return False
     
     def wait_for_start(self, timeout=5):
@@ -469,71 +435,37 @@ class TGProxyServer:
             if self._is_port_open(1080):
                 self._running = True
                 return True
-            if not self._thread or not self._thread.is_alive():
-                return False
             time.sleep(0.2)
         return False
-        
-    def _is_port_open(self, port):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(0.2)
-        try:
-            result = sock.connect_ex(('127.0.0.1', port))
-            return result == 0
-        finally:
-            sock.close()
-    
-    def _run_proxy(self, port, dc_opt, stop_event, host, mode):
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            self._loop = loop
-            
-            tg_proxy.set_tg_mode(mode)
-            
-            async def run_server():
-                try:
-                    await tg_proxy._run(port, dc_opt, stop_event, host)
-                except asyncio.CancelledError:
-                    pass
-                except Exception:
-                    pass
-            loop.run_until_complete(run_server())
-            
-        except Exception:
-            pass
-        finally:
-            if self._loop and not self._loop.is_closed():
-                try:
-                    self._loop.close()
-                except:
-                    pass
-            self._loop = None
-            self._running = False
     
     def stop(self):
-        if self._running:
-            if self._stop_event:
-                self._stop_event.set()
-            
+        if self._stop_event:
+            self._stop_event.set()
             time.sleep(0.5)
-            
-            if self._thread and self._thread.is_alive():
-                self._thread.join(timeout=3.0)
-            
-            self._running = False
-            self._stop_event = None
-            self._thread = None
-            self._loop = None
         
-        self._kill_process_on_port(1080)
+        self._running = False
         
         try:
-            subprocess.run('taskkill /F /IM python.exe /FI "WINDOWTITLE eq TGProxy*"', 
-                        shell=True, capture_output=True)
+            result = subprocess.run(
+                f'netstat -ano | findstr :{self._port}',
+                shell=True, capture_output=True, text=True, timeout=2
+            )
+            for line in result.stdout.split('\n'):
+                if 'LISTENING' in line:
+                    parts = line.split()
+                    if len(parts) >= 5:
+                        pid = parts[-1]
+                        if pid.isdigit():
+                            subprocess.run(f'taskkill /F /PID {pid}', shell=True, capture_output=True)
         except:
             pass
-
+        
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=3.0)
+        
+        self._thread = None
+        self._stop_event = None
+    
     def cleanup(self):
         self.stop()
         time.sleep(1)
@@ -545,7 +477,7 @@ class TGProxyServer:
     
     @property
     def is_running(self):
-        return self._running
+        return self._running and self._is_port_open(1080)
     
 class ZapretCore:
     def __init__(self, parent):
@@ -745,8 +677,19 @@ class SystemTrayIcon:
             self.icon = pystray.Icon("zapret_launcher", image, "Zapret Launcher", menu)
 
     def quit_from_tray(self):
-        self.icon.stop()
-        self.app.quit_from_tray()
+        if self.app.is_connected or self.app.zapret.is_winws_running():
+            result = messagebox.askyesno(
+                "Выход", 
+                "Активное подключение будет разорвано.\n\nВы действительно хотите закрыть программу?"
+            )
+            if result:
+                if self.icon:
+                    self.icon.stop()
+                self.app.quit_from_tray()
+        else:
+            if self.icon:
+                self.icon.stop()
+            self.app.quit_from_tray()
         
     def show_window(self):
         try:
@@ -809,6 +752,18 @@ class ZapretLauncher:
         self.stats = StatsMonitor()
         self.stats_update_id = None
         self._pending_mode = None
+
+        self.mode_label = None
+        self.connect_btn = None
+        self.main_status = None
+        self.diagnostic_text = None
+        self.stats_frame = None
+        self.stats_time_label = None
+        self.stats_traffic_label = None
+        self.stats_total_label = None
+        self.stats_speed_up_label = None
+        self.stats_speed_down_label = None
+        self.stats_rtt_label = None
 
         self._shutdown_update_timer = None
         self._shutdown_first_update_done = False
@@ -971,8 +926,8 @@ class ZapretLauncher:
     def on_closing(self):
         try:
             self.root.withdraw()
-        except Exception:
-            self._force_exit()
+        except Exception as e:
+            print(f"Error hiding window: {e}")
 
     def _force_exit(self):
         try:
@@ -990,13 +945,7 @@ class ZapretLauncher:
             sys.exit(0)
 
     def quit_from_tray(self):
-        result = messagebox.askyesno(
-            "Выход",
-            "Вы действительно хотите закрыть программу?\n\n"
-            "Подключение будет разорвано"
-        )
-        if result:
-            self._force_exit()
+        self._force_exit()
 
     def setup_ui(self):
         self.main_container = tk.Frame(self.root, bg=self.colors['bg_dark'])
@@ -1174,12 +1123,10 @@ class ZapretLauncher:
         modes = [
             {"name": "Стандартный", "desc": "Обход блокировок через Zapret", 
             "zapret": True, "tgproxy": False, "game": False},
-            {"name": "TG Proxy", "desc": "Ускорение работы Telegram", 
+            {"name": "Telegram Proxy", "desc": "Ускорение работы Telegram", 
             "zapret": False, "tgproxy": True, "game": False},
             {"name": "Игровой", "desc": "Максимальная производительность для игр", 
-            "zapret": True, "tgproxy": False, "game": True},
-            {"name": "Кастомный", "desc": "Выберите что включить самостоятельно", 
-            "zapret": False, "tgproxy": False, "game": False, "custom": True}
+            "zapret": True, "tgproxy": False, "game": True}
         ]
         
         selected_mode = [None]
@@ -1325,8 +1272,8 @@ class ZapretLauncher:
         if self.is_connected:
             return
         
-        if mode["name"] == "TG Proxy":
-            self.show_tg_proxy_mode_selector()
+        if mode["name"] == "Telegram Proxy":
+            self._start_tg_proxy_direct()
             return
         
         if mode["name"] == "Стандартный" or mode["name"] == "Игровой":
@@ -1337,19 +1284,13 @@ class ZapretLauncher:
             self._pending_mode = mode
             self.select_strategy_for_mode(mode["name"])
             return
-        
-        if mode["name"] == "Кастомный":
-            self.show_custom_selector()
-            return
 
         self._reset_traffic_history()
 
         self.update_status("Запуск...", self.colors['accent'])
-        self.connect_btn.set_enabled(False)
+        if hasattr(self, 'connect_btn') and self.connect_btn:
+            self.connect_btn.set_enabled(False)
         self.root.update()
-        
-        success = True
-        msg = ""
         
         if mode.get("tgproxy", False):
             self.tg_proxy.start()
@@ -1359,12 +1300,63 @@ class ZapretLauncher:
         self.start_stats_monitoring()
         
         mode_name = mode["name"]
-        self.mode_label.config(text=mode_name, fg=self.colors['accent_green'])
+        if hasattr(self, 'mode_label') and self.mode_label:
+            self.mode_label.config(text=mode_name, fg=self.colors['accent_green'])
         self.update_status(f"Подключено: {mode_name}", self.colors['accent_green'])
         self.update_ui_state()
         self.save_settings()
         self.root.after(100, self.update_stats_display)
+        if hasattr(self, 'connect_btn') and self.connect_btn:
+            self.connect_btn.set_enabled(True)
+
+    def _start_tg_proxy_direct(self):
+        if self.is_connected:
+            return
+        
+        if not self._tg_instruction:
+            self.show_tg_proxy_instruction()
+            return
+        
+        self._do_start_tg_proxy()
+        
+    def _do_start_tg_proxy(self):
+        self._reset_traffic_history()
+        self.update_status("Запуск Telegram Proxy...", self.colors['accent'])
+        if hasattr(self, 'connect_btn') and self.connect_btn:
+            self.connect_btn.set_enabled(False)
+        self.root.update()
+        
+        def start_thread():
+            success = self.tg_proxy.start()
+            
+            if success:
+                if self.tg_proxy.wait_for_start(8):
+                    self.root.after(0, lambda: self._on_tg_proxy_started_direct())
+                else:
+                    self.root.after(0, lambda: self._on_tg_proxy_failed_direct("Таймаут запуска"))
+            else:
+                self.root.after(0, lambda: self._on_tg_proxy_failed_direct("Ошибка запуска"))
+        threading.Thread(target=start_thread, daemon=True).start()
+
+    def _on_tg_proxy_started_direct(self):
+        if not self.is_connected:
+            self.is_connected = True
+            self.stats.start_session()
+            self.start_stats_monitoring()
+            
+            self.mode_label.config(text="Telegram Proxy", fg=self.colors['accent_green'])
+            self.update_status("Подключено: Telegram Proxy", self.colors['accent_green'])
+            self.update_ui_state()
+            self.save_settings()
+            self.root.after(100, self.update_stats_display)
+        
         self.connect_btn.set_enabled(True)
+
+    def _on_tg_proxy_failed_direct(self, error_msg):
+        self.update_status("Ошибка запуска Telegram Proxy", self.colors['accent_red'])
+        messagebox.showerror("Ошибка", f"Не удалось запустить Telegram Proxy: {error_msg}")
+        if hasattr(self, 'connect_btn') and self.connect_btn:
+            self.connect_btn.set_enabled(True)
 
     def select_strategy_for_mode(self, mode_name):
         dialog = tk.Toplevel(self.root)
@@ -1480,449 +1472,6 @@ class ZapretLauncher:
                                 width=80, height=35, bg=self.colors['button_bg'],
                                 font=("Segoe UI Variable", 10), corner_radius=8)
         cancel_btn.pack(side=tk.LEFT, padx=5)
-
-    def show_custom_selector(self):
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Кастомный режим запуска")
-        dialog.geometry("650x550")
-        dialog.resizable(False, False)
-        dialog.configure(bg=self.colors['bg_medium'])
-        
-        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 325
-        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 275
-        dialog.geometry(f"+{x}+{y}")
-        
-        tk.Label(dialog, text="Кастомный режим запуска", font=("Segoe UI Variable", 18, "bold"),
-                fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(pady=(25, 15))
-        
-        main_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=25, pady=5)
-        
-        cards_container = tk.Frame(main_frame, bg=self.colors['bg_medium'])
-        cards_container.pack(fill=tk.BOTH, expand=True)
-        
-        zapret_card = tk.Frame(cards_container, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
-        zapret_card.pack(fill=tk.X, pady=6)
-        
-        zapret_inner = tk.Frame(zapret_card, bg=self.colors['bg_light'])
-        zapret_inner.pack(fill=tk.X, padx=15, pady=12)
-        
-        zapret_row = tk.Frame(zapret_inner, bg=self.colors['bg_light'])
-        zapret_row.pack(fill=tk.X)
-        
-        custom_zapret = tk.BooleanVar(value=False)
-        zapret_cb = tk.Checkbutton(zapret_row, text="Zapret", variable=custom_zapret,
-                                    bg=self.colors['bg_light'], activebackground=self.colors['bg_light'],
-                                    fg=self.colors['text_primary'], selectcolor=self.colors['bg_light'],
-                                    font=("Segoe UI Variable", 12, "bold"),
-                                    disabledforeground=self.colors['text_secondary'],
-                                    highlightthickness=0)
-        zapret_cb.pack(side=tk.LEFT)
-        
-        zapret_cb.configure(selectcolor=self.colors['accent'])
-        
-        strategy_frame = tk.Frame(zapret_row, bg=self.colors['bg_light'])
-        strategy_frame.pack(side=tk.RIGHT)
-        
-        strategy_combo = ttk.Combobox(strategy_frame, values=self.zapret.available_strategies,
-                                    width=35, font=self.font_primary, state='readonly')
-        strategy_combo.pack()
-        if self.current_strategy:
-            strategy_combo.set(self.current_strategy)
-        elif self.zapret.available_strategies:
-            strategy_combo.set(self.zapret.available_strategies[0])
-        
-        def update_zapret_state(*args):
-            if custom_zapret.get():
-                strategy_combo.config(state='readonly')
-            else:
-                strategy_combo.config(state='disabled')
-        
-        custom_zapret.trace_add('write', update_zapret_state)
-        update_zapret_state()
-        
-        tg_card = tk.Frame(cards_container, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
-        tg_card.pack(fill=tk.X, pady=6)
-        
-        tg_inner = tk.Frame(tg_card, bg=self.colors['bg_light'])
-        tg_inner.pack(fill=tk.X, padx=15, pady=12)
-        
-        tg_row = tk.Frame(tg_inner, bg=self.colors['bg_light'])
-        tg_row.pack(fill=tk.X)
-        
-        custom_tgproxy = tk.BooleanVar(value=False)
-        tg_cb = tk.Checkbutton(tg_row, text="TG Proxy", variable=custom_tgproxy,
-                                bg=self.colors['bg_light'], activebackground=self.colors['bg_light'],
-                                fg=self.colors['text_primary'], selectcolor=self.colors['bg_light'],
-                                font=("Segoe UI Variable", 12, "bold"),
-                                highlightthickness=0)
-        tg_cb.pack(side=tk.LEFT)
-        tg_cb.configure(selectcolor=self.colors['accent'])
-        
-        tg_mode_frame = tk.Frame(tg_row, bg=self.colors['bg_light'])
-        tg_mode_frame.pack(side=tk.RIGHT)
-        
-        tg_mode_combo = ttk.Combobox(tg_mode_frame, values=["Сбалансированный", "Быстрый"],
-                                    width=35, font=self.font_primary, state='readonly')
-        tg_mode_combo.set("Сбалансированный")
-        tg_mode_combo.pack()
-        
-        def update_tg_state(*args):
-            if custom_tgproxy.get():
-                tg_mode_combo.config(state='readonly')
-            else:
-                tg_mode_combo.config(state='disabled')
-        
-        custom_tgproxy.trace_add('write', update_tg_state)
-        update_tg_state()
-        
-        btn_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
-        btn_frame.pack(pady=20)
-        
-        def apply_custom():
-            if not any([custom_zapret.get(), custom_tgproxy.get()]):
-                messagebox.showerror("Ошибка", "Вы не выбрали никакой компонент для запуска")
-                return
-            
-            mode = {
-                "name": "Кастомный",
-                "zapret": custom_zapret.get(),
-                "tgproxy": custom_tgproxy.get(),
-                "strategy": strategy_combo.get() if custom_zapret.get() else None,
-                "tg_mode": "fast" if tg_mode_combo.get() == "Быстрый" else "stable"
-            }
-            dialog.destroy()
-            self.start_custom_mode(mode)
-        
-        def cancel():
-            dialog.destroy()
-        
-        apply_btn = RoundedButton(btn_frame, text="Запустить", command=apply_custom,
-                                width=120, height=38, bg=self.colors['accent'],
-                                fg=self.colors['text_primary'], font=("Segoe UI Variable", 10),
-                                corner_radius=10)
-        apply_btn.pack(side=tk.LEFT, padx=10)
-        
-        cancel_btn = RoundedButton(btn_frame, text="Отмена", command=cancel,
-                                width=120, height=38, bg=self.colors['button_bg'],
-                                fg=self.colors['text_secondary'], font=("Segoe UI Variable", 10),
-                                corner_radius=10)
-        cancel_btn.pack(side=tk.LEFT, padx=10)
-
-    def show_tg_proxy_mode_selector(self):
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Выбор режима TG Proxy")
-        dialog.geometry("500x380")
-        dialog.resizable(False, False)
-        dialog.configure(bg=self.colors['bg_medium'])
-        
-        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 250
-        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 190
-        dialog.geometry(f"+{x}+{y}")
-        
-        tk.Label(dialog, text="Выбор режима Telegram Proxy", 
-                font=("Segoe UI Variable", 16, "bold"),
-                fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(pady=(20, 5))
-        
-        tk.Label(dialog, text="Информация:",
-                font=("Segoe UI Variable", 10),
-                fg=self.colors['text_secondary'], bg=self.colors['bg_medium']).pack(pady=(0, 20))
-        
-        cards_container = tk.Frame(dialog, bg=self.colors['bg_medium'])
-        cards_container.pack(fill=tk.BOTH, expand=True, padx=20)
-        
-        selected_mode = [None]
-        selected_widget = [None]
-        start_btn = [None]
-        
-        fast_frame = tk.Frame(cards_container, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0, cursor="hand2")
-        fast_frame.pack(fill=tk.X, pady=5)
-        
-        fast_inner = tk.Frame(fast_frame, bg=self.colors['bg_light'])
-        fast_inner.pack(fill=tk.X, padx=10, pady=8)
-        
-        fast_name = tk.Label(fast_inner, text="Быстрый", font=("Segoe UI Variable", 12, "bold"),
-                            fg=self.colors['accent'], bg=self.colors['bg_light'])
-        fast_name.pack(anchor='w', padx=5, pady=(0, 2))
-        
-        fast_desc = tk.Label(fast_inner, text="Максимальная скорость работы Telegram (Затратный на систему)",
-                            font=("Segoe UI Variable", 9), fg=self.colors['text_secondary'], bg=self.colors['bg_light'],
-                            wraplength=400, justify=tk.LEFT)
-        fast_desc.pack(anchor='w', padx=5, pady=(0, 5))
-        
-        stable_frame = tk.Frame(cards_container, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0, cursor="hand2")
-        stable_frame.pack(fill=tk.X, pady=5)
-        
-        stable_inner = tk.Frame(stable_frame, bg=self.colors['bg_light'])
-        stable_inner.pack(fill=tk.X, padx=10, pady=8)
-        
-        stable_name = tk.Label(stable_inner, text="Сбалансированный", font=("Segoe UI Variable", 12, "bold"),
-                            fg=self.colors['accent'], bg=self.colors['bg_light'])
-        stable_name.pack(anchor='w', padx=5, pady=(0, 2))
-        
-        stable_desc = tk.Label(stable_inner, text="Рекомендуется для большинства пользователей (Сбалансированно)",
-                            font=("Segoe UI Variable", 9), fg=self.colors['text_secondary'], bg=self.colors['bg_light'],
-                            wraplength=400, justify=tk.LEFT)
-        stable_desc.pack(anchor='w', padx=5, pady=(0, 5))
-
-        def update_start_button():
-            if start_btn[0]:
-                if selected_mode[0]:
-                    start_btn[0].set_enabled(True)
-                    start_btn[0].update_colors(
-                        self.colors['accent'],
-                        self.colors['text_primary'],
-                        self.colors['button_hover']
-                    )
-                    start_btn[0].config(cursor="hand2")
-                else:
-                    start_btn[0].set_enabled(False)
-                    start_btn[0].update_colors(
-                        self.colors['button_bg'],
-                        self.colors['text_secondary'],
-                        self.colors['button_bg']
-                    )
-                    start_btn[0].config(cursor="arrow")
-        
-        def select_fast():
-            if selected_widget[0]:
-                prev_frame, prev_inner, prev_name, prev_desc = selected_widget[0]
-                prev_frame.configure(bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
-                prev_inner.configure(bg=self.colors['bg_light'])
-                prev_name.configure(fg=self.colors['accent'], bg=self.colors['bg_light'])
-                prev_desc.configure(fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
-            
-            fast_frame.configure(bg=self.colors['accent'], relief=tk.RIDGE, bd=2)
-            fast_inner.configure(bg=self.colors['accent'])
-            fast_name.configure(fg=self.colors['text_primary'], bg=self.colors['accent'])
-            fast_desc.configure(fg=self.colors['text_secondary'], bg=self.colors['accent'])
-            
-            stable_frame.configure(bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
-            stable_inner.configure(bg=self.colors['bg_light'])
-            stable_name.configure(fg=self.colors['accent'], bg=self.colors['bg_light'])
-            stable_desc.configure(fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
-            
-            selected_widget[0] = (fast_frame, fast_inner, fast_name, fast_desc)
-            selected_mode[0] = "fast"
-            update_start_button()
-        
-        def select_stable():
-            if selected_widget[0]:
-                prev_frame, prev_inner, prev_name, prev_desc = selected_widget[0]
-                prev_frame.configure(bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
-                prev_inner.configure(bg=self.colors['bg_light'])
-                prev_name.configure(fg=self.colors['accent'], bg=self.colors['bg_light'])
-                prev_desc.configure(fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
-            
-            stable_frame.configure(bg=self.colors['accent'], relief=tk.RIDGE, bd=2)
-            stable_inner.configure(bg=self.colors['accent'])
-            stable_name.configure(fg=self.colors['text_primary'], bg=self.colors['accent'])
-            stable_desc.configure(fg=self.colors['text_secondary'], bg=self.colors['accent'])
-            
-            fast_frame.configure(bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
-            fast_inner.configure(bg=self.colors['bg_light'])
-            fast_name.configure(fg=self.colors['accent'], bg=self.colors['bg_light'])
-            fast_desc.configure(fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
-            
-            selected_widget[0] = (stable_frame, stable_inner, stable_name, stable_desc)
-            selected_mode[0] = "stable"
-            update_start_button()
-        
-        def on_enter_fast(e):
-            if selected_widget[0] and selected_widget[0][0] == fast_frame:
-                return
-            fast_frame.configure(bg=self.colors['bg_light_hover'])
-            fast_inner.configure(bg=self.colors['bg_light_hover'])
-            fast_name.configure(bg=self.colors['bg_light_hover'])
-            fast_desc.configure(bg=self.colors['bg_light_hover'])
-        
-        def on_leave_fast(e):
-            if selected_widget[0] and selected_widget[0][0] == fast_frame:
-                return
-            fast_frame.configure(bg=self.colors['bg_light'])
-            fast_inner.configure(bg=self.colors['bg_light'])
-            fast_name.configure(bg=self.colors['bg_light'])
-            fast_desc.configure(bg=self.colors['bg_light'])
-        
-        def on_enter_stable(e):
-            if selected_widget[0] and selected_widget[0][0] == stable_frame:
-                return
-            stable_frame.configure(bg=self.colors['bg_light_hover'])
-            stable_inner.configure(bg=self.colors['bg_light_hover'])
-            stable_name.configure(bg=self.colors['bg_light_hover'])
-            stable_desc.configure(bg=self.colors['bg_light_hover'])
-        
-        def on_leave_stable(e):
-            if selected_widget[0] and selected_widget[0][0] == stable_frame:
-                return
-            stable_frame.configure(bg=self.colors['bg_light'])
-            stable_inner.configure(bg=self.colors['bg_light'])
-            stable_name.configure(bg=self.colors['bg_light'])
-            stable_desc.configure(bg=self.colors['bg_light'])
-        
-        for widget in [fast_frame, fast_inner, fast_name, fast_desc]:
-            widget.bind("<Enter>", on_enter_fast)
-            widget.bind("<Leave>", on_leave_fast)
-            widget.bind("<Button-1>", lambda e: select_fast())
-        
-        for widget in [stable_frame, stable_inner, stable_name, stable_desc]:
-            widget.bind("<Enter>", on_enter_stable)
-            widget.bind("<Leave>", on_leave_stable)
-            widget.bind("<Button-1>", lambda e: select_stable())
-        
-        button_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
-        button_frame.pack(fill=tk.X, padx=20, pady=(20, 20))
-        
-        def start_tg_proxy():
-            if selected_mode[0]:
-                dialog.destroy()
-                self._start_tg_proxy_with_mode(selected_mode[0])
-        
-        def cancel():
-            dialog.destroy()
-        
-        start_btn[0] = RoundedButton(button_frame, text="Запустить", command=start_tg_proxy,
-                                    width=120, height=38, bg=self.colors['button_bg'],
-                                    fg=self.colors['text_secondary'], font=("Segoe UI Variable", 10),
-                                    corner_radius=8)
-        start_btn[0].set_enabled(False)
-        start_btn[0].config(cursor="arrow")
-        start_btn[0].pack(side=tk.RIGHT, padx=(10, 0))
-        
-        cancel_btn = RoundedButton(button_frame, text="Отмена", command=cancel,
-                                width=100, height=38, bg=self.colors['button_bg'],
-                                fg=self.colors['text_secondary'], font=("Segoe UI Variable", 10),
-                                corner_radius=8)
-        cancel_btn.normal_color = self.colors['button_bg']
-        cancel_btn.hover_color = self.colors['accent']
-        cancel_btn.config(cursor="hand2")
-        cancel_btn.pack(side=tk.RIGHT)
-        
-        dialog.transient(self.root)
-        dialog.grab_set()
-        dialog.focus_force()
-
-    def _start_tg_proxy_with_mode(self, mode: str):
-        if self.is_connected:
-            return
-        
-        self._reset_traffic_history()
-        mode_display = "Быстрый" if mode == "fast" else "Сбалансированный"
-        self.update_status(f"Запуск TG Proxy ({mode_display} режим)...", self.colors['accent'])
-        self.connect_btn.set_enabled(False)
-        self.root.update()
-        
-        self.tg_proxy.set_mode(mode)
-        
-        def start_thread():
-            success = self.tg_proxy.start()
-            
-            if success:
-                if self.tg_proxy.wait_for_start(8):
-                    self.root.after(0, lambda: self._on_tg_proxy_started(mode_display))
-                else:
-                    self.root.after(0, lambda: self._on_tg_proxy_failed("Таймаут запуска"))
-            else:
-                self.root.after(0, lambda: self._on_tg_proxy_failed("Ошибка запуска"))
-        
-        threading.Thread(target=start_thread, daemon=True).start()
-
-    def _on_tg_proxy_started(self, mode_display):
-        if not self.is_connected:
-            self.is_connected = True
-            self.stats.start_session()
-            self.start_stats_monitoring()
-            
-            mode_name = f"TG Proxy ({mode_display})"
-            self.mode_label.config(text=mode_name, fg=self.colors['accent_green'])
-            self.update_status(f"Подключено: {mode_name}", self.colors['accent_green'])
-            self.update_ui_state()
-            self.save_settings()
-            self.root.after(100, self.update_stats_display)
-        
-        self.connect_btn.set_enabled(True)
-
-    def _on_tg_proxy_failed(self, error_msg):
-        self.update_status("Ошибка запуска TG Proxy", self.colors['accent_red'])
-        messagebox.showerror("Ошибка", f"Не удалось запустить TG Proxy: {error_msg}")
-        self.connect_btn.set_enabled(True)
-
-    def start_custom_mode(self, mode):
-        self.update_status("Запуск...", self.colors['accent'])
-        self.connect_btn.set_enabled(False)
-        self.root.update()
-        
-        def run_all():
-            errors = []
-            
-            if mode.get("zapret", False):
-                strategy = mode.get("strategy")
-                if not strategy:
-                    errors.append("Zapret: не выбрана стратегия")
-                else:
-                    success, msg = self.zapret.run_strategy(strategy)
-                    if not success:
-                        errors.append(f"Zapret: {msg}")
-                    else:
-                        self.current_strategy = strategy
-                        self.strategy_var.set(strategy)
-            
-            if mode.get("tgproxy", False):
-                tg_mode = mode.get("tg_mode", "stable")
-                self.tg_proxy.set_mode(tg_mode)
-                
-                self.tg_proxy.stop()
-                time.sleep(1)
-                success = self.tg_proxy.start()
-                
-                if not success:
-                    errors.append("TG Proxy не удалось запустить")
-                else:
-                    max_wait = 10
-                    for i in range(max_wait):
-                        if self.tg_proxy._is_port_open(1080):
-                            self.tg_proxy._running = True
-                            break
-                        time.sleep(0.5)
-                    else:
-                        errors.append("TG Proxy таймаут запуска (порт не открыт)")
-            
-            if errors:
-                self.root.after(0, lambda: on_error("\n".join(errors)))
-                return
-            
-            self.is_connected = True
-            self.stats.start_session()
-            self.start_stats_monitoring()
-            
-            components = []
-            if mode.get("zapret", False):
-                components.append("Zapret")
-            if mode.get("tgproxy", False):
-                tg_mode_display = "Быстрый" if mode.get("tg_mode") == "fast" else "Сбалансированный"
-                components.append(f"TG Proxy ({tg_mode_display})")
-            
-            status_text = ", ".join(components) if components else "Кастомный"
-            self.root.after(0, lambda: on_success(status_text))
-        
-        def on_error(error_msg):
-            self.update_status("Ошибка запуска", self.colors['accent_red'])
-            messagebox.showerror("Ошибка запуска", f"Не удалось запустить компоненты:\n\n{error_msg}")
-            self.connect_btn.set_enabled(True)
-            if self.current_strategy:
-                self.zapret.stop_current_strategy()
-            if hasattr(self, 'tg_proxy'):
-                self.tg_proxy.stop()
-        
-        def on_success(status_text):
-            self.mode_label.config(text="Кастомный", fg=self.colors['accent_green'])
-            self.update_status(f"Подключено: {status_text}", self.colors['accent_green'])
-            self.update_ui_state()
-            self.save_settings()
-            self.root.after(100, self.update_stats_display)
-            self.connect_btn.set_enabled(True)
-
-        threading.Thread(target=run_all, daemon=True).start()
 
     def update_stats_display(self):
         if not hasattr(self, 'stats_frame'):
@@ -2791,22 +2340,28 @@ class ZapretLauncher:
         if color is None:
             color = self.colors['accent_green'] if self.is_connected else self.colors['text_secondary']
         
-        self.main_status.config(text=text, fg=color)
-        self.left_status.config(fg=color)
+        if hasattr(self, 'main_status') and self.main_status:
+            self.main_status.config(text=text, fg=color)
+        
+        if hasattr(self, 'left_status') and self.left_status:
+            self.left_status.config(fg=color)
 
     def update_ui_state(self):
-        if self.is_connected:
-            self.connect_btn.set_text("ОТКЛЮЧИТЬСЯ")
-            self.connect_btn.normal_color = self.colors['bg_light']
-            self.connect_btn.hover_color = '#6c5579'
-            self.connect_btn.itemconfig(self.connect_btn.rect, fill=self.colors['bg_light'])
-        else:
-            self.connect_btn.set_text("ПОДКЛЮЧИТЬСЯ")
-            self.connect_btn.normal_color = '#6c5579'
-            self.connect_btn.hover_color = '#3D3D45'
-            self.connect_btn.itemconfig(self.connect_btn.rect, fill='#6c5579')
+        if hasattr(self, 'connect_btn') and self.connect_btn:
+            if self.is_connected:
+                self.connect_btn.set_text("ОТКЛЮЧИТЬСЯ")
+                self.connect_btn.normal_color = self.colors['bg_light']
+                self.connect_btn.hover_color = '#6c5579'
+                if hasattr(self.connect_btn, 'rect'):
+                    self.connect_btn.itemconfig(self.connect_btn.rect, fill=self.colors['bg_light'])
+            else:
+                self.connect_btn.set_text("ПОДКЛЮЧИТЬСЯ")
+                self.connect_btn.normal_color = '#6c5579'
+                self.connect_btn.hover_color = '#3D3D45'
+                if hasattr(self.connect_btn, 'rect'):
+                    self.connect_btn.itemconfig(self.connect_btn.rect, fill='#6c5579')
         
-        if hasattr(self, 'tray_icon'):
+        if hasattr(self, 'tray_icon') and self.tray_icon:
             self.tray_icon.update_menu()
 
     def toggle_connection(self):
@@ -2837,7 +2392,6 @@ class ZapretLauncher:
                 self.is_connected = True
                 
                 if self.tgws_var.get():
-                    self.tg_proxy.set_mode(self._current_tg_mode if hasattr(self, '_current_tg_mode') else "stable")
                     self.tg_proxy.start()
                     time.sleep(0.5)
                 
@@ -2855,30 +2409,30 @@ class ZapretLauncher:
         self.save_settings()
         self.start_stats_monitoring()
         self.root.after(100, self.update_stats_display)
-        self.connect_btn.set_enabled(True)
+        if hasattr(self, 'connect_btn') and self.connect_btn:
+            self.connect_btn.set_enabled(True)
 
     def _on_connect_failed(self, msg):
         self.update_status("Ошибка запуска", self.colors['accent_red'])
         messagebox.showerror("Ошибка", msg)
-        self.connect_btn.set_enabled(True)
+        if hasattr(self, 'connect_btn') and self.connect_btn:
+            self.connect_btn.set_enabled(True)
 
     def disconnect(self):
         if not self.is_connected and not self.zapret.is_winws_running():
             return
             
         self.update_status("Отключение...", self.colors['accent'])
-        self.connect_btn.set_enabled(False)
+        if hasattr(self, 'connect_btn') and self.connect_btn:
+            self.connect_btn.set_enabled(False)
         self.root.update()
         self.stop_rtt_monitoring()
         
         def stop_all():
             try:
-                try:
-                    if hasattr(self, 'tg_proxy') and self.tg_proxy:
-                        self.tg_proxy.cleanup()
-                        time.sleep(1.5)
-                except Exception:
-                    pass
+                if hasattr(self, 'tg_proxy') and self.tg_proxy:
+                    self.tg_proxy.cleanup()
+                    time.sleep(1.5)
                 
                 try:
                     subprocess.run('taskkill /F /IM python.exe /FI "WINDOWTITLE eq TGProxy*"', 
@@ -2923,6 +2477,7 @@ class ZapretLauncher:
                 self.root.after(0, self.finish_disconnect)
                 
             except Exception as e:
+                print(f"Error in disconnect stop_all: {e}")
                 self.is_connected = False
                 self.root.after(0, self.finish_disconnect)
         
@@ -2932,12 +2487,14 @@ class ZapretLauncher:
         try:
             self._cached_processes = []
             
-            if hasattr(self, 'mode_label'):
+            if hasattr(self, 'mode_label') and self.mode_label and self.mode_label.winfo_exists():
                 self.mode_label.config(text="Не выбран", fg=self.colors['text_secondary'])
             
             self.update_status("Готов к работе", self.colors['text_secondary'])
             self.update_ui_state()
-            self.connect_btn.set_enabled(True)
+            
+            if hasattr(self, 'connect_btn') and self.connect_btn:
+                self.connect_btn.set_enabled(True)
             
             if hasattr(self, '_traffic_update_timer') and self._traffic_update_timer:
                 try:
@@ -2962,8 +2519,8 @@ class ZapretLauncher:
             self.traffic_speed_direct_history = {}
             self.hostname_cache = {}
             self.hostname_cache_time = {}
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Error in finish_disconnect: {e}")
 
     def run_service_command(self, command):
         if not check_zapret_folder():
@@ -3698,6 +3255,9 @@ class ZapretLauncher:
                 proc['total']
             ))
 
+    def is_any_connection_active(self):
+        return self.is_connected or self.zapret.is_winws_running() or (hasattr(self, 'tg_proxy') and self.tg_proxy.is_running)
+
     def setup_scrollbar_style(self):
         style = ttk.Style()
         style.theme_use('default')
@@ -3755,12 +3315,12 @@ class ZapretLauncher:
     def show_tg_proxy_instruction(self):
         dialog = tk.Toplevel(self.root)
         dialog.title("Telegram Proxy (ZL)")
-        dialog.geometry("500x580")
+        dialog.geometry("500x520")
         dialog.resizable(False, False)
         dialog.configure(bg=self.colors['bg_medium'])
         
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 250
-        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 260
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 310
         dialog.geometry(f"+{x}+{y}")
         
         title_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
@@ -3771,7 +3331,7 @@ class ZapretLauncher:
                             fg=self.colors['accent'], bg=self.colors['bg_medium'])
         title_label.pack()
         
-        subtitle_label = tk.Label(title_frame, text="Для использования TG Proxy выполните следующие шаги:",
+        subtitle_label = tk.Label(title_frame, text="Для использования прокси выполните следующие шаги:",
                                 font=("Segoe UI Variable", 11),
                                 fg=self.colors['text_secondary'], bg=self.colors['bg_medium'])
         subtitle_label.pack(pady=(5, 0))
@@ -3782,14 +3342,13 @@ class ZapretLauncher:
         
         steps = [
             ("1.", "Откройте Telegram и перейдите в"),
-            ("", "Настройки —> Продвинутые настройки"),
-            ("2.", "В разделе «Тип соединения» выберите"),
-            ("", "«Использовать собственный прокси»"),
+            ("", "Настройки - Продвинутые настройки"),
+            ("2.", "В разделе «Тип соединения» выберите:"),
+            ("", "Использовать собственный прокси"),
             ("3.", "Заполните поля прокси:"),
             ("", "Тип: SOCKS5"),
             ("", "Хост: 127.0.0.1"),
             ("", "Порт: 1080"),
-            ("4.", "Нажмите «Сохранить» и пользуйтесь.")
         ]
         
         current_step = 0
@@ -3824,6 +3383,44 @@ class ZapretLauncher:
                                 fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
                 sub_text.pack(side=tk.LEFT)
         
+        link_frame = tk.Frame(instruction_frame, bg=self.colors['bg_light'])
+        link_frame.pack(fill=tk.X, pady=(10, 5))
+        
+        spacer = tk.Label(link_frame, text="   ", font=("Segoe UI Variable", 11),
+                        fg=self.colors['text_primary'], bg=self.colors['bg_light'])
+        spacer.pack(side=tk.LEFT)
+        
+        bullet = tk.Label(link_frame, text="▸", font=("Segoe UI Variable", 10),
+                        fg=self.colors['accent'], bg=self.colors['bg_light'])
+        bullet.pack(side=tk.LEFT, padx=(10, 5))
+        
+        copy_frame = tk.Frame(link_frame, bg=self.colors['bg_light'], cursor="hand2")
+        copy_frame.pack(side=tk.LEFT, padx=(0, 10))
+        
+        link_text = "Скопировать ссылку подключения"
+        copy_label = tk.Label(copy_frame, text=link_text, font=("Segoe UI Variable", 10),
+                            fg=self.colors['accent'], bg=self.colors['bg_light'])
+        copy_label.pack()
+        
+        def copy_link(event=None):
+            self.root.clipboard_clear()
+            self.root.clipboard_append("tg://socks?server=127.0.0.1&port=1080")
+            self.root.update()
+            copy_label.config(text="Скопировано", fg=self.colors['accent_green'])
+            self.show_notification("Ссылка скопирована в буфер обмена", 1500)
+        
+        copy_label.bind("<Button-1>", copy_link)
+        
+        def on_enter(event):
+            copy_label.config(fg=self.colors['accent_hover'], font=("Segoe UI Variable", 10, "underline"))
+            copy_frame.config(cursor="hand2")
+        
+        def on_leave(event):
+            copy_label.config(fg=self.colors['accent'], font=("Segoe UI Variable", 10))
+        
+        copy_label.bind("<Enter>", on_enter)
+        copy_label.bind("<Leave>", on_leave)
+        
         bottom_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
         bottom_frame.pack(fill=tk.X, padx=30, pady=15)
         dont_show_var = tk.BooleanVar(value=False)
@@ -3852,9 +3449,9 @@ class ZapretLauncher:
             text="Запустить",
             command=lambda: self._start_tg_proxy_mode(dialog, dont_show_var.get()),
             width=100, height=35,
-            bg=self.colors['accent'],
-            fg=self.colors['text_primary'],
-            font=("Segoe UI Variable", 10, "bold"),
+            bg=self.colors['button_bg'],
+            fg=self.colors['text_secondary'],
+            font=("Segoe UI Variable", 10),
             corner_radius=8
         )
         start_btn.pack(side=tk.LEFT, padx=5)
@@ -3886,7 +3483,7 @@ class ZapretLauncher:
             self._tg_instruction = True
             self.save_settings()
         
-        self.show_tg_proxy_mode_selector()
+        self._do_start_tg_proxy()
 
     def _cancel_tg_proxy_mode(self, dialog, dont_show=False):
         if dialog:
@@ -3897,7 +3494,8 @@ class ZapretLauncher:
             self.save_settings()
         
         self.update_status("Готов к работе", self.colors['text_secondary'])
-        self.connect_btn.set_enabled(True)
+        if hasattr(self, 'connect_btn') and self.connect_btn:
+            self.connect_btn.set_enabled(True)
 
     def _create_tooltip(self, widget):
         def show_tooltip():
