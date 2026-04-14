@@ -70,7 +70,6 @@ try:
                 if file.startswith("general") and file.endswith(".bat"):
                     full_path = os.path.join(source_dir, file)
                     new_zip.write(full_path, file)
-    
     os.unlink(temp_zip)
     
     if os.path.exists(ZIP_FILENAME):
