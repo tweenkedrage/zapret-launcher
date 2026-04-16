@@ -18,7 +18,7 @@
 
 ***zapret_resources.zip:***
 - Это архив со всеми файлами оригинального **Zapret`a**, которые необходимы для работы лаунчера;
-- При первом запуске лаунчер распаковывает **zapret_resources.zip** в `AppData/Local/ZapretLauncher/`.
+- При первом запуске лаунчер распаковывает `zapret_resources.zip` в `AppData/Local/ZapretLauncher/`.
 
 ***НЕ УДАЛЯЙТЕ zapret_resources.zip если:***
 1. Папка **zapret_core** отсутствует или повреждена;
