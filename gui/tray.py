@@ -188,7 +188,6 @@ class ModernSystemTray:
                 )
                 self.icon.icon = image
             self.icon.title = self.get_tooltip_text()
-            
         except Exception as e:
             print(f"Error updating tray icon: {e}")
 
