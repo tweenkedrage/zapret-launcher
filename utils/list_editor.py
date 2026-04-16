@@ -35,7 +35,6 @@ class ListEditor:
         self.text_area.bind('<Control-X>', self.cut_text)
         self.text_area.bind('<Control-a>', self.select_all)
         self.text_area.bind('<Control-A>', self.select_all)
-        
         self.load_content()
         
         button_frame = tk.Frame(main_frame)
