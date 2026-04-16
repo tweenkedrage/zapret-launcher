@@ -1,9 +1,13 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
-from pages import Pages, check_zapret_folder
+from gui.pages import Pages, check_zapret_folder
+from gui.tray import ModernSystemTray
+from utils.languages import tr, get_languages
 from typing import List, Optional
-from theme import get_theme
-from network_set import (
+from gui.theme import get_theme
+from tg_proxy import run_proxy
+from utils.updater import check_launcher_updates, check_zapret_updates
+from utils.network_set import (
     optimize_network_latency,
     find_best_dns,
     set_dns_windows,
@@ -12,39 +16,46 @@ from network_set import (
     list_network_adapters,
     set_dns_manual
 )
-from widgets import RoundedButton
-import tg_proxy
+from gui.widgets import RoundedButton
+try:
+    from tg_proxy import run_proxy_server
+    TG_PROXY_AVAILABLE = True
+except ImportError:
+    TG_PROXY_AVAILABLE = False
 import subprocess
 import os
 import json
 import time
 import threading
+import asyncio
 import psutil
+import traceback
 import socket
 import winreg
-import asyncio
 import zipfile
-import shutil
-import tempfile
 from pathlib import Path
 import sys
 import re
 import urllib.request
 import ctypes
 from ctypes import windll, byref, c_int
-import pystray
-from PIL import Image, ImageDraw
 from typing import Optional, List, Tuple
 import webbrowser
 
-APPDATA_DIR = Path(os.getenv('LOCALAPPDATA')) / 'ZapretLauncher'
+
+
+BASE_DIR = Path(__file__).parent
+
+APPDATA_DIR = Path(os.getenv('LOCALAPPDATA')) / 'Zapret Launcher'
 CONFIG_FILE = APPDATA_DIR / 'config.json'
+ICON_PATH = BASE_DIR / "resources" / "icon.ico"
+ICON_PNG_PATH = BASE_DIR / "resources" / "icon.png"
 ZAPRET_RESOURCES_ZIP = "zapret_resources.zip"
 ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
 ZAPRET_API_URL = "https://api.github.com/repos/flowseal/zapret-discord-youtube/releases/latest"
-CURRENT_VERSION = "3.0c"
+CURRENT_VERSION = "3.1"
 
 def is_admin():
     try:
@@ -57,176 +68,6 @@ def run_as_admin():
         None, "runas", sys.executable, " ".join(sys.argv), None, 1
     )
     sys.exit()
-
-def check_launcher_updates(parent, silent=False):
-    try:
-        with urllib.request.urlopen(LAUNCHER_API_URL, timeout=5) as response:
-            data = json.loads(response.read().decode())
-            latest_version = data.get('tag_name', '').replace('v', '')
-            download_url = None
-            
-            for asset in data.get('assets', []):
-                if asset['name'].endswith('.exe'):
-                    download_url = asset['browser_download_url']
-                    break
-            
-            if latest_version and latest_version > CURRENT_VERSION:
-                if silent:
-                    result = messagebox.askyesno(
-                        "Обновление Zapret Launcher",
-                        f"Доступна новая версия лаунчера {latest_version}\n"
-                        f"Текущая версия: {CURRENT_VERSION}\n\n"
-                        f"Перейти на страницу загрузки?"
-                    )
-                    if result:
-                        webbrowser.open("https://github.com/tweenkedrage/zapret-launcher/releases/latest")
-                    return True
-                else:
-                    result = messagebox.askyesno(
-                        "Обновление Zapret Launcher",
-                        f"Доступна новая версия {latest_version}\n"
-                        f"Текущая версия: {CURRENT_VERSION}\n\n"
-                        f"Перейти на страницу загрузки?"
-                    )
-                    if result and download_url:
-                        webbrowser.open("https://github.com/tweenkedrage/zapret-launcher/releases/latest")
-                    return True
-            else:
-                if not silent:
-                    messagebox.showinfo("Обновления", "У вас установлена последняя версия лаунчера")
-                return False
-    except Exception as e:
-        if not silent:
-            messagebox.showerror("Ошибка", f"Не удалось проверить обновления: {str(e)}")
-        return False
-
-def check_zapret_updates(parent, silent=False):
-    try:
-        with urllib.request.urlopen(ZAPRET_API_URL, timeout=5) as response:
-            data = json.loads(response.read().decode())
-            latest_version = data.get('tag_name', '').replace('v', '')
-            
-            zapret_version_file = ZAPRET_CORE_DIR / "version.txt"
-            current_zapret_version = "0.0"
-            if zapret_version_file.exists():
-                with open(zapret_version_file, 'r') as f:
-                    current_zapret_version = f.read().strip()
-            
-            if latest_version and latest_version > current_zapret_version:
-                result = messagebox.askyesno(
-                    "Обновление Zapret",
-                    f"Доступна новая версия Zapret {latest_version}\n"
-                    f"Текущая версия: {current_zapret_version}\n\n"
-                    "Хотите обновить? (Ваши пользовательские списки будут сохранены)"
-                )
-                if result:
-                    update_zapret_core(parent, latest_version)
-                return True
-            else:
-                if not silent:
-                    messagebox.showinfo("Обновления", "У вас установлена последняя версия Zapret")
-                return False
-    except Exception as e:
-        if not silent:
-            messagebox.showerror("Ошибка", f"Не удалось проверить обновления Zapret: {str(e)}")
-        return False
-
-def update_zapret_core(parent, version):
-    try:
-        parent.update_status("Обновление Zapret...", parent.colors['accent'])
-        parent.root.update()
-        
-        if parent.zapret.is_winws_running():
-            parent.zapret.stop_current_strategy()
-            time.sleep(1)
-
-        user_lists = {}
-        lists_dir = ZAPRET_CORE_DIR / "lists"
-        if lists_dir.exists():
-            for file in lists_dir.glob("*-user.txt"):
-                try:
-                    with open(file, 'r', encoding='utf-8') as f:
-                        user_lists[file.name] = f.read()
-                except:
-                    pass
-        
-        download_url = f"https://github.com/flowseal/zapret-discord-youtube/archive/refs/heads/master.zip"
-        
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_file:
-            urllib.request.urlretrieve(download_url, tmp_file.name)
-            temp_zip = tmp_file.name
-            time.sleep(2)
-
-            try:
-                subprocess.run('taskkill /F /IM winws.exe', shell=True, capture_output=True)
-                subprocess.run('taskkill /F /IM ws2s.exe', shell=True, capture_output=True)
-                subprocess.run('taskkill /F /IM nfqws.exe', shell=True, capture_output=True)
-                subprocess.run('sc stop windivert', shell=True, capture_output=True)
-                time.sleep(1)
-            except:
-                pass
-
-            max_attempts = 3
-            for attempt in range(max_attempts):
-                try:
-                    if ZAPRET_CORE_DIR.exists():
-                        shutil.rmtree(ZAPRET_CORE_DIR)
-                    break
-                except Exception as delete_error:
-                    if attempt < max_attempts - 1:
-                        try:
-                            os.system(f'rmdir /s /q "{ZAPRET_CORE_DIR}"')
-                            time.sleep(1)
-                        except:
-                            pass
-                        continue
-                    else:
-                        raise Exception(f"Не удалось удалить папку после {max_attempts} попыток. Попробуйте перезагрузить компьютер.")
-        
-        ZAPRET_CORE_DIR.mkdir(parents=True, exist_ok=True)
-        
-        with tempfile.TemporaryDirectory() as temp_dir:
-            with zipfile.ZipFile(temp_zip, 'r') as zipf:
-                zipf.extractall(temp_dir)
-            
-            extracted_dirs = os.listdir(temp_dir)
-            if extracted_dirs:
-                source_dir = os.path.join(temp_dir, extracted_dirs[0])
-                
-                for item in os.listdir(source_dir):
-                    s = os.path.join(source_dir, item)
-                    d = os.path.join(ZAPRET_CORE_DIR, item)
-                    if os.path.isdir(s):
-                        shutil.copytree(s, d)
-                    else:
-                        shutil.copy2(s, d)
-        
-        os.unlink(temp_zip)
-        
-        with open(ZAPRET_CORE_DIR / "version.txt", 'w') as f:
-            f.write(version)
-        
-        lists_dir = ZAPRET_CORE_DIR / "lists"
-        lists_dir.mkdir(exist_ok=True)
-        for filename, content in user_lists.items():
-            try:
-                file_path = lists_dir / filename
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write(content)
-            except:
-                pass
-        
-        parent.zapret.load_strategies()
-        if hasattr(parent, 'strategy_combo'):
-            parent.strategy_combo['values'] = parent.zapret.available_strategies
-            if parent.zapret.available_strategies:
-                parent.strategy_var.set(parent.zapret.available_strategies[0])
-        
-        parent.update_status("Готов к работе")
-        messagebox.showinfo("Успех", f"Zapret успешно обновлен до версии {version}") 
-    except Exception as e:
-        messagebox.showerror("Ошибка", f"Не удалось обновить Zapret: {str(e)}")
-        parent.update_status("Готов к работе")
 
 class StatsMonitor:
     def __init__(self):
@@ -362,19 +203,19 @@ class StatsMonitor:
 class TGProxyServer:
     def __init__(self):
         self._thread = None
-        self._stop_event = None
         self._running = False
         self._port = 1080
         self._host = '127.0.0.1'
-        self._loop = None
-        self._error_count = 0
-        self._last_error_time = 0
-        
-    def is_running_and_healthy(self):
-        if not self._running:
-            return False
-        return self._is_port_open(1080)
+        self._secret = None
+        self._stop_event = None
 
+    def set_secret(self, secret):
+        self._secret = secret
+        if self._running:
+            self.stop()
+            time.sleep(1)
+            self.start()
+    
     def _is_port_open(self, port):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(0.5)
@@ -384,97 +225,83 @@ class TGProxyServer:
         finally:
             sock.close()
     
+    def wait_for_start(self, timeout=5):
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            if self._is_port_open(1080):
+                return True
+            time.sleep(0.2)
+        return False
+    
     def start(self):
         if self._running:
             self.stop()
             time.sleep(1)
         
-        now = time.time()
-        if now - self._last_error_time < 10:
-            self._error_count += 1
-            if self._error_count > 3:
-                time.sleep(5)
-        else:
-            self._error_count = 0
+        self._stop_event = asyncio.Event()
         
-        self._last_error_time = now
+        def run_tg_proxy():
+            try:
+                run_proxy(self._host, self._port, self._secret, self._stop_event)
+            except Exception as e:
+                print(f"TGProxy error: {e}")
+
+        self._thread = threading.Thread(target=run_tg_proxy, daemon=True)
+        self._thread.start()
         
-        try:
-            self._stop_event = asyncio.Event()
-            
-            dc_opt = {
-                1: '149.154.175.50',
-                2: '149.154.167.220',
-                3: '149.154.175.100',
-                4: '149.154.167.91',
-                5: '91.108.56.100',
-            }
-            
-            def run_proxy_thread():
-                try:
-                    asyncio.run(tg_proxy._run(self._port, dc_opt, self._stop_event, self._host))
-                except Exception as e:
-                    print(f"Telegram Proxy thread error: {e}")
-            
-            self._thread = threading.Thread(target=run_proxy_thread, daemon=True)
-            self._thread.start()
-            
-            if self.wait_for_start(10):
-                self._running = True
-                return True
-            else:
-                return False
-            
-        except Exception as e:
-            print(f"Error start Telegram Proxy: {e}")
-            return False
-    
-    def wait_for_start(self, timeout=5):
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            if self._is_port_open(1080):
-                self._running = True
-                return True
-            time.sleep(0.2)
+        if self.wait_for_start(10):
+            self._running = True
+            return True
         return False
     
     def stop(self):
-        if self._stop_event:
-            self._stop_event.set()
-            time.sleep(0.5)
-        
         self._running = False
+        
+        if self._stop_event:
+            try:
+                self._stop_event.set()
+            except:
+                pass
+            self._stop_event = None
+        
+        time.sleep(0.5)
+        
+        current_pid = os.getpid()
         
         try:
             result = subprocess.run(
-                f'netstat -ano | findstr :{self._port}',
-                shell=True, capture_output=True, text=True, timeout=2
+                'netstat -ano | findstr :1080',
+                shell=True,
+                capture_output=True,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+                timeout=3
             )
-            for line in result.stdout.split('\n'):
-                if 'LISTENING' in line:
-                    parts = line.split()
-                    if len(parts) >= 5:
-                        pid = parts[-1]
-                        if pid.isdigit():
-                            subprocess.run(f'taskkill /F /PID {pid}', shell=True, capture_output=True)
-        except:
+            
+            pids = set()
+            for line in result.stdout.splitlines():
+                parts = line.split()
+                if len(parts) >= 5:
+                    pid = parts[-1]
+                    if pid.isdigit():
+                        pid_int = int(pid)
+                        if pid_int != current_pid and pid_int != 0:
+                            pids.add(pid_int)
+            
+            for pid in pids:
+                subprocess.run(
+                    f'taskkill /F /PID {pid}',
+                    shell=True,
+                    capture_output=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                    timeout=2
+                )
+                
+        except Exception as e:
             pass
-        
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=3.0)
         
         self._thread = None
-        self._stop_event = None
-    
-    def cleanup(self):
-        self.stop()
-        time.sleep(1)
-        try:
-            subprocess.run('taskkill /F /IM python.exe /FI "WINDOWTITLE eq TGProxy*"', 
-                        shell=True, capture_output=True)
-        except:
-            pass
-    
+
     @property
     def is_running(self):
         return self._running and self._is_port_open(1080)
@@ -511,9 +338,10 @@ class ZapretCore:
                 
         if not archive_path:
             messagebox.showerror(
-                "Ошибка", 
-                f"Не найден файл ресурсов {ZAPRET_RESOURCES_ZIP}\n"
-                "Запустите build_resources.py для его создания"
+                tr('error_zapret_folder'), 
+                f"{tr('error_zapret_folder')}\n"
+                f"Resource file not found {ZAPRET_RESOURCES_ZIP}\n"
+                "Start build_resources.py"
             )
             sys.exit(1)
             
@@ -526,7 +354,7 @@ class ZapretCore:
                 with open(version_file, 'w') as f:
                     f.write("1.9.7b")  
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Не удалось распаковать ресурсы: {e}")
+            messagebox.showerror(tr('error_zapret_folder'), f"Failed to unpack resources: {e}")
             sys.exit(1)
             
     def load_strategies(self):
@@ -543,14 +371,14 @@ class ZapretCore:
         
     def run_strategy(self, strategy_name: str) -> Tuple[bool, str]:
         if not is_admin():
-            return False, "Запустите программу от имени администратора!"
+            return False, tr('error_admin_required')
             
         if not check_zapret_folder():
-            return False, "Папка с Zapret не найдена!"
+            return False, tr('error_zapret_folder')
 
         strategy_path = self.zapret_dir / strategy_name
         if not strategy_path.exists():
-            return False, f"Стратегия {strategy_name} не найдена"
+            return False, f"{tr('error_strategy_not_found')} {strategy_name}"
             
         try:
             self.stop_current_strategy()
@@ -563,14 +391,14 @@ class ZapretCore:
                 stderr=subprocess.DEVNULL
             )
             
-            time.sleep(2.5)
-            for _ in range(5):
+            time.sleep(3.0)
+            for _ in range(10):
                 if self.is_winws_running():
-                    return True, f"Запущена стратегия: {self.get_strategy_display_name(strategy_name)}"
+                    return True, f"{tr('status_strategy_started')}: {self.get_strategy_display_name(strategy_name)}"
                 time.sleep(0.5)
-            return False, "Стратегия запущена, но winws.exe не обнаружен"
+            return False, tr('error_winws_not_found')
         except Exception as e:
-            return False, f"Ошибка запуска: {str(e)}"
+            return False, f"{tr('error_startup')}: {str(e)}"
             
     def stop_current_strategy(self):
         if self.current_process:
@@ -603,127 +431,14 @@ class ZapretCore:
     def run_service_command(self, command: str) -> Tuple[bool, str]:
         if command == "game_filter":
             self.game_filter_enabled = not self.game_filter_enabled
-            return True, f"Game Filter: {'включен' if self.game_filter_enabled else 'выключен'}"
+            return True, f"Game Filter: {tr('status_enabled') if self.game_filter_enabled else tr('status_disabled')}"
             
         elif command == "ipset_filter":
             modes = ["none", "loaded", "any"]
             current_idx = modes.index(self.ipset_filter_mode)
             self.ipset_filter_mode = modes[(current_idx + 1) % 3]
             return True, f"IPSet Filter: {self.ipset_filter_mode}"
-        return False, f"Неизвестная команда: {command}"
-
-class SystemTrayIcon:
-    def __init__(self, app):
-        self.app = app
-        self.icon = None
-        self.create_icon()
-
-    def create_icon(self):
-        try:
-            image = None
-            icon_paths = [
-                Path(__file__).parent / "icon.ico",
-                Path(sys.executable).parent / "icon.ico" if getattr(sys, 'frozen', False) else None,
-                Path("icon.ico"),
-                Path(__file__).parent / "icon.png",
-                Path("icon.png")
-            ]
-            
-            for path in icon_paths:
-                if path and path.exists():
-                    try:
-                        image = Image.open(str(path))
-                        break
-                    except:
-                        continue
-            
-            if image is None:
-                raise Exception("Иконка не найдена")
-            
-            if image.mode != 'RGBA':
-                image = image.convert('RGBA')
-            
-            image = image.resize((256, 256), Image.Resampling.LANCZOS)
-            
-        except Exception:
-            image = Image.new('RGBA', (64, 64), color='#d0a2e9')
-            draw = ImageDraw.Draw(image)
-            draw.text((20, 20), "Z", fill='white', font=None)
-
-        self.update_menu(image)
-        
-    def update_menu(self, image=None):
-        if self.app.is_connected:
-            connection_text = "Отключиться"
-        else:
-            connection_text = "Подключиться"
-        
-        menu = pystray.Menu(
-            pystray.MenuItem("Открыть лаунчер", self.show_window, default=True),
-            pystray.MenuItem(connection_text, self.toggle_connection),
-            pystray.MenuItem("Выход", self.quit_from_tray)
-        )
-        
-        if self.icon:
-            self.icon.menu = menu
-            if image:
-                self.icon.icon = image
-        else:
-            if image is None:
-                image = Image.new('RGBA', (64, 64), color='#d0a2e9')
-                draw = ImageDraw.Draw(image)
-                draw.text((20, 20), "Z", fill='white', font=None)
-            
-            self.icon = pystray.Icon("zapret_launcher", image, "Zapret Launcher", menu)
-
-    def quit_from_tray(self):
-        if self.app.is_connected or self.app.zapret.is_winws_running():
-            result = messagebox.askyesno(
-                "Выход", 
-                "Активное подключение будет разорвано.\n\nВы действительно хотите закрыть программу?"
-            )
-            if result:
-                if self.icon:
-                    self.icon.stop()
-                self.app.quit_from_tray()
-        else:
-            if self.icon:
-                self.icon.stop()
-            self.app.quit_from_tray()
-        
-    def show_window(self):
-        try:
-            if not self.app.root.winfo_exists():
-                return
-            
-            self.app.root.deiconify()
-            self.app.root.lift()
-            self.app.root.focus_force()
-            
-            self.app.root.state('normal')
-            
-            try:
-                hwnd = ctypes.windll.user32.GetParent(self.app.root.winfo_id())
-                ctypes.windll.user32.ShowWindow(hwnd, 5)
-                ctypes.windll.user32.SetForegroundWindow(hwnd)
-            except Exception:
-                pass
-        except Exception as e:
-            print(f"Error showing window: {e}")
-
-    def toggle_connection(self):
-        if self.app.is_connected:
-            self.app.disconnect()
-        else:
-            self.app.show_mode_selector()
-        self.update_menu()
-
-    def quit_app(self):
-        self.icon.stop()
-        self.app.on_closing()
-
-    def run(self):
-        self.icon.run()
+        return False, f"{tr('error_unknown_command')}: {command}"
 
 class ZapretLauncher:
     def __init__(self, root):
@@ -810,11 +525,10 @@ class ZapretLauncher:
 
         try:
             icon_paths = [
-                Path(__file__).parent / "icon.ico",
-                Path(sys.executable).parent / "icon.ico" if getattr(sys, 'frozen', False) else None,
+                BASE_DIR / "resources" / "icon.ico",
+                BASE_DIR / "resources" / "icon.png",
+                Path("resources/icon.ico"),
                 Path("icon.ico"),
-                Path(__file__).parent / "icon.png",
-                Path("icon.png")
             ]
             
             icon_loaded = False
@@ -850,34 +564,37 @@ class ZapretLauncher:
         self.font_title = ("Segoe UI Variable", 28, "bold")
         self.font_bold = ("Segoe UI Variable", 12, "bold")
         
-        self.colors = get_theme('dark')
+        self.colors = get_theme('Dark')
         self.setup_scrollbar_style()
         self.root.configure(bg=self.colors['bg_dark'])
         
         if not is_admin():
             result = messagebox.askyesno(
-                "Права администратора",
-                "Программа требует прав администратора для работы\n\n"
-                "Запустить от имени администратора?"
+                tr('dialog_admin_required'),
+                tr('dialog_admin_message')
             )
             if result:
                 run_as_admin()
             else:
                 messagebox.showerror(
-                    "Ошибка", 
-                    "Программа не может работать без прав администратора."
+                    tr('error_no_connection'), 
+                    tr('dialog_no_connection')
                 )
                 sys.exit(1)
-        
-        self.zapret = ZapretCore(self)
-        self.tg_proxy = TGProxyServer()
         
         self.is_connected = False
         self.current_strategy = None
         self.current_page = "main"
         
         self.ensure_appdata_dir()
+        self.languages = get_languages()
+        self.current_theme = 'Dark'
         self.load_settings()
+        self.apply_theme()
+
+        self.zapret = ZapretCore(self)
+        self.tg_proxy = TGProxyServer()
+        self.tg_proxy.set_secret(getattr(self, '_tg_secret', None))
         
         self.setup_ui()
         self.root.after(100, self.check_initial_status)
@@ -885,8 +602,15 @@ class ZapretLauncher:
         self.root.after(2000, lambda: check_zapret_updates(self, silent=True))
         self.show_main_page()
                 
-        self.tray_icon = SystemTrayIcon(self)
+        self.tray_icon = ModernSystemTray(self)
         threading.Thread(target=self.tray_icon.run, daemon=True).start()
+
+    def update_tray_icon_state(self):
+        if hasattr(self, 'tray_icon') and self.tray_icon:
+            try:
+                self.tray_icon.update_icon_state()
+            except Exception as e:
+                print(f"Error updating tray icon: {e}")
 
     def apply_rounded_corners(self, radius=20):
         try:
@@ -931,6 +655,7 @@ class ZapretLauncher:
 
     def _force_exit(self):
         try:
+            self._stop_windivert_before_restart()
             self.zapret.stop_current_strategy()
             if hasattr(self, 'tg_proxy'):
                 self.tg_proxy.stop()
@@ -943,6 +668,78 @@ class ZapretLauncher:
             pass
         finally:
             sys.exit(0)
+
+    def update_ui_colors(self):
+        def update_widget(widget):
+            try:
+                if isinstance(widget, (tk.Frame, tk.Label, tk.Canvas)):
+                    current_bg = widget.cget('bg')
+                    if current_bg and current_bg not in [self.colors['accent'], self.colors['accent_green'], self.colors['accent_red']]:
+                        widget.configure(bg=self.colors['bg_dark'])
+                
+                if isinstance(widget, tk.Label):
+                    current_fg = widget.cget('fg')
+                    accent_colors = [self.colors['accent'], self.colors['accent_green'], 
+                                self.colors['accent_red'], self.colors['accent_hover']]
+                    if current_fg and current_fg not in accent_colors:
+                        widget.configure(fg=self.colors['text_secondary'])
+                
+                if hasattr(widget, 'update_colors'):
+                    widget.update_colors(self.colors['button_bg'], self.colors['text_secondary'], self.colors['button_hover'])
+                
+                for child in widget.winfo_children():
+                    update_widget(child)
+            except:
+                pass
+        update_widget(self.root)
+
+    def update_nav_buttons_colors(self):
+        if hasattr(self, 'left_panel'):
+            for child in self.left_panel.winfo_children():
+                if isinstance(child, tk.Frame):
+                    for btn in child.winfo_children():
+                        if hasattr(btn, 'update_colors'):
+                            btn.update_colors(
+                                self.colors['bg_light'], 
+                                self.colors['text_secondary'], 
+                                self.colors['bg_light_hover']
+                            )
+
+    def apply_theme(self):
+        self.colors = get_theme(self.current_theme)
+        self.root.configure(bg=self.colors['bg_dark'])
+        self.setup_scrollbar_style()
+        self.update_ui_colors()
+        
+        if hasattr(self, 'pages') and self.pages:
+            self.pages.colors = self.colors
+            
+            for page_name in ['main_page', 'service_page', 'lists_page', 'diagnostic_page', 
+                            'traffic_page', 'settings_page', 'shutsites_page']:
+                if hasattr(self.pages, page_name):
+                    page = getattr(self.pages, page_name)
+                    if page:
+                        page.configure(bg=self.colors['bg_dark'])
+                        
+            if hasattr(self, 'left_panel') and self.left_panel:
+                self.left_panel.configure(bg=self.colors['bg_medium'])
+                
+            self.update_nav_buttons_colors()
+
+        if hasattr(self, 'pages'):
+            self.pages.update_animation_color()
+
+    def _stop_windivert_before_restart(self):
+        try:
+            subprocess.run(
+                'sc stop windivert > nul 2>&1',
+                shell=True,
+                capture_output=True,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            time.sleep(0.5)
+        except:
+            pass
 
     def quit_from_tray(self):
         self._force_exit()
@@ -970,8 +767,9 @@ class ZapretLauncher:
         
         try:
             icon_paths = [
-                Path(__file__).parent / "icon.png",
-                Path(sys.executable).parent / "icon.png" if getattr(sys, 'frozen', False) else None,
+                BASE_DIR / "resources" / "icon.png",
+                BASE_DIR / "resources" / "icon.ico",
+                Path("resources/icon.png"),
                 Path("icon.png")
             ]
             
@@ -1011,12 +809,12 @@ class ZapretLauncher:
             self._create_tooltip(logo_btn)
 
         nav_buttons = [
-            ("Главная", self.show_main_page),
-            ("Сервис", self.show_service_page),
-            ("Редактор", self.show_lists_page),
-            ("Диагностика", self.show_diagnostic_page),
-            ("Сбои интернета", self.show_shutdown_sites_page),
-            ("Трафик", self.show_traffic_page),
+            (tr('main_title'), self.show_main_page),
+            (tr('service_title'), self.show_service_page),
+            (tr('lists_title'), self.show_lists_page),
+            (tr('diagnostic_title'), self.show_diagnostic_page),
+            (tr('shutdown_title'), self.show_shutdown_sites_page),
+            (tr('traffic_title'), self.show_traffic_page),
         ]
         
         for text, command in nav_buttons:
@@ -1031,8 +829,18 @@ class ZapretLauncher:
                 bg=self.colors['bg_light'],
                 fg=self.colors['text_secondary'],
                 font=("Segoe UI Variable", 11),
-                corner_radius=10
+                corner_radius=10,
+                hover_color=self.colors['accent']
             )
+
+            if self.current_theme == 'light':
+                btn.hover_color = self.colors['accent']
+                btn.normal_color = self.colors['bg_light']
+                btn.update_colors(self.colors['bg_light'], self.colors['text_secondary'], self.colors['accent'])
+            else:
+                btn.hover_color = self.colors['accent']
+                btn.normal_color = self.colors['bg_light']
+                btn.update_colors(self.colors['bg_light'], self.colors['text_secondary'], self.colors['accent'])
             btn.pack()
             
             btn.bind("<Enter>", lambda e: btn.config(cursor="hand2"))
@@ -1077,7 +885,7 @@ class ZapretLauncher:
 
     def show_mode_selector(self):
         dialog = tk.Toplevel(self.root)
-        dialog.title("Выбор режима запуска")
+        dialog.title(tr('mode_select'))
         dialog.geometry("500x550")
         dialog.resizable(False, False)
         dialog.configure(bg=self.colors['bg_medium'])
@@ -1088,14 +896,14 @@ class ZapretLauncher:
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 275
         dialog.geometry(f"+{x}+{y}")
         
-        tk.Label(dialog, text="Выберите режим запуска", font=("Segoe UI Variable", 16, "bold"),
+        tk.Label(dialog, text=tr('mode_select'), font=("Segoe UI Variable", 16, "bold"),
                 fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(pady=(20, 10))
         
         main_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
         main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
         
         canvas = tk.Canvas(main_frame, bg=self.colors['bg_medium'], highlightthickness=0)
-        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview, style="Custom.Vertical.TScrollbar")
+        #scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview, style="Custom.Vertical.TScrollbar")
         scrollable_frame = tk.Frame(canvas, bg=self.colors['bg_medium'])
         
         scrollable_frame.bind(
@@ -1104,28 +912,30 @@ class ZapretLauncher:
         )
         
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw", width=440)
-        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.configure(yscrollcommand=None)
         canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        #scrollbar.pack(side="right", fill="y")
         
-        def _on_mousewheel(event):
-            try:
-                if canvas and canvas.winfo_exists():
-                    canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-            except (tk.TclError, AttributeError):
-                pass
+        #def _on_mousewheel(event):
+        #    try:
+        #        if canvas and canvas.winfo_exists():
+        #           canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        #    except (tk.TclError, AttributeError):
+        #        pass
         
-        dialog.bind_all("<MouseWheel>", _on_mousewheel)
-        dialog._mousewheel_handler = _on_mousewheel
-        canvas.bind("<MouseWheel>", _on_mousewheel)
-        scrollable_frame.bind("<MouseWheel>", _on_mousewheel)
+        #dialog.bind_all("<MouseWheel>", _on_mousewheel)
+        #dialog._mousewheel_handler = _on_mousewheel
+        #canvas.bind("<MouseWheel>", _on_mousewheel)
+        #scrollable_frame.bind("<MouseWheel>", _on_mousewheel)
         
         modes = [
-            {"name": "Стандартный", "desc": "Обход блокировок через Zapret", 
+            {"name": tr('mode_standard'), "desc": tr('mode_standard_desc'), 
             "zapret": True, "tgproxy": False, "game": False},
-            {"name": "Telegram Proxy", "desc": "Ускорение работы Telegram", 
+            {"name": tr('mode_tgproxy'), "desc": tr('mode_tgproxy_desc'), 
             "zapret": False, "tgproxy": True, "game": False},
-            {"name": "Игровой", "desc": "Максимальная производительность для игр", 
+            {"name": tr('mode_zapret_tgproxy'), "desc": tr('mode_zapret_tgproxy_desc'), 
+            "zapret": True, "tgproxy": True, "game": False},
+            {"name": tr('mode_game'), "desc": tr('mode_game_desc'), 
             "zapret": True, "tgproxy": False, "game": True}
         ]
         
@@ -1239,11 +1049,10 @@ class ZapretLauncher:
         
         select_btn[0] = RoundedButton(
             bottom_frame,
-            text="Выбрать",
+            text=tr('mode_select_button'),
             command=on_select_click,
             width=100, height=35,
             bg=self.colors['button_bg'],
-            fg=self.colors['text_secondary'],
             font=("Segoe UI Variable", 10),
             corner_radius=8
         )
@@ -1255,11 +1064,10 @@ class ZapretLauncher:
         
         cancel_btn = RoundedButton(
             bottom_frame,
-            text="Отмена",
+            text=tr('mode_cancel'),
             command=dialog.destroy,
             width=100, height=35,
             bg=self.colors['button_bg'],
-            fg=self.colors['text_secondary'],
             font=("Segoe UI Variable", 10),
             corner_radius=8
         )
@@ -1272,13 +1080,22 @@ class ZapretLauncher:
         if self.is_connected:
             return
         
-        if mode["name"] == "Telegram Proxy":
+        if mode["name"] == tr('mode_zapret_tgproxy'):
+            if not self.zapret.available_strategies:
+                messagebox.showerror(tr('error_no_strategies'), tr('error_no_strategies'))
+                return
+            
+            self._pending_mode = mode
+            self.select_strategy_for_mode(mode["name"])
+            return
+        
+        if mode["name"] == tr('mode_tgproxy'):
             self._start_tg_proxy_direct()
             return
         
-        if mode["name"] == "Стандартный" or mode["name"] == "Игровой":
+        if mode["name"] == tr('mode_standard') or mode["name"] == tr('mode_game'):
             if not self.zapret.available_strategies:
-                messagebox.showerror("Ошибка", "Нет доступных стратегий Zapret")
+                messagebox.showerror(tr('error_no_strategies'), tr('error_no_strategies'))
                 return
             
             self._pending_mode = mode
@@ -1287,7 +1104,7 @@ class ZapretLauncher:
 
         self._reset_traffic_history()
 
-        self.update_status("Запуск...", self.colors['accent'])
+        self.update_status(tr('status_starting'), self.colors['accent'])
         if hasattr(self, 'connect_btn') and self.connect_btn:
             self.connect_btn.set_enabled(False)
         self.root.update()
@@ -1302,7 +1119,7 @@ class ZapretLauncher:
         mode_name = mode["name"]
         if hasattr(self, 'mode_label') and self.mode_label:
             self.mode_label.config(text=mode_name, fg=self.colors['accent_green'])
-        self.update_status(f"Подключено: {mode_name}", self.colors['accent_green'])
+        self.update_status(f"{tr('status_connected')}", self.colors['accent_green'])
         self.update_ui_state()
         self.save_settings()
         self.root.after(100, self.update_stats_display)
@@ -1313,29 +1130,75 @@ class ZapretLauncher:
         if self.is_connected:
             return
         
+        if not hasattr(self, '_tg_secret') or not self._tg_secret:
+            result = messagebox.askyesno(
+                "Секрет не найден",
+                "Для работы Telegram Proxy требуется секретный ключ.\n\n"
+                "Сгенерировать новый секрет и продолжить?"
+            )
+            if result:
+                self._tg_secret = os.urandom(16).hex()
+                self.save_settings()
+                self.show_notification(f"{tr('notification_copied')}", 2000)
+                if hasattr(self, 'pages') and hasattr(self.pages, 'settings_page'):
+                    self.pages.update_secret_display()
+            else:
+                self.update_status(tr('status_ready'), self.colors['text_secondary'])
+                return
+        
         if not self._tg_instruction:
             self.show_tg_proxy_instruction()
             return
         
         self._do_start_tg_proxy()
+
+    def regenerate_tg_secret(self):
+        self._tg_secret = os.urandom(16).hex()
+        self.save_settings()
+        
+        self.tg_proxy.set_secret(self._tg_secret)
+
+        if hasattr(self, 'pages') and hasattr(self.pages, 'settings_page'):
+            self.pages.update_secret_display()
+        
+        link = f"tg://proxy?server=127.0.0.1&port=1080&secret={self._tg_secret}"
+        self.root.clipboard_clear()
+        self.root.clipboard_append(link)
+        self.root.update()
+        
+        self.show_notification("Скопирован в буфер обмена", 3000)
+        messagebox.showinfo(
+            "Секрет обновлен",
+            f"Новый секрет: {self._tg_secret}\n\n"
+            f"Ссылка скопирована в буфер обмена.\n"
+            f"Вставьте её в Telegram для подключения.\n\n"
+            f"Прокси перезапущен с новым секретом."
+        )
         
     def _do_start_tg_proxy(self):
         self._reset_traffic_history()
-        self.update_status("Запуск Telegram Proxy...", self.colors['accent'])
+        self.update_status(tr('status_starting_tg'), self.colors['accent'])
         if hasattr(self, 'connect_btn') and self.connect_btn:
             self.connect_btn.set_enabled(False)
         self.root.update()
         
+        self.tg_proxy.set_secret(self._tg_secret)
+        
         def start_thread():
-            success = self.tg_proxy.start()
-            
-            if success:
-                if self.tg_proxy.wait_for_start(8):
-                    self.root.after(0, lambda: self._on_tg_proxy_started_direct())
+            try:
+                success = self.tg_proxy.start()
+                
+                if success:
+                    if self.tg_proxy.wait_for_start(8):
+                        self.root.after(0, lambda: self._on_tg_proxy_started_direct())
+                    else:
+                        self.root.after(0, lambda: self._on_tg_proxy_failed_direct(tr('error_tgproxy_timeout')))
                 else:
-                    self.root.after(0, lambda: self._on_tg_proxy_failed_direct("Таймаут запуска"))
-            else:
-                self.root.after(0, lambda: self._on_tg_proxy_failed_direct("Ошибка запуска"))
+                    self.root.after(0, lambda: self._on_tg_proxy_failed_direct(tr('error_tgproxy_start')))
+            except Exception as e:
+                print(f"Start thread error: {e}")
+                self.root.after(0, lambda: self._on_tg_proxy_failed_direct(str(e)))
+        
         threading.Thread(target=start_thread, daemon=True).start()
 
     def _on_tg_proxy_started_direct(self):
@@ -1344,23 +1207,26 @@ class ZapretLauncher:
             self.stats.start_session()
             self.start_stats_monitoring()
             
-            self.mode_label.config(text="Telegram Proxy", fg=self.colors['accent_green'])
-            self.update_status("Подключено: Telegram Proxy", self.colors['accent_green'])
+            self.mode_label.config(text=tr('mode_tgproxy'), fg=self.colors['accent_green'])
+            self.update_status(tr('status_connected_tg'), self.colors['accent_green'])
             self.update_ui_state()
             self.save_settings()
             self.root.after(100, self.update_stats_display)
+
+            self.root.after(500, self.show_tg_proxy_instruction)
         
         self.connect_btn.set_enabled(True)
+        self.update_tray_icon_state()
 
     def _on_tg_proxy_failed_direct(self, error_msg):
-        self.update_status("Ошибка запуска Telegram Proxy", self.colors['accent_red'])
-        messagebox.showerror("Ошибка", f"Не удалось запустить Telegram Proxy: {error_msg}")
+        self.update_status(tr('status_error'), self.colors['accent_red'])
+        messagebox.showerror(tr('error_tgproxy_start'), f"{tr('error_tgproxy_start')}: {error_msg}")
         if hasattr(self, 'connect_btn') and self.connect_btn:
             self.connect_btn.set_enabled(True)
 
     def select_strategy_for_mode(self, mode_name):
         dialog = tk.Toplevel(self.root)
-        dialog.title("Выбор стратегии Zapret")
+        dialog.title(tr('select_strategy'))
         dialog.geometry("550x550")
         dialog.resizable(False, False)
         dialog.configure(bg=self.colors['bg_medium'])
@@ -1369,8 +1235,20 @@ class ZapretLauncher:
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 275
         dialog.geometry(f"+{x}+{y}")
         
-        tk.Label(dialog, text="Выбор стратегии Zapret", font=("Segoe UI Variable", 18, "bold"),
+        if mode_name == tr('mode_zapret_tgproxy'):
+            title_text = f"{tr('select_strategy')}"
+            desc_text = ""
+        else:
+            title_text = tr('select_strategy')
+            desc_text = ""
+        
+        tk.Label(dialog, text=title_text, font=("Segoe UI Variable", 18, "bold"),
                 fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(pady=(25, 15))
+        
+        if desc_text:
+            tk.Label(dialog, text=desc_text, font=("Segoe UI Variable", 10),
+                    fg=self.colors['text_secondary'], bg=self.colors['bg_medium'],
+                    wraplength=450).pack(pady=(0, 15))
         
         main_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
         main_frame.pack(fill=tk.BOTH, expand=True, padx=25, pady=5)
@@ -1381,7 +1259,7 @@ class ZapretLauncher:
         list_inner = tk.Frame(list_card, bg=self.colors['bg_light'])
         list_inner.pack(fill=tk.BOTH, expand=True, padx=15, pady=12)
         
-        tk.Label(list_inner, text="Доступные стратегии:", font=("Segoe UI Variable", 12, "bold"),
+        tk.Label(list_inner, text=tr('available_strategies'), font=("Segoe UI Variable", 12, "bold"),
                 fg=self.colors['accent'], bg=self.colors['bg_light']).pack(anchor='w', pady=(0, 10))
         
         list_frame = tk.Frame(list_inner, bg=self.colors['bg_light'])
@@ -1409,7 +1287,7 @@ class ZapretLauncher:
             selection = strategy_listbox.curselection()
             if selection:
                 strategy = self.zapret.available_strategies[selection[0]]
-                desc_label.config(text=f"Выбрано: {strategy}")
+                desc_label.config(text=f"{tr('selected')}: {strategy}")
         
         strategy_listbox.bind("<<ListboxSelect>>", on_select)
         
@@ -1418,7 +1296,7 @@ class ZapretLauncher:
                 idx = self.zapret.available_strategies.index(self.current_strategy)
                 strategy_listbox.selection_set(idx)
                 strategy_listbox.see(idx)
-                desc_label.config(text=f"Выбрано: {self.current_strategy}")
+                desc_label.config(text=f"{tr('selected')}: {self.current_strategy}")
             except:
                 pass
         
@@ -1428,47 +1306,79 @@ class ZapretLauncher:
         def start_with_strategy():
             selection = strategy_listbox.curselection()
             if not selection:
-                messagebox.showerror("Ошибка", "Выберите стратегию")
+                messagebox.showerror(tr('error_select_strategy'), tr('error_select_strategy'))
                 return
             selected_strategy = self.zapret.available_strategies[selection[0]]
             self.strategy_var.set(selected_strategy)
             dialog.destroy()
             
             mode = self._pending_mode
-            self.update_status(f"Запуск {mode['name']}...", self.colors['accent'])
-            self.connect_btn.set_enabled(False)
+            self.update_status(f"{tr('status_starting')}", self.colors['accent'])
+            if hasattr(self, 'connect_btn') and self.connect_btn:
+                self.connect_btn.set_enabled(False)
             self.root.update()
             
-            success, msg = self.zapret.run_strategy(selected_strategy)
-            if not success:
-                self.update_status("Ошибка запуска", self.colors['accent_red'])
-                messagebox.showerror("Ошибка", msg)
-                self.connect_btn.set_enabled(True)
-                return
-            
-            self.current_strategy = selected_strategy
-            
-            if mode.get("tgproxy", False):
-                self.tg_proxy.start()
-            
-            self.is_connected = True
-            self.stats.start_session()
-            self.start_stats_monitoring()
-            
-            strategy_display = self.zapret.get_strategy_display_name(selected_strategy)
-            self.mode_label.config(text=mode["name"], fg=self.colors['accent_green'])
-            self.update_status(f"Подключено: {mode['name']} ({strategy_display})", self.colors['accent_green'])
-            self.update_ui_state()
-            self.save_settings()
-            self.root.after(100, self.update_stats_display)
-            self.connect_btn.set_enabled(True)
+            if mode["name"] == tr('mode_zapret_tgproxy'):
+                def start_combined():
+                    success, msg = self.zapret.run_strategy(selected_strategy)
+                    if not success:
+                        self.root.after(0, lambda: self._on_combined_start_failed(msg))
+                        return
+                    
+                    self.current_strategy = selected_strategy
+                    
+                    tg_success = self.tg_proxy.start()
+                    if not tg_success:
+                        self.zapret.stop_current_strategy()
+                        self.root.after(0, lambda: self._on_combined_start_failed(tr('error_tgproxy_start')))
+                        return
+                    
+                    if not self.tg_proxy.wait_for_start(8):
+                        self.zapret.stop_current_strategy()
+                        self.tg_proxy.stop()
+                        self.root.after(0, lambda: self._on_combined_start_failed(tr('error_tgproxy_timeout')))
+                        return
+                    
+                    self.is_connected = True
+                    self.stats.start_session()
+                    self.start_stats_monitoring()
+                    
+                    self.root.after(0, lambda: self._on_combined_start_success(mode["name"]))
+                
+                threading.Thread(target=start_combined, daemon=True).start()
+            else:
+                success, msg = self.zapret.run_strategy(selected_strategy)
+                if not success:
+                    self.update_status(tr('status_error'), self.colors['accent_red'])
+                    messagebox.showerror(tr('error_startup'), msg)
+                    if hasattr(self, 'connect_btn') and self.connect_btn:
+                        self.connect_btn.set_enabled(True)
+                    return
+                
+                self.current_strategy = selected_strategy
+                
+                if mode.get("tgproxy", False):
+                    self.tg_proxy.start()
+                
+                self.is_connected = True
+                self.stats.start_session()
+                self.start_stats_monitoring()
+                
+                if hasattr(self, 'mode_label') and self.mode_label:
+                    self.mode_label.config(text=mode["name"], fg=self.colors['accent_green'])
+                self.update_status(f"{tr('status_connected')}", self.colors['accent_green'])
+                self.update_ui_state()
+                self.save_settings()
+                self.root.after(100, self.update_stats_display)
+                if hasattr(self, 'connect_btn') and self.connect_btn:
+                    self.connect_btn.set_enabled(True)
         
-        start_btn = RoundedButton(btn_frame, text="Запустить", command=start_with_strategy,
+        start_btn = RoundedButton(btn_frame, text=tr('button_start'), command=start_with_strategy,
                                 width=120, height=35, bg=self.colors['accent'],
                                 font=("Segoe UI Variable", 10), corner_radius=8)
         start_btn.pack(side=tk.LEFT, padx=5)
         
-        cancel_btn = RoundedButton(btn_frame, text="Отмена", command=dialog.destroy,
+        cancel_btn = RoundedButton(btn_frame, text=tr('mode_cancel'), command=dialog.destroy,
                                 width=80, height=35, bg=self.colors['button_bg'],
                                 font=("Segoe UI Variable", 10), corner_radius=8)
         cancel_btn.pack(side=tk.LEFT, padx=5)
@@ -1493,12 +1403,18 @@ class ZapretLauncher:
         if hasattr(self, 'stats_speed_down_label'):
             self.stats_speed_down_label.config(text=f"⬇ {stats['speed_down_str']}")
 
+        if hasattr(self, 'tray_icon') and self.tray_icon and hasattr(self.tray_icon, 'icon') and self.tray_icon.icon:
+            try:
+                self.tray_icon.icon.title = self.tray_icon.get_tooltip_text()
+            except:
+                pass
+
     def _update_rtt(self):
         try:
             if hasattr(self, 'stats_rtt_label') and self.stats_rtt_label.winfo_exists():
                 rtt = self.measure_rtt()
                 if rtt > 0:
-                    self.stats_rtt_label.config(text=f"{rtt:.0f} ms", fg=self.colors['accent'])
+                    self.stats_rtt_label.config(text=f"{rtt:.0f} {tr('stats_rtt_ms')}", fg=self.colors['accent'])
                 else:
                     self.stats_rtt_label.config(text="-- ms", fg=self.colors['text_secondary'])
         except (tk.TclError, AttributeError):
@@ -1704,49 +1620,48 @@ class ZapretLauncher:
 
     def optimize_network_latency(self):
         self.log_to_diagnostic("="*50)
-        self.log_to_diagnostic("ОПТИМИЗАЦИЯ СЕТИ")
+        self.log_to_diagnostic(tr('dns_optimize_network'))
         self.log_to_diagnostic("="*50)
         
         if not is_admin():
-            self.log_to_diagnostic("ОШИБКА: Требуются права администратора!")
-            messagebox.showerror("Ошибка", "Для оптимизации сети требуются права администратора!")
+            self.log_to_diagnostic(tr('error_admin_required'))
+            messagebox.showerror(tr('error_admin_required'), tr('error_admin_required'))
             return
         
-        self.log_to_diagnostic("Настройка TCP параметров...")
+        self.log_to_diagnostic(tr('dns_configuring_tcp'))
         success, msg = optimize_network_latency()
         
         if success:
             self.log_to_diagnostic(msg)
-            self.log_to_diagnostic("Оптимизация завершена")
-            messagebox.showinfo("Успех", "Сетевые параметры оптимизированы!\n\nПерезагрузите компьютер для применения изменений")
+            self.log_to_diagnostic(tr('dns_optimize_complete'))
+            messagebox.showinfo(tr('dns_optimize_success'), tr('dns_optimize'))
         else:
-            self.log_to_diagnostic(f"Ошибка: {msg}")
-            messagebox.showerror("Ошибка", msg)
+            self.log_to_diagnostic(f"{tr('error_occurred')}: {msg}")
+            messagebox.showerror(tr('error_occurred'), msg)
         
         self.log_to_diagnostic("="*50)
-
 
     def find_and_set_best_dns(self):
         self.log_to_diagnostic("="*50)
-        self.log_to_diagnostic("ПОИСК ЛУЧШЕГО DNS СЕРВЕРА")
+        self.log_to_diagnostic(tr('dns_searching_best'))
         self.log_to_diagnostic("="*50)
         
-        self.log_to_diagnostic("Тестирование DNS серверов...")
-        self.update_status("Поиск DNS...", self.colors['accent'])
+        self.log_to_diagnostic(tr('dns_testing_servers'))
+        self.update_status(tr('status_searching_dns'), self.colors['accent'])
         self.root.update()
         
         def find_dns_thread():
             try:
                 primary, secondary, latency, name = find_best_dns()
                 
-                self.log_to_diagnostic(f"Установлен подходящий DNS: {name}")
-                self.log_to_diagnostic(f"Primary: {primary} (задержка: {latency:.1f} мс)")
-                self.log_to_diagnostic(f"Secondary: {secondary}")
+                self.log_to_diagnostic(f"{tr('dns_best_set')}: {name}")
+                self.log_to_diagnostic(f"{tr('dns_primary')}: {primary} ({tr('dns_latency')}: {latency:.1f} ms)")
+                self.log_to_diagnostic(f"{tr('dns_secondary')}: {secondary}")
                 
                 if not is_admin():
-                    self.log_to_diagnostic("ОШИБКА: Требуются права администратора!")
-                    self.root.after(0, lambda: messagebox.showerror("Ошибка", "Для установки DNS требуются права администратора!"))
-                    self.root.after(0, lambda: self.update_status("Готов к работе"))
+                    self.log_to_diagnostic(tr('error_admin_required'))
+                    self.root.after(0, lambda: messagebox.showerror(tr('error_admin_required'), tr('error_admin_required')))
+                    self.root.after(0, lambda: self.update_status(tr('status_ready')))
                     return
                 
                 success, msg = set_dns_windows(primary, secondary)
@@ -1757,29 +1672,27 @@ class ZapretLauncher:
                         self.root.after(0, lambda: self.show_adapter_selector(primary, secondary, name, adapters))
                     else:
                         self.log_to_diagnostic(f"{msg}")
-                        self.root.after(0, lambda: messagebox.showerror("Ошибка", msg))
+                        self.root.after(0, lambda: messagebox.showerror(tr('error_occurred'), msg))
                 else:
                     self.log_to_diagnostic(f"{msg}")
-                    self.root.after(0, lambda: messagebox.showinfo("Успех", 
-                        f"Установлен DNS: {name}\n\n"
-                        f"Primary: {primary}\n"
-                        f"Secondary: {secondary}\n"
-                        f"Задержка: {latency:.1f} мс"))
+                    self.root.after(0, lambda: messagebox.showinfo(tr('dns_set_success'), 
+                        f"{tr('dns_set')} {name}\n\n"
+                        f"{tr('dns_primary')}: {primary}\n"
+                        f"{tr('dns_secondary')}: {secondary}\n"
+                        f"{tr('dns_latency')}: {latency:.1f} ms"))
                 
-                self.root.after(0, lambda: self.update_status("Готов к работе"))
+                self.root.after(0, lambda: self.update_status(tr('status_ready')))
                 self.log_to_diagnostic("="*50)
                 
             except Exception as e:
-                self.log_to_diagnostic(f"Ошибка: {str(e)}")
-                self.root.after(0, lambda: self.update_status("Готов к работе"))
+                self.log_to_diagnostic(f"{tr('error_occurred')}: {str(e)}")
+                self.root.after(0, lambda: self.update_status(tr('status_ready')))
         
         threading.Thread(target=find_dns_thread, daemon=True).start()
 
-
     def show_adapter_selector(self, primary, secondary, dns_name, adapters):
-        
         dialog = tk.Toplevel(self.root)
-        dialog.title("Выбор сетевого адаптера")
+        dialog.title(tr('dns_select_adapter'))
         dialog.geometry("400x300")
         dialog.resizable(False, False)
         dialog.configure(bg=self.colors['bg_medium'])
@@ -1788,7 +1701,7 @@ class ZapretLauncher:
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 150
         dialog.geometry(f"+{x}+{y}")
         
-        tk.Label(dialog, text="Выберите сетевой адаптер:", font=("Segoe UI Variable", 12),
+        tk.Label(dialog, text=tr('dns_select_adapter'), font=("Segoe UI Variable", 12),
                 fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(pady=(15, 10))
         
         listbox = tk.Listbox(dialog, height=8, font=("Segoe UI Variable", 10),
@@ -1807,10 +1720,10 @@ class ZapretLauncher:
             
             success, msg = set_dns_manual(primary, secondary, adapter)
             if success:
-                messagebox.showinfo("Успех", f"DNS установлен для адаптера {adapter}")
-                self.log_to_diagnostic(f"DNS установлен для адаптера {adapter}")
+                messagebox.showinfo(tr('dns_set_success'), f"{tr('dns_set')} {tr('dns_for_adapter')} {adapter}")
+                self.log_to_diagnostic(f"{tr('dns_set')} {tr('dns_for_adapter')} {adapter}")
             else:
-                messagebox.showerror("Ошибка", msg)
+                messagebox.showerror(tr('error_occurred'), msg)
                 self.log_to_diagnostic(f"{msg}")
             
             dialog.destroy()
@@ -1818,44 +1731,43 @@ class ZapretLauncher:
         button_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
         button_frame.pack(pady=15)
         
-        apply_btn = RoundedButton(button_frame, text="Применить", command=apply,
+        apply_btn = RoundedButton(button_frame, text=tr('button_apply'), command=apply,
                                 width=120, height=35, bg=self.colors['accent'],
                                 font=("Segoe UI Variable", 10))
         apply_btn.pack(side=tk.LEFT, padx=5)
         
-        cancel_btn = RoundedButton(button_frame, text="Отмена", command=dialog.destroy,
+        cancel_btn = RoundedButton(button_frame, text=tr('mode_cancel'), command=dialog.destroy,
                                 width=80, height=35, bg=self.colors['button_bg'],
                                 font=("Segoe UI Variable", 10))
         cancel_btn.pack(side=tk.LEFT, padx=5)
 
     def flush_dns_cache_command(self):
-        self.log_to_diagnostic("Очистка DNS кеша...")
+        self.log_to_diagnostic(tr('dns_flushing'))
         success, msg = flush_dns_cache()
         if success:
             self.log_to_diagnostic(f"{msg}")
-            messagebox.showinfo("Успех", msg)
+            messagebox.showinfo(tr('dns_flush_success'), msg)
         else:
             self.log_to_diagnostic(f"{msg}")
-            messagebox.showerror("Ошибка", msg)
-
+            messagebox.showerror(tr('error_occurred'), msg)
 
     def restore_network_defaults_command(self):
-        self.log_to_diagnostic("Восстановление стандартных настроек сети...")
+        self.log_to_diagnostic(tr('dns_restoring_defaults'))
         if not is_admin():
-            messagebox.showerror("Ошибка", "Требуются права администратора!")
+            messagebox.showerror(tr('error_admin_required'), tr('error_admin_required'))
             return
         
         success, msg = restore_network_defaults()
         if success:
             self.log_to_diagnostic(f"{msg}")
-            messagebox.showinfo("Успех", msg)
+            messagebox.showinfo(tr('dns_restore_success'), msg)
         else:
             self.log_to_diagnostic(f"{msg}")
-            messagebox.showerror("Ошибка", msg)
+            messagebox.showerror(tr('error_occurred'), msg)
 
     def check_file_integrity(self):
         self.log_to_diagnostic("="*50)
-        self.log_to_diagnostic("ПРОВЕРКА ЦЕЛОСТНОСТИ ФАЙЛОВ")
+        self.log_to_diagnostic(tr('diagnostic_file_integrity'))
         self.log_to_diagnostic("="*50)
         
         errors = []
@@ -1868,13 +1780,13 @@ class ZapretLauncher:
             if path.exists():
                 size = path.stat().st_size
                 if size > 0:
-                    self.log_to_diagnostic(f"  {name} - {size} байт")
+                    self.log_to_diagnostic(f"  {name} - {size} bytes")
                 else:
-                    self.log_to_diagnostic(f"  {name} - файл пустой (0 байт)")
-                    errors.append(f"{name} пустой")
+                    self.log_to_diagnostic(f"  {name} - empty file (0 bytes)")
+                    errors.append(f"{name} is empty")
             else:
-                self.log_to_diagnostic(f"  {name} - отсутствует")
-                errors.append(f"{name} отсутствует")
+                self.log_to_diagnostic(f"  {name} - missing")
+                errors.append(f"{name} missing")
         
         if ZAPRET_CORE_DIR.exists():
             zapret_files = [
@@ -1893,30 +1805,30 @@ class ZapretLauncher:
                 
                 if file_path.exists():
                     size = file_path.stat().st_size
-                    self.log_to_diagnostic(f"  {file} - {size} байт")
+                    self.log_to_diagnostic(f"  {file} - {size} bytes")
                 else:
-                    self.log_to_diagnostic(f"  {file} - отсутствует")
-                    errors.append(f"{file} отсутствует")
+                    self.log_to_diagnostic(f"  {file} - missing")
+                    errors.append(f"{file} missing")
             
             strategies = list(ZAPRET_CORE_DIR.glob("general*.bat"))
-            self.log_to_diagnostic(f"  Стратегии: {len(strategies)} файлов")
+            self.log_to_diagnostic(f"  Strategies: {len(strategies)} files")
         else:
-            self.log_to_diagnostic(f"  Папка zapret_core отсутствует")
-            errors.append("zapret_core отсутствует")
+            self.log_to_diagnostic(f"  zapret_core folder missing")
+            errors.append("zapret_core missing")
         
         self.log_to_diagnostic("")
         if errors:
-            self.log_to_diagnostic(f"Найдено проблем: {len(errors)}")
+            self.log_to_diagnostic(f"Problems found: {len(errors)}")
             for err in errors:
                 self.log_to_diagnostic(f"  - {err}")
         else:
-            self.log_to_diagnostic("Все файлы в порядке")
+            self.log_to_diagnostic(tr('diagnostic_all_ok'))
         
         self.log_to_diagnostic("="*50)
     
     def check_custom_site(self):
         dialog = tk.Toplevel(self.root)
-        dialog.title("Проверка сайта")
+        dialog.title(tr('diagnostic_check_site'))
         dialog.geometry("450x200")
         dialog.resizable(False, False)
         dialog.configure(bg=self.colors['bg_medium'])
@@ -1925,7 +1837,7 @@ class ZapretLauncher:
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 100
         dialog.geometry(f"+{x}+{y}")
         
-        tk.Label(dialog, text="Введите URL сайта:", font=("Segoe UI Variable", 11),
+        tk.Label(dialog, text=tr('diagnostic_enter_url'), font=("Segoe UI Variable", 11),
                 fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(pady=(20, 5))
         
         url_entry = tk.Entry(dialog, width=50, font=("Segoe UI Variable", 10),
@@ -1941,10 +1853,10 @@ class ZapretLauncher:
         def check():
             url = url_entry.get().strip()
             if not url:
-                result_label.config(text="Введите URL", fg=self.colors['accent_red'])
+                result_label.config(text=tr('diagnostic_enter_url'), fg=self.colors['accent_red'])
                 return
             
-            result_label.config(text="Проверка...", fg=self.colors['accent'])
+            result_label.config(text=tr('diagnostic_checking'), fg=self.colors['accent'])
             dialog.update()
             
             def check_thread():
@@ -1955,7 +1867,7 @@ class ZapretLauncher:
                         ip = socket.gethostbyname(clean_url)
                         dns_ok = True
                     except:
-                        ip = "не определяется"
+                        ip = tr('diagnostic_not_determined')
                         dns_ok = False
                     
                     if dns_ok:
@@ -1964,23 +1876,23 @@ class ZapretLauncher:
                         if result.returncode == 0:
                             for line in result.stdout.decode('cp866', errors='ignore').split('\n'):
                                 if "среднее" in line or "Average" in line:
-                                    result_text = f"ДОСТУПЕН - {line.strip()}"
+                                    result_text = f"{tr('diagnostic_available')} - {line.strip()}"
                                     break
                             else:
-                                result_text = f"ДОСТУПЕН (IP: {ip})"
+                                result_text = f"{tr('diagnostic_available')} (IP: {ip})"
                             color = self.colors['accent_green']
                         else:
-                            result_text = f"НЕ ДОСТУПЕН (IP: {ip})"
+                            result_text = f"{tr('diagnostic_not_available')} (IP: {ip})"
                             color = self.colors['accent_red']
                     else:
-                        result_text = f"DNS ОШИБКА - сайт не найден"
+                        result_text = f"{tr('diagnostic_dns_error')}"
                         color = self.colors['accent_red']
                         
                 except subprocess.TimeoutExpired:
-                    result_text = "ТАЙМАУТ - сайт не отвечает"
+                    result_text = tr('diagnostic_timeout')
                     color = self.colors['accent_red']
                 except Exception as e:
-                    result_text = f"ОШИБКА: {str(e)}"
+                    result_text = f"{tr('error_occurred')}: {str(e)}"
                     color = self.colors['accent_red']
                 
                 dialog.after(0, lambda: result_label.config(text=result_text, fg=color))
@@ -1992,12 +1904,12 @@ class ZapretLauncher:
         button_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
         button_frame.pack(pady=15)
         
-        check_btn = RoundedButton(button_frame, text="Проверить", command=check,
+        check_btn = RoundedButton(button_frame, text=tr('diagnostic_check'), command=check,
                                 width=120, height=32, bg=self.colors['accent'],
                                 font=("Segoe UI Variable", 10))
         check_btn.pack(side=tk.LEFT, padx=5)
         
-        close_btn = RoundedButton(button_frame, text="Закрыть", command=dialog.destroy,
+        close_btn = RoundedButton(button_frame, text=tr('button_close'), command=dialog.destroy,
                                 width=80, height=32, bg=self.colors['button_bg'],
                                 font=("Segoe UI Variable", 10))
         close_btn.pack(side=tk.LEFT, padx=5)
@@ -2012,15 +1924,15 @@ class ZapretLauncher:
             
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE) as key:
                 if enabled:
-                    winreg.SetValueEx(key, "ZapretLauncher", 0, winreg.REG_SZ, exe_path)
+                    winreg.SetValueEx(key, "Zapret Launcher", 0, winreg.REG_SZ, exe_path)
                 else:
                     try:
-                        winreg.DeleteValue(key, "ZapretLauncher")
+                        winreg.DeleteValue(key, "Zapret Launcher")
                     except:
                         pass
             return True
         except Exception as e:
-            self.log_to_diagnostic(f"Ошибка настройки автозапуска: {e}")
+            self.log_to_diagnostic(f"{tr('error_autostart')}: {e}")
             return False
 
     def check_autostart_status(self):
@@ -2028,7 +1940,7 @@ class ZapretLauncher:
             key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
             
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ) as key:
-                value, _ = winreg.QueryValueEx(key, "ZapretLauncher")
+                value, _ = winreg.QueryValueEx(key, "Zapret Launcher")
                 return value is not None
         except:
             return False
@@ -2037,7 +1949,7 @@ class ZapretLauncher:
         try:
             command()
         except Exception as e:
-            self.log_to_diagnostic(f"Ошибка: {str(e)}")
+            self.log_to_diagnostic(f"{tr('error_occurred')}: {str(e)}")
 
     def log_to_diagnostic(self, message):
         self.diagnostic_text.insert(tk.END, message + "\n")
@@ -2046,12 +1958,12 @@ class ZapretLauncher:
 
     def auto_select_strategy(self):
         self.log_to_diagnostic("="*50)
-        self.log_to_diagnostic("АВТОМАТИЧЕСКИЙ ПОДБОР СТРАТЕГИИ")
+        self.log_to_diagnostic(tr('diagnostic_auto_strategy'))
         self.log_to_diagnostic("="*50)
         
         strategies = self.zapret.available_strategies
         if not strategies:
-            self.log_to_diagnostic("Нет доступных стратегий")
+            self.log_to_diagnostic(tr('error_no_strategies'))
             return None
         
         test_sites = [
@@ -2067,7 +1979,7 @@ class ZapretLauncher:
         best_success_count = 0
         
         for strategy in strategies:
-            self.log_to_diagnostic(f"\nТестируем: {strategy}")
+            self.log_to_diagnostic(f"\n{tr('diagnostic_testing')}: {strategy}")
             
             if was_connected:
                 self.disconnect()
@@ -2076,10 +1988,10 @@ class ZapretLauncher:
             success, msg = self.zapret.run_strategy(strategy)
             
             if not success:
-                self.log_to_diagnostic(f"  Не удалось запустить: {msg}")
+                self.log_to_diagnostic(f"  {tr('diagnostic_failed_to_start')}: {msg}")
                 continue
             
-            self.log_to_diagnostic(f"  Запущена")
+            self.log_to_diagnostic(f"  {tr('diagnostic_started')}")
             time.sleep(2)
             
             success_count = 0
@@ -2088,17 +2000,17 @@ class ZapretLauncher:
                     result = subprocess.run(['ping', '-n', '2', site], 
                                           capture_output=True, timeout=5)
                     if result.returncode == 0:
-                        self.log_to_diagnostic(f"    {name} доступен")
+                        self.log_to_diagnostic(f"    {name} {tr('diagnostic_available')}")
                         success_count += 1
                     else:
-                        self.log_to_diagnostic(f"    {name} недоступен")
+                        self.log_to_diagnostic(f"    {name} {tr('diagnostic_not_available')}")
                 except:
-                    self.log_to_diagnostic(f"    {name} ошибка проверки")
+                    self.log_to_diagnostic(f"    {name} {tr('diagnostic_check_error')}")
             
             self.zapret.stop_current_strategy()
             
             score = success_count
-            self.log_to_diagnostic(f"  Результат: {success_count}/{len(test_sites)}")
+            self.log_to_diagnostic(f"  {tr('diagnostic_result')}: {success_count}/{len(test_sites)}")
             
             if score > best_score:
                 best_score = score
@@ -2106,77 +2018,77 @@ class ZapretLauncher:
                 best_success_count = success_count
         
         if best_strategy:
-            self.log_to_diagnostic(f"\Подходящая стратегия: {best_strategy}")
-            self.log_to_diagnostic(f"Результат: {best_success_count}/{len(test_sites)}")
+            self.log_to_diagnostic(f"\n{tr('diagnostic_best_strategy')}: {best_strategy}")
+            self.log_to_diagnostic(f"{tr('diagnostic_result')}: {best_success_count}/{len(test_sites)}")
             
             self.strategy_var.set(best_strategy)
             self.current_strategy = best_strategy
             self.save_settings()
             
             if was_connected:
-                self.log_to_diagnostic("Восстанавливаем подключение...")
+                self.log_to_diagnostic(tr('diagnostic_restoring_connection'))
                 self.connect()
         else:
-            self.log_to_diagnostic("\nНе найдена работающая стратегия")
+            self.log_to_diagnostic(f"\n{tr('diagnostic_no_working_strategy')}")
         
         self.log_to_diagnostic("="*50)
         return best_strategy
 
     def check_zapret_status(self):
-        self.log_to_diagnostic("Проверка статуса Zapret...")
+        self.log_to_diagnostic(tr('diagnostic_checking_zapret'))
         if self.zapret.is_winws_running():
-            self.log_to_diagnostic(f"Zapret запущен (Стратегия: {self.current_strategy or 'неизвестно'})")
+            self.log_to_diagnostic(f"{tr('diagnostic_zapret_running')} ({tr('diagnostic_strategy')}: {self.current_strategy or 'unknown'})")
         else:
-            self.log_to_diagnostic("Zapret не запущен")
+            self.log_to_diagnostic(tr('diagnostic_zapret_not_running'))
 
     def check_zapret_logs(self):
-        self.log_to_diagnostic("Поиск процессов winws.exe...")
+        self.log_to_diagnostic(tr('diagnostic_searching_winws'))
         found = False
         for proc in psutil.process_iter(['pid', 'name', 'create_time']):
             try:
                 if proc.info['name'] and proc.info['name'].lower() == 'winws.exe':
                     create_time = time.strftime('%Y-%m-%d %H:%M:%S', 
                                             time.localtime(proc.info['create_time']))
-                    self.log_to_diagnostic(f"  • PID: {proc.info['pid']}, запущен: {create_time}")
+                    self.log_to_diagnostic(f"  • PID: {proc.info['pid']}, {tr('diagnostic_started_at')}: {create_time}")
                     found = True
             except:
                 pass
         if not found:
-            self.log_to_diagnostic("Процессы winws.exe не найдены")
+            self.log_to_diagnostic(tr('diagnostic_winws_not_found'))
 
     def restart_zapret(self):
-        self.log_to_diagnostic("Перезапуск Zapret...")
+        self.log_to_diagnostic(tr('diagnostic_restarting_zapret'))
         if self.is_connected:
             self.disconnect()
             time.sleep(2)
             self.connect()
-            self.log_to_diagnostic("Zapret перезапущен")
+            self.log_to_diagnostic(tr('diagnostic_zapret_restarted'))
         else:
-            self.log_to_diagnostic("Zapret не был запущен")
+            self.log_to_diagnostic(tr('diagnostic_zapret_not_started'))
 
     def check_tgproxy_status(self):
-        self.log_to_diagnostic("Проверка статуса TGProxy...")
+        self.log_to_diagnostic(tr('diagnostic_checking_tgproxy'))
         if hasattr(self, 'tg_proxy') and self.tg_proxy._running:
-            self.log_to_diagnostic("TGProxy запущен")
+            self.log_to_diagnostic(tr('diagnostic_tgproxy_running'))
         else:
-            self.log_to_diagnostic("TGProxy не запущен")
+            self.log_to_diagnostic(tr('diagnostic_tgproxy_not_running'))
 
     def restart_tgproxy(self):
-        self.log_to_diagnostic("Перезапуск TGProxy...")
+        self.log_to_diagnostic(tr('diagnostic_restarting_tgproxy'))
         if self.tg_proxy._running:
             self.tg_proxy.stop()
             time.sleep(1)
             self.tg_proxy.start()
-            self.log_to_diagnostic("TGProxy перезапущен")
+            self.log_to_diagnostic(tr('diagnostic_tgproxy_restarted'))
         else:
-            self.log_to_diagnostic("TGProxy не был запущен")
+            self.log_to_diagnostic(tr('diagnostic_tgproxy_not_started'))
 
     def open_appdata_folder(self):
-        self.log_to_diagnostic(f"Открытие папки: AppData/Local/ZapretLauncher")
+        self.log_to_diagnostic(f"{tr('diagnostic_opening_folder')}: AppData/Local/Zapret Launcher")
         try:
             os.startfile(APPDATA_DIR)
         except Exception as e:
-            self.log_to_diagnostic(f"Ошибка: {str(e)}")
+            self.log_to_diagnostic(f"{tr('error_occurred')}: {str(e)}")
 
     def get_current_dns_info(self):
         result = []
@@ -2192,7 +2104,7 @@ class ZapretLauncher:
                 if 'Server:' in line or 'Сервер:' in line:
                     server = line.split(':')[1].strip()
                     if server:
-                        result.append(f"  DNS сервер: {server}")
+                        result.append(f"  DNS server: {server}")
                         break
             
             if not result:
@@ -2208,34 +2120,34 @@ class ZapretLauncher:
                         ips = re.findall(r'\d+\.\d+\.\d+\.\d+', line)
                         for ip in ips:
                             if ip not in ['0.0.0.0', '127.0.0.1']:
-                                result.append(f"  DNS сервер: {ip}")
+                                result.append(f"  DNS server: {ip}")
                                 break
                         if result:
                             break
             
             if not result:
-                result.append("  DNS сервер не определен (используется автоматический)")
+                result.append("  DNS server not determined (using automatic)")
                 
         except Exception as e:
-            result.append(f"  Ошибка: {e}")
+            result.append(f"  Error: {e}")
         return result
 
     def clear_cache(self):
-        self.log_to_diagnostic("Очистка кеша...")
+        self.log_to_diagnostic(tr('diagnostic_clearing_cache'))
         try:
             self.diagnostic_text.delete(1.0, tk.END)
         except Exception as e:
-            self.log_to_diagnostic(f"Ошибка: {str(e)}")
+            self.log_to_diagnostic(f"{tr('error_occurred')}: {str(e)}")
 
     def run_full_diagnostic(self):
         self.diagnostic_text.delete(1.0, tk.END)
         self.log_to_diagnostic("="*50)
-        self.log_to_diagnostic("ПОЛНАЯ ДИАГНОСТИКА")
+        self.log_to_diagnostic(tr('diagnostic_full_diagnostic'))
         self.log_to_diagnostic("="*50)
-        self.log_to_diagnostic(f"Версия лаунчера: {CURRENT_VERSION}")
+        self.log_to_diagnostic(f"{tr('diagnostic_launcher_version')}: {CURRENT_VERSION}")
         self.log_to_diagnostic("")
         
-        self.log_to_diagnostic("Текущие DNS серверы:")
+        self.log_to_diagnostic(tr('diagnostic_current_dns'))
         dns_info = self.get_current_dns_info()
         for line in dns_info:
             self.log_to_diagnostic(line)
@@ -2251,7 +2163,7 @@ class ZapretLauncher:
         self.log_to_diagnostic("")
         
         self.log_to_diagnostic("="*50)
-        self.log_to_diagnostic("Диагностика завершена")
+        self.log_to_diagnostic(tr('diagnostic_complete'))
         self.log_to_diagnostic("="*50)
 
     def save_diagnostic_report(self):
@@ -2259,9 +2171,9 @@ class ZapretLauncher:
             report_path = APPDATA_DIR / f"diagnostic_{time.strftime('%Y%m%d_%H%M%S')}.txt"
             with open(report_path, 'w', encoding='utf-8') as f:
                 f.write(self.diagnostic_text.get(1.0, tk.END))
-            self.log_to_diagnostic(f"Отчет сохранен: {report_path}")
+            self.log_to_diagnostic(f"{tr('diagnostic_report_saved')}: {report_path}")
         except Exception as e:
-            self.log_to_diagnostic(f"Ошибка сохранения: {str(e)}")
+            self.log_to_diagnostic(f"{tr('error_occurred')}: {str(e)}")
 
     def refresh_page(self, page_name):
         page = getattr(self, f"{page_name}_page")
@@ -2311,11 +2223,11 @@ class ZapretLauncher:
         
         if self.set_autostart(new_state):
             if new_state:
-                messagebox.showinfo("Автозапуск", "Программа будет запускаться при старте Windows")
+                messagebox.showinfo(tr('autostart_enabled'), tr('autostart_enabled'))
             else:
-                messagebox.showinfo("Автозапуск", "Автозапуск отключен")
+                messagebox.showinfo(tr('autostart_disabled'), tr('autostart_disabled'))
         else:
-            messagebox.showerror("Ошибка", "Не удалось изменить настройки автозапуска")
+            messagebox.showerror(tr('error_occurred'), tr('autostart_error'))
 
     def open_github(self):
         webbrowser.open("https://github.com/tweenkedrage/zapret-launcher")
@@ -2325,7 +2237,7 @@ class ZapretLauncher:
             return
         if self.zapret.is_winws_running():
             self.is_connected = True
-            self.update_status("Подключено", self.colors['accent_green'])
+            self.update_status(tr('status_connected'), self.colors['accent_green'])
             self.update_ui_state()
             if hasattr(self, 'tray_icon'):
                 self.tray_icon.update_menu()
@@ -2347,22 +2259,32 @@ class ZapretLauncher:
             self.left_status.config(fg=color)
 
     def update_ui_state(self):
-        if hasattr(self, 'connect_btn') and self.connect_btn:
-            if self.is_connected:
-                self.connect_btn.set_text("ОТКЛЮЧИТЬСЯ")
-                self.connect_btn.normal_color = self.colors['bg_light']
-                self.connect_btn.hover_color = '#6c5579'
-                if hasattr(self.connect_btn, 'rect'):
-                    self.connect_btn.itemconfig(self.connect_btn.rect, fill=self.colors['bg_light'])
-            else:
-                self.connect_btn.set_text("ПОДКЛЮЧИТЬСЯ")
-                self.connect_btn.normal_color = '#6c5579'
-                self.connect_btn.hover_color = '#3D3D45'
-                if hasattr(self.connect_btn, 'rect'):
-                    self.connect_btn.itemconfig(self.connect_btn.rect, fill='#6c5579')
+        try:
+            if hasattr(self, 'connect_btn') and self.connect_btn:
+                if not self.connect_btn.winfo_exists():
+                    return
+                    
+                if self.is_connected:
+                    self.connect_btn.set_text(tr('button_disconnect'))
+                    if self.current_theme == 'light':
+                        self.connect_btn.normal_color = '#9CA3AF'
+                        self.connect_btn.update_colors('#9CA3AF', '#FFFFFF', '#6B7280')
+                    else:
+                        self.connect_btn.normal_color = '#3D3D45'
+                        self.connect_btn.update_colors('#3D3D45', '#FFFFFF', self.colors['accent'])
+                else:
+                    self.connect_btn.set_text(tr('button_connect'))
+                    self.connect_btn.normal_color = self.colors['accent']
+                    self.connect_btn.hover_color = '#3D3D45'
+                    self.connect_btn.update_colors(self.colors['accent'], '#FFFFFF', '#3D3D45')
+        except (tk.TclError, AttributeError, RuntimeError):
+            pass
         
         if hasattr(self, 'tray_icon') and self.tray_icon:
-            self.tray_icon.update_menu()
+            try:
+                self.tray_icon.update_menu()
+            except:
+                pass
 
     def toggle_connection(self):
         if self.is_connected:
@@ -2375,12 +2297,12 @@ class ZapretLauncher:
     def connect(self):
         strategy = self.strategy_var.get()
         if not strategy:
-            messagebox.showerror("Ошибка", "Выберите стратегию")
+            messagebox.showerror(tr('error_select_strategy'), tr('error_select_strategy'))
             return
         
         self._reset_traffic_history()
 
-        self.update_status("Запуск...", self.colors['accent'])
+        self.update_status(tr('status_starting'), self.colors['accent'])
         self.connect_btn.set_enabled(False)
         self.root.update()
         
@@ -2403,7 +2325,7 @@ class ZapretLauncher:
         threading.Thread(target=start_thread, daemon=True).start()
 
     def _on_connect_success(self, strategy, msg):
-        self.update_status(f"Подключено: Стратегия {self.zapret.get_strategy_display_name(strategy)}", 
+        self.update_status(f"{tr('status_connected')}", 
                         self.colors['accent_green'])
         self.update_ui_state()
         self.save_settings()
@@ -2413,8 +2335,8 @@ class ZapretLauncher:
             self.connect_btn.set_enabled(True)
 
     def _on_connect_failed(self, msg):
-        self.update_status("Ошибка запуска", self.colors['accent_red'])
-        messagebox.showerror("Ошибка", msg)
+        self.update_status(tr('status_error'), self.colors['accent_red'])
+        messagebox.showerror(tr('error_startup'), msg)
         if hasattr(self, 'connect_btn') and self.connect_btn:
             self.connect_btn.set_enabled(True)
 
@@ -2422,7 +2344,7 @@ class ZapretLauncher:
         if not self.is_connected and not self.zapret.is_winws_running():
             return
             
-        self.update_status("Отключение...", self.colors['accent'])
+        self.update_status(tr('status_disconnecting'), self.colors['accent'])
         if hasattr(self, 'connect_btn') and self.connect_btn:
             self.connect_btn.set_enabled(False)
         self.root.update()
@@ -2431,29 +2353,16 @@ class ZapretLauncher:
         def stop_all():
             try:
                 if hasattr(self, 'tg_proxy') and self.tg_proxy:
-                    self.tg_proxy.cleanup()
-                    time.sleep(1.5)
-                
-                try:
-                    subprocess.run('taskkill /F /IM python.exe /FI "WINDOWTITLE eq TGProxy*"', 
-                                shell=True, capture_output=True)
-                    result = subprocess.run('netstat -ano | findstr :1080', 
-                                        shell=True, capture_output=True, text=True)
-                    for line in result.stdout.split('\n'):
-                        if 'LISTENING' in line:
-                            parts = line.split()
-                            if len(parts) >= 5:
-                                pid = parts[-1]
-                                if pid.isdigit():
-                                    subprocess.run(f'taskkill /F /PID {pid}', 
-                                                shell=True, capture_output=True)
-                except:
-                    pass
+                    try:
+                        self.tg_proxy.stop()
+                    except Exception as e:
+                        print(f"TGProxy stop error: {e}")
+                    time.sleep(0.5)
                 
                 try:
                     self.zapret.stop_current_strategy()
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"Zapret stop error: {e}")
                 
                 time.sleep(0.5)
                 
@@ -2464,7 +2373,7 @@ class ZapretLauncher:
                 
                 try:
                     self._stop_windivert_service()
-                except Exception:
+                except:
                     pass
                 
                 try:
@@ -2486,15 +2395,30 @@ class ZapretLauncher:
     def finish_disconnect(self):
         try:
             self._cached_processes = []
-            
+
             if hasattr(self, 'mode_label') and self.mode_label and self.mode_label.winfo_exists():
-                self.mode_label.config(text="Не выбран", fg=self.colors['text_secondary'])
+                self.mode_label.config(text=tr('mode_not_selected'), fg=self.colors['text_secondary'])
+            self.update_status(tr('status_ready'), self.colors['text_secondary'])
             
-            self.update_status("Готов к работе", self.colors['text_secondary'])
-            self.update_ui_state()
+            def update_button():
+                try:
+                    if hasattr(self, 'connect_btn') and self.connect_btn:
+                        if self.connect_btn.winfo_exists():
+                            self.connect_btn.set_enabled(True)
+                            self.connect_btn.set_text(tr('button_connect'))
+                            self.connect_btn.normal_color = self.colors['accent']
+                            self.connect_btn.hover_color = '#3D3D45'
+                            self.connect_btn.update_colors(self.colors['accent'], '#FFFFFF', '#3D3D45')
+                except:
+                    pass
             
-            if hasattr(self, 'connect_btn') and self.connect_btn:
-                self.connect_btn.set_enabled(True)
+            self.root.after(100, update_button)
+
+            if hasattr(self, 'tray_icon') and self.tray_icon:
+                try:
+                    self.tray_icon.update_menu()
+                except:
+                    pass
             
             if hasattr(self, '_traffic_update_timer') and self._traffic_update_timer:
                 try:
@@ -2519,6 +2443,7 @@ class ZapretLauncher:
             self.traffic_speed_direct_history = {}
             self.hostname_cache = {}
             self.hostname_cache_time = {}
+            self.update_tray_icon_state()
         except Exception as e:
             print(f"Error in finish_disconnect: {e}")
 
@@ -2527,9 +2452,9 @@ class ZapretLauncher:
             return
         success, result = self.zapret.run_service_command(command)
         if success:
-            messagebox.showinfo("Успех", result)
+            messagebox.showinfo(tr('success'), result)
         else:
-            messagebox.showerror("Ошибка", result)
+            messagebox.showerror(tr('error_occurred'), result)
 
     def ensure_appdata_dir(self):
         try:
@@ -2592,6 +2517,8 @@ class ZapretLauncher:
 
                     self._tg_instruction = data.get('tg_instruction', False)
                     self._show_tooltip = data.get('show_tooltip', True)
+                    self.current_theme = data.get('theme', 'Dark')
+                    self._tg_secret = data.get('tg_secret', None)
         except:
             pass
 
@@ -2602,10 +2529,13 @@ class ZapretLauncher:
                 'autostart_enabled': self.check_autostart_status(),
                 'update_interval': self.update_interval_index,
                 'tg_instruction': getattr(self, '_tg_instruction', False),
-                'show_tooltip': getattr(self, '_show_tooltip', True)
+                'show_tooltip': getattr(self, '_show_tooltip', True),
+                'language': self.languages.get_current_language(),
+                'theme': self.current_theme,
+                'tg_secret': getattr(self, '_tg_secret', None),
             }
             with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-                json.dump(settings, f, indent=2)
+                json.dump(settings, f, indent=2, ensure_ascii=False)
         except:
             pass
 
@@ -2665,7 +2595,7 @@ class ZapretLauncher:
         if not hasattr(self.pages, 'shutdown_status_label') or self.pages.shutdown_status_label is None:
             return
         
-        self.pages.shutdown_status_label.config(text="Обновление...", fg=self.colors['accent'])
+        self.pages.shutdown_status_label.config(text=tr('shutdown_updating'), fg=self.colors['accent'])
         
         def refresh():
             try:
@@ -2674,17 +2604,18 @@ class ZapretLauncher:
                 
                 self.root.after(0, lambda: self._update_shutdown_table(services_status))
                 self.root.after(0, lambda: self.pages.shutdown_last_update_label.config(
-                    text=f"Последнее обновление: {time.strftime('%H:%M:%S')}"))
+                    text=f"{tr('shutdown_last_update')} {time.strftime('%H:%M:%S')}"))
                 self.root.after(0, lambda: self.pages.shutdown_status_label.config(
-                    text="Активен", fg=self.colors['accent_green']))
+                    text=tr('shutdown_active'), fg=self.colors['accent_green']))
             except Exception as e:
                 self.root.after(0, lambda: self.pages.shutdown_status_label.config(
-                    text="Ошибка", fg=self.colors['accent_red']))
+                    text=tr('shutdown_error'), fg=self.colors['accent_red']))
         thread = threading.Thread(target=refresh, daemon=True)
         thread.start()
 
     def _check_all_services_fast(self, timeout=5):
         services = {
+            # search and social
             "Google": "https://www.google.com",
             "Яндекс": "https://yandex.ru",
             "YouTube": "https://www.youtube.com",
@@ -2694,6 +2625,9 @@ class ZapretLauncher:
             "Spotify": "https://open.spotify.com",
             "Gmail": "https://mail.google.com",
             "Mail.ru": "https://mail.ru",
+
+            # messengers
+            "Max": "https://max.ru",
             "ВКонтакте": "https://vk.com",
             "Одноклассники": "https://ok.ru",
             "Telegram": "https://web.telegram.org",
@@ -2703,6 +2637,8 @@ class ZapretLauncher:
             "Twitter": "https://x.com",
             "Steam": "https://store.steampowered.com",
             "Discord": "https://discord.com",
+
+            # providers
             "Ростелеком": "https://msk.rt.ru",
             "МТС": "https://www.mts.ru",
             "Билайн": "https://www.beeline.ru",
@@ -2712,6 +2648,14 @@ class ZapretLauncher:
             "Дом.ру": "https://msk.dom.ru",
             "АКАДО": "https://www.akado.ru",
             "ТТК": "https://www.ttk.ru",
+
+            # banks
+            "Альфа-Банк": "https://alfabank.ru",
+            "Сбербанк": "https://www.sberbank.ru",
+            "Т-Банк": "https://www.tbank.ru",
+            "ВТБ": "https://www.vtb.ru",
+
+            # other
             "ГосУслуги": "https://www.gosuslugi.ru",
         }
         
@@ -2732,25 +2676,25 @@ class ZapretLauncher:
                 with urllib.request.urlopen(req) as response:
                     code = response.getcode()
                     if 200 <= code < 400:
-                        status = "Доступен"
+                        status = tr('shutdown_available')
                     else:
-                        status = f"Код {code}"
+                        status = f"{tr('shutdown_code')} {code}"
                             
             except urllib.error.HTTPError as e:
                 if e.code in [301, 302, 303, 307, 308]:
-                    status = "Редирект"
+                    status = tr('shutdown_redirect')
                 elif e.code == 403:
-                    status = "Доступ ограничен"
+                    status = tr('shutdown_limited')
                 elif e.code == 404:
-                    status = "Страница не найдена"
+                    status = tr('shutdown_not_found')
                 elif e.code >= 500:
-                    status = "Ошибка сервера"
+                    status = tr('shutdown_server_error')
                 else:
                     status = f"HTTP {e.code}"
             except (urllib.error.URLError, socket.timeout):
-                status = "Таймаут"
+                status = tr('shutdown_timeout')
             except Exception:
-                status = "Ошибка"
+                status = tr('shutdown_error')
             
             results[name] = {
                 "status": status,
@@ -2770,7 +2714,7 @@ class ZapretLauncher:
         for name, url in services.items():
             if name not in results:
                 results[name] = {
-                    "status": "Таймаут",
+                    "status": tr('shutdown_timeout'),
                     "source": url.split('/')[2],
                     "category": self._get_category(name)
                 }
@@ -2814,6 +2758,12 @@ class ZapretLauncher:
             "АКАДО": "https://www.akado.ru",
             "ТТК": "https://www.ttk.ru",
 
+            # banks
+            "Альфа-Банк": "https://alfabank.ru",
+            "Сбербанк": "https://www.sberbank.ru",
+            "Т-Банк": "https://www.tbank.ru",
+            "ВТБ": "https://www.vtb.ru",
+
             # other
             "ГосУслуги": "https://www.gosuslugi.ru",
         }
@@ -2834,30 +2784,30 @@ class ZapretLauncher:
                 with urllib.request.urlopen(req) as response:
                     code = response.getcode()
                     if 200 <= code < 400:
-                        status = "Доступен"
+                        status = tr('shutdown_available')
                     else:
-                        status = f"Код {code}"
+                        status = f"{tr('shutdown_code')} {code}"
                         
             except urllib.error.HTTPError as e:
                 if e.code in [301, 302, 303, 307, 308]:
-                    status = "Редирект"
+                    status = tr('shutdown_redirect')
                 elif e.code == 403:
-                    status = "Доступ ограничен"
+                    status = tr('shutdown_limited')
                 elif e.code == 404:
-                    status = "Страница не найдена"
+                    status = tr('shutdown_not_found')
                 elif e.code == 500 or e.code == 502 or e.code == 503 or e.code == 504:
-                    status = "Ошибка сервера"
+                    status = tr('shutdown_server_error')
                 else:
                     status = f"HTTP {e.code}"
             except urllib.error.URLError as e:
                 if "timed out" in str(e).lower():
-                    status = "Таймаут"
+                    status = tr('shutdown_timeout')
                 else:
-                    status = "Нет соединения"
+                    status = tr('shutdown_no_connection')
             except socket.timeout:
-                status = "Таймаут"
+                status = tr('shutdown_timeout')
             except Exception as e:
-                status = "Ошибка"
+                status = tr('shutdown_error')
             
             services_status[name] = {
                 "status": status,
@@ -2869,26 +2819,29 @@ class ZapretLauncher:
 
     def _get_category(self, name):
         providers = ["Ростелеком", "МТС", "Билайн", "МегаФон", "Yota", "Дом.ру", "АКАДО", "Tele2", "ТТК"]
+        banks = ["Альфа-Банк", "Сбербанк", "Т-Банк", "ВТБ"]
         messengers = ["Telegram", "WhatsApp", "Discord"]
-        social = ["ВКонтакте"]
         search = ["Google", "Яндекс"]
-        games = ["Steam"]
+        social = ["ВКонтакте"]
         gov = ["ГосУслуги"]
+        games = ["Steam"]
         
         if name in providers:
-            return "Провайдеры"
+            return tr('category_providers')
         elif name in messengers:
-            return "Мессенджеры"
+            return tr('category_messengers')
         elif name in social:
-            return "Соцсети"
+            return tr('category_social')
         elif name in search:
-            return "Поисковики"
+            return tr('category_search')
         elif name in games:
-            return "Игры"
+            return tr('category_games')
+        elif name in banks:
+            return tr('category_banks')
         elif name in gov:
-            return "Госуслуги"
+            return tr('category_gov')
         else:
-            return "Прочее"
+            return tr('category_other')
 
     def _update_shutdown_table(self, services_data):
         if not hasattr(self.pages, 'shutdown_tree') or self.pages.shutdown_tree is None:
@@ -2900,7 +2853,7 @@ class ZapretLauncher:
         sorted_items = sorted(services_data.items(), key=lambda x: (x[1].get('category', ''), x[0]))
         
         for service, data in sorted_items:
-            status = data.get("status", "Неизвестно")
+            status = data.get("status", tr('shutdown_unknown'))
             
             item = self.pages.shutdown_tree.insert("", "end", values=(
                 service,
@@ -2908,13 +2861,13 @@ class ZapretLauncher:
                 data.get("source", "-")
             ))
             
-            if "Доступен" in status or "Редирект" in status:
+            if tr('shutdown_available') in status or tr('shutdown_redirect') in status:
                 self.pages.shutdown_tree.tag_configure('good', foreground='#4ade80')
                 self.pages.shutdown_tree.item(item, tags=('good',))
-            elif "Таймаут" in status or "ошибка" in status.lower() or "ограничен" in status:
+            elif tr('shutdown_timeout') in status or tr('shutdown_error') in status.lower() or tr('shutdown_limited') in status:
                 self.pages.shutdown_tree.tag_configure('warning', foreground='#fbbf24')
                 self.pages.shutdown_tree.item(item, tags=('warning',))
-            elif "HTTP" in status or "Код" in status:
+            elif "HTTP" in status or tr('shutdown_code') in status:
                 self.pages.shutdown_tree.tag_configure('bad', foreground='#f87171')
                 self.pages.shutdown_tree.item(item, tags=('bad',))
 
@@ -3108,11 +3061,11 @@ class ZapretLauncher:
             processes = processes[:40]
             
         except Exception as e:
-            self.log_to_diagnostic(f"Ошибка сбора трафика: {e}")
+            self.log_to_diagnostic(f"{tr('error_traffic_collection')}: {e}")
         
         if not processes:
             processes.append({
-                'name': 'Нет активных соединений',
+                'name': tr('traffic_no_connections'),
                 'speed': '-',
                 'vpn': '-',
                 'direct': '-',
@@ -3314,10 +3267,14 @@ class ZapretLauncher:
 
     def show_tg_proxy_instruction(self):
         dialog = tk.Toplevel(self.root)
-        dialog.title("Telegram Proxy (ZL)")
+        dialog.title(tr('tg_instruction_title'))
         dialog.geometry("500x520")
         dialog.resizable(False, False)
         dialog.configure(bg=self.colors['bg_medium'])
+
+        secret = getattr(self, '_tg_secret', None)
+        if not secret:
+            secret = "не сгенерирован"
         
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 250
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 310
@@ -3326,12 +3283,12 @@ class ZapretLauncher:
         title_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
         title_frame.pack(fill=tk.X, pady=(20, 5))
         
-        title_label = tk.Label(title_frame, text="Настройка Telegram", 
+        title_label = tk.Label(title_frame, text=tr('tg_instruction_title'), 
                             font=("Segoe UI Variable", 20, "bold"),
                             fg=self.colors['accent'], bg=self.colors['bg_medium'])
         title_label.pack()
         
-        subtitle_label = tk.Label(title_frame, text="Для использования прокси выполните следующие шаги:",
+        subtitle_label = tk.Label(title_frame, text=tr('tg_instruction_subtitle'),
                                 font=("Segoe UI Variable", 11),
                                 fg=self.colors['text_secondary'], bg=self.colors['bg_medium'])
         subtitle_label.pack(pady=(5, 0))
@@ -3341,14 +3298,14 @@ class ZapretLauncher:
         instruction_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=5)
         
         steps = [
-            ("1.", "Откройте Telegram и перейдите в"),
-            ("", "Настройки - Продвинутые настройки"),
-            ("2.", "В разделе «Тип соединения» выберите:"),
-            ("", "Использовать собственный прокси"),
-            ("3.", "Заполните поля прокси:"),
-            ("", "Тип: SOCKS5"),
-            ("", "Хост: 127.0.0.1"),
-            ("", "Порт: 1080"),
+            ("1.", tr('tg_step1')),
+            ("", tr('tg_step1_desc')),
+            ("2.", tr('tg_step2')),
+            ("", tr('tg_step2_desc')),
+            ("3.", tr('tg_step3')),
+            ("", tr('tg_type')),
+            ("", tr('tg_host')),
+            ("", tr('tg_port')),
         ]
         
         current_step = 0
@@ -3397,17 +3354,20 @@ class ZapretLauncher:
         copy_frame = tk.Frame(link_frame, bg=self.colors['bg_light'], cursor="hand2")
         copy_frame.pack(side=tk.LEFT, padx=(0, 10))
         
-        link_text = "Скопировать ссылку подключения"
+        link_text = tr('tg_copy_link')
         copy_label = tk.Label(copy_frame, text=link_text, font=("Segoe UI Variable", 10),
                             fg=self.colors['accent'], bg=self.colors['bg_light'])
         copy_label.pack()
         
         def copy_link(event=None):
+            secret = getattr(self, '_tg_secret', None)
+            if not secret:
+                secret = "секрет не сгенерирован"
             self.root.clipboard_clear()
-            self.root.clipboard_append("tg://socks?server=127.0.0.1&port=1080")
+            self.root.clipboard_append(f"tg://proxy?server=127.0.0.1&port=1080&secret={secret}")
             self.root.update()
-            copy_label.config(text="Скопировано", fg=self.colors['accent_green'])
-            self.show_notification("Ссылка скопирована в буфер обмена", 1500)
+            copy_label.config(text=tr('tg_copied'), fg=self.colors['accent_green'])
+            self.show_notification(tr('notification_copied'), 1500)
         
         copy_label.bind("<Button-1>", copy_link)
         
@@ -3424,10 +3384,10 @@ class ZapretLauncher:
         bottom_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
         bottom_frame.pack(fill=tk.X, padx=30, pady=15)
         dont_show_var = tk.BooleanVar(value=False)
-        
+
         dont_show_cb = tk.Checkbutton(
             bottom_frame,
-            text="Больше не показывать",
+            text=tr('tg_dont_show'),
             variable=dont_show_var,
             bg=self.colors['bg_medium'],
             fg=self.colors['text_secondary'],
@@ -3440,36 +3400,18 @@ class ZapretLauncher:
             font=("Segoe UI Variable", 10)
         )
         dont_show_cb.pack(side=tk.LEFT)
-        
-        buttons_frame = tk.Frame(bottom_frame, bg=self.colors['bg_medium'])
-        buttons_frame.pack(side=tk.RIGHT)
-        
-        start_btn = RoundedButton(
-            buttons_frame,
-            text="Запустить",
-            command=lambda: self._start_tg_proxy_mode(dialog, dont_show_var.get()),
+
+        close_btn = RoundedButton(
+            bottom_frame,
+            text=tr('button_close'),
+            command=lambda: self._cancel_tg_proxy_mode(dialog, dont_show_var.get()),
             width=100, height=35,
-            bg=self.colors['button_bg'],
-            fg=self.colors['text_secondary'],
+            bg=self.colors['accent'],
+            fg=self.colors['text_primary'],
             font=("Segoe UI Variable", 10),
             corner_radius=8
         )
-        start_btn.pack(side=tk.LEFT, padx=5)
-        
-        cancel_btn = RoundedButton(
-            buttons_frame,
-            text="Отмена",
-            command=lambda: self._cancel_tg_proxy_mode(dialog, dont_show_var.get()),
-            width=100, height=35,
-            bg=self.colors['button_bg'],
-            fg=self.colors['text_secondary'],
-            font=("Segoe UI Variable", 10),
-            corner_radius=8,
-        )
-        cancel_btn.pack(side=tk.LEFT, padx=5)
-        
-        start_btn.config(cursor="hand2")
-        cancel_btn.config(cursor="hand2")
+        close_btn.pack(side=tk.RIGHT)
         
         dialog.transient(self.root)
         dialog.grab_set()
@@ -3493,9 +3435,12 @@ class ZapretLauncher:
             self._tg_instruction = True
             self.save_settings()
         
-        self.update_status("Готов к работе", self.colors['text_secondary'])
-        if hasattr(self, 'connect_btn') and self.connect_btn:
-            self.connect_btn.set_enabled(True)
+        if not self.is_connected:
+            self.update_status(tr('status_ready'), self.colors['text_secondary'])
+            if hasattr(self, 'connect_btn') and self.connect_btn:
+                self.connect_btn.set_enabled(True)
+        else:
+            pass
 
     def _create_tooltip(self, widget):
         def show_tooltip():
@@ -3551,7 +3496,7 @@ class ZapretLauncher:
                 
                 label = tk.Label(
                     inner, 
-                    text="Здесь настройки лаунчера", 
+                    text=tr('tooltip_settings'),
                     font=("Segoe UI Variable", 10),
                     fg=self.colors['text_primary'],
                     bg=self.colors['bg_medium'],
@@ -3618,6 +3563,25 @@ class ZapretLauncher:
                 fade_out()
         except Exception:
                     pass
+        
+    def _on_combined_start_success(self, mode_name):
+        if hasattr(self, 'mode_label') and self.mode_label:
+            self.mode_label.config(text=mode_name, fg=self.colors['accent_green'])
+        self.update_status(f"{tr('status_connected')}", 
+                        self.colors['accent_green'])
+        self.update_ui_state()
+        self.save_settings()
+        self.root.after(100, self.update_stats_display)
+        if hasattr(self, 'connect_btn') and self.connect_btn:
+            self.connect_btn.set_enabled(True)
+
+        self.update_tray_icon_state()
+
+    def _on_combined_start_failed(self, error_msg):
+        self.update_status(tr('status_error'), self.colors['accent_red'])
+        messagebox.showerror(tr('error_startup'), f"{tr('error_startup')}: {error_msg}")
+        if hasattr(self, 'connect_btn') and self.connect_btn:
+            self.connect_btn.set_enabled(True)
 
 if __name__ == "__main__":
     root = tk.Tk()
