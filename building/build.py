@@ -114,10 +114,6 @@ if __name__ == '__main__':
     elif choice == '2':
         clean_build()
         build_exe()
-    elif choice == '3':
-        build_exe()
-    elif choice == '4':
-        clean_build()
         print("Cleaning completed")
     else:
         print("Wrong choice!")
