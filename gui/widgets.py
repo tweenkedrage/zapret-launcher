@@ -1,0 +1,204 @@
+import tkinter as tk
+
+def _get_parent_bg(parent):
+    try:
+        if hasattr(parent, 'cget'):
+            return parent.cget('bg')
+        elif isinstance(parent, tk.Tk):
+            return parent.cget('bg')
+        else:
+            return '#2b2b2b'
+    except (tk.TclError, AttributeError):
+        return '#2b2b2b'
+
+class ModernSwitch(tk.Canvas):
+    def __init__(self, parent, width=50, height=24, 
+                bg_color='#25252B', 
+                active_color='#4361ee', 
+                command=None, 
+                initial=False):
+        super().__init__(parent, width=width, height=height, 
+                        highlightthickness=0, bg=_get_parent_bg(parent))
+        self.active_color = active_color
+        self.inactive_color = bg_color
+        self.state = initial
+        self.command = command
+        self.width = width
+        self.height = height
+        
+        self.bg_rect = self.create_oval(2, 2, width-2, 
+                                        height-2, 
+                                        fill=self.inactive_color, 
+                                        outline='#2D2D35', width=1)
+        self.slider = self.create_oval(4, 4, height-4, 
+                                       height-4, 
+                                       fill='#ffffff', 
+                                       outline='', tags=('slider',))
+        
+        if self.state:
+            self.coords(self.slider, width-height+4, 4, width-4, height-4)
+            self.itemconfig(self.bg_rect, fill=self.active_color)
+        
+        self.tag_bind(self.bg_rect, "<Button-1>", self.on_click)
+        self.tag_bind("slider", "<Button-1>", self.on_click)
+
+    def on_click(self, event):
+        self.state = not self.state
+        if self.state:
+            self.coords(self.slider, self.width-self.height+4, 4, self.width-4, self.height-4)
+            self.itemconfig(self.bg_rect, fill=self.active_color)
+        else:
+            self.coords(self.slider, 4, 4, self.height-4, self.height-4)
+            self.itemconfig(self.bg_rect, fill=self.inactive_color)
+        if self.command:
+            self.command(self.state)
+
+class RoundedButton(tk.Canvas):
+    def __init__(self, parent, text, command, width=200, height=40, 
+                bg='#2D2D35', fg='#FFFFFF',
+                font=("Inter", 11, "bold"), 
+                corner_radius=8, hover_color='#6c5579',
+                animation_steps=5):
+        super().__init__(parent, width=width, height=height, 
+                        highlightthickness=0, 
+                        bg=_get_parent_bg(parent), cursor="hand2")
+        self.command = command
+        self.bg = bg
+        self.fg = '#FFFFFF'
+        self.font = font
+        self.enabled = True
+        self.normal_color = bg
+        self.hover_color = hover_color
+        self.corner_radius = corner_radius
+        self._text = text
+        self.animation_steps = animation_steps
+        self._animation_id = None
+        
+        self.original_width = width
+        self.original_height = height
+        self.original_x = 0
+        self.original_y = 0
+        
+        points = []
+        points.extend([corner_radius, 0, width-corner_radius, 0])
+        points.extend([width, 0, width, corner_radius, width, height-corner_radius, width, height])
+        points.extend([width-corner_radius, height, corner_radius, height])
+        points.extend([0, height, 0, height-corner_radius, 0, corner_radius, 0, 0])
+        self.rect = self.create_polygon(points, smooth=True, fill=bg, outline='')
+        self.text_id = self.create_text(width//2, height//2, text=text, fill='#FFFFFF', font=font)
+        
+        for item in [self.rect, self.text_id]:
+            self.tag_bind(item, "<Button-1>", self.on_click)
+            self.tag_bind(item, "<Enter>", self.on_enter)
+            self.tag_bind(item, "<Leave>", self.on_leave)
+
+    def on_click(self, event):
+        if self.enabled and self.command:
+            self._animate_press(step=0)
+            self.after(120, lambda: self._animate_release(step=0))
+            self.after(150, self.command)
+
+    def _animate_press(self, step):
+        if step >= self.animation_steps:
+            return
+        
+        progress = 1 - (step / self.animation_steps) * 0.05
+        new_width = int(self.original_width * progress)
+        new_height = int(self.original_height * progress)
+        x_offset = (self.original_width - new_width) // 2
+        y_offset = (self.original_height - new_height) // 2
+        
+        self.config(width=new_width, height=new_height)
+        
+        points = []
+        points.extend([self.corner_radius - x_offset, y_offset, 
+                      new_width - self.corner_radius + x_offset, y_offset])
+        points.extend([new_width - x_offset, y_offset, 
+                      new_width - x_offset, self.corner_radius + y_offset, 
+                      new_width - x_offset, new_height - self.corner_radius + y_offset, 
+                      new_width - x_offset, new_height - y_offset])
+        points.extend([new_width - self.corner_radius + x_offset, new_height - y_offset, 
+                      self.corner_radius - x_offset, new_height - y_offset])
+        points.extend([x_offset, new_height - y_offset, 
+                      x_offset, new_height - self.corner_radius + y_offset, 
+                      x_offset, self.corner_radius + y_offset, 
+                      x_offset, y_offset])
+        
+        self.coords(self.rect, points)
+        self.coords(self.text_id, new_width//2, new_height//2)
+        
+        self._animation_id = self.after(15, lambda: self._animate_press(step + 1))
+
+    def _animate_release(self, step):
+        if step >= self.animation_steps:
+            self.config(width=self.original_width, height=self.original_height)
+            self.coords(self.text_id, self.original_width//2, self.original_height//2)
+            self._update_rect_coords()
+            return
+        
+        progress = 1 - ((self.animation_steps - step - 1) / self.animation_steps) * 0.05
+        new_width = int(self.original_width * progress)
+        new_height = int(self.original_height * progress)
+        x_offset = (self.original_width - new_width) // 2
+        y_offset = (self.original_height - new_height) // 2
+        
+        self.config(width=new_width, height=new_height)
+        
+        points = []
+        points.extend([self.corner_radius - x_offset, y_offset, 
+                      new_width - self.corner_radius + x_offset, y_offset])
+        points.extend([new_width - x_offset, y_offset, 
+                      new_width - x_offset, self.corner_radius + y_offset, 
+                      new_width - x_offset, new_height - self.corner_radius + y_offset, 
+                      new_width - x_offset, new_height - y_offset])
+        points.extend([new_width - self.corner_radius + x_offset, new_height - y_offset, 
+                      self.corner_radius - x_offset, new_height - y_offset])
+        points.extend([x_offset, new_height - y_offset, 
+                      x_offset, new_height - self.corner_radius + y_offset, 
+                      x_offset, self.corner_radius + y_offset, 
+                      x_offset, y_offset])
+        
+        self.coords(self.rect, points)
+        self.coords(self.text_id, new_width//2, new_height//2)
+        self._animation_id = self.after(15, lambda: self._animate_release(step + 1))
+
+    def _update_rect_coords(self):
+        points = []
+        points.extend([self.corner_radius, 0, self.original_width - self.corner_radius, 0])
+        points.extend([self.original_width, 0, self.original_width, self.corner_radius, 
+                      self.original_width, self.original_height - self.corner_radius, 
+                      self.original_width, self.original_height])
+        points.extend([self.original_width - self.corner_radius, self.original_height, 
+                      self.corner_radius, self.original_height])
+        points.extend([0, self.original_height, 0, self.original_height - self.corner_radius, 
+                      0, self.corner_radius, 0, 0])
+        self.coords(self.rect, points)
+
+    def on_enter(self, event):
+        if self.enabled:
+            self.itemconfig(self.rect, fill=self.hover_color)
+            self.itemconfig(self.text_id, fill='#FFFFFF')
+
+    def on_leave(self, event):
+        if self.enabled:
+            self.itemconfig(self.rect, fill=self.normal_color)
+            self.itemconfig(self.text_id, fill='#FFFFFF')
+
+    def set_text(self, text):
+        self._text = text
+        self.itemconfig(self.text_id, text=text)
+
+    def get_text(self):
+        return self._text
+
+    def set_enabled(self, enabled):
+        self.enabled = enabled
+        color = self.normal_color if enabled else '#666666'
+        self.itemconfig(self.rect, fill=color)
+        self.itemconfig(self.text_id, fill='#FFFFFF')
+
+    def update_colors(self, bg_color, fg_color, hover_color):
+        self.normal_color = bg_color
+        self.hover_color = hover_color
+        self.itemconfig(self.rect, fill=bg_color)
+        self.itemconfig(self.text_id, fill='#FFFFFF')
