@@ -1,5 +1,4 @@
 # Zapret Launcher
-`Обход блокировок РКН и ускорение работы Telegram`
 
 ### Установка:
 1. [Скачайте любой архив](https://github.com/tweenkedrage/zapret-launcher/releases/latest) (`.rar`, `.zip`) и распакуйте в любое место 2 файла: `Zapret Launcher.exe` и `zapret_resources.zip` (Главное чтобы они были в одном месте и не в отдельных папках);
