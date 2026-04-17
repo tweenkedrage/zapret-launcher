@@ -76,7 +76,7 @@ class RawWebSocket:
         reader, writer = await asyncio.wait_for(
             asyncio.open_connection(host, 443, ssl=_ssl_ctx,
                                     server_hostname=domain),
-            timeout=min(timeout, 10))
+            timeout=min(timeout, 30))
         
         set_sock_opts(writer.transport, proxy_config.buffer_size)
 
@@ -152,6 +152,7 @@ class RawWebSocket:
 
     async def recv(self) -> Optional[bytes]:
         while not self._closed:
+            self.reader._limit = 100 * 1024 * 1024
             opcode, payload = await self._read_frame()
 
             if opcode == self.OP_CLOSE:
