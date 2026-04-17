@@ -82,6 +82,8 @@ tray.py                  # Системный трей
 theme.py                 # Темная/светлая тема
 widgets.py               # Виджеты
 
+resources/               # Иконки и ресурсы
+
 tg_proxy/
 __init__.py              # Инициализация пакета
 balancer.py              # Балансировщик CF доменов
@@ -100,8 +102,6 @@ languages.py             # Языки интерфейса
 network_set.py           # Оптимизация сети, DNS
 updater.py               # Проверка обновлений
 list_editor.py           # Редактор списков
-
-resources/               # Иконки и ресурсы
 ```
 
 ## Требования:
