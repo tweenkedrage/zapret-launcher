@@ -11,6 +11,7 @@ import logging
 import socket as _socket
 from pathlib import Path
 from collections import deque
+from .balancer import balancer
 from typing import Dict, List, Optional, Set, Tuple
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
@@ -529,11 +530,8 @@ async def _run(stop_event: Optional[asyncio.Event] = None):
     if proxy_config.fallback_cfproxy:
         user = proxy_config.cfproxy_user_domain
         if user:
-            proxy_config.cfproxy_domains = [user]
-            proxy_config.active_cfproxy_domain = user
+            balancer.update_domains_list([user])
         else:
-            proxy_config.cfproxy_domains = list(CFPROXY_DEFAULT_DOMAINS)
-            proxy_config.active_cfproxy_domain = random.choice(CFPROXY_DEFAULT_DOMAINS)
             start_cfproxy_domain_refresh()
 
     secret_bytes = bytes.fromhex(proxy_config.secret)
@@ -597,12 +595,7 @@ async def _run(stop_event: Optional[asyncio.Event] = None):
 
     try:
         if stop_event:
-            try:
-                await asyncio.wait_for(stop_event.wait(), timeout=30)
-            except asyncio.TimeoutError:
-                log.info("Stop event timeout, forcing shutdown...")
-            
-            log.info("Stop event received, shutting down...")
+            await stop_event.wait()
             
             server.close()
             await server.wait_closed()
