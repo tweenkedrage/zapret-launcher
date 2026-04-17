@@ -860,7 +860,7 @@ class Pages:
                 self.app.root.update()
                 self.app.show_notification(tr('notification_copied'))
             else:
-                messagebox.showwarning("Нет секрета", "Сначала запустите Telegram Proxy режим")
+                messagebox.showwarning(tr('error_secret_not_found'), tr('error_telegram_proxy_start'))
 
         copy_btn = RoundedButton(
             tg_inner,
@@ -919,11 +919,6 @@ class Pages:
             text=f"{tr('settings_current_interval')} {self._get_current_interval_text()}",
             font=("Inter", 10), fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
         self.current_interval_label.pack(anchor='w', pady=2)
-        
-        current_lang_label = tk.Label(info_inner,
-            text=f"{tr('settings_current_language')} {self.app.languages.get_language_name()}",
-            font=("Inter", 10), fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
-        current_lang_label.pack(anchor='w', pady=2)
         return self.settings_page
     
     def update_secret_display(self):
