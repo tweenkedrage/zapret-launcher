@@ -42,8 +42,6 @@ from ctypes import windll, byref, c_int
 from typing import Optional, List, Tuple
 import webbrowser
 
-
-
 BASE_DIR = Path(__file__).parent
 
 APPDATA_DIR = Path(os.getenv('LOCALAPPDATA')) / 'Zapret Launcher'
@@ -487,12 +485,9 @@ class ZapretLauncher:
         self.tgws_var = tk.BooleanVar(value=False)
 
         self._tg_instruction = False
-        self._show_tooltip = True
 
         self._notification_queue = []
         self._notification_active = False
-        self.tooltip_widget = None
-        self.tooltip_after_id = None
 
         self.update_intervals = [0, 5, 10, 30, 60, None]
         self.update_interval_index = 0
@@ -761,8 +756,6 @@ class ZapretLauncher:
         logo_frame = tk.Frame(left_panel, bg=self.colors['bg_medium'], height=140)
         logo_frame.pack(fill=tk.X, pady=(40, 20))
         logo_frame.pack_propagate(False)
-        self.tooltip_widget = None
-        self.tooltip_after_id = None
         self.left_panel = left_panel
         
         try:
@@ -787,10 +780,8 @@ class ZapretLauncher:
                 icon_label.bind("<Button-1>", lambda e: self.show_settings_page())
                 icon_label.bind("<Enter>", lambda e: icon_label.config(cursor="hand2"))
                 icon_label.bind("<Leave>", lambda e: icon_label.config(cursor=""))
-                
-                self._create_tooltip(icon_label)
             else:
-                raise Exception("Иконка не найдена")
+                raise Exception(tr('error_icon_not_found'))
                 
         except Exception as e:
             logo_btn = RoundedButton(
@@ -806,7 +797,6 @@ class ZapretLauncher:
             logo_btn.pack(expand=True, pady=10)
             logo_btn.bind("<Enter>", lambda e: logo_btn.config(cursor="hand2"))
             logo_btn.bind("<Leave>", lambda e: logo_btn.config(cursor=""))
-            self._create_tooltip(logo_btn)
 
         nav_buttons = [
             (tr('main_title'), self.show_main_page),
@@ -1132,23 +1122,18 @@ class ZapretLauncher:
         
         if not hasattr(self, '_tg_secret') or not self._tg_secret:
             result = messagebox.askyesno(
-                "Секрет не найден",
-                "Для работы Telegram Proxy требуется секретный ключ.\n\n"
-                "Сгенерировать новый секрет и продолжить?"
+                tr('error_secret_not_found'),
+                tr('tg_secret_required_message')
             )
             if result:
                 self._tg_secret = os.urandom(16).hex()
                 self.save_settings()
-                self.show_notification(f"{tr('notification_copied')}", 2000)
+                self.show_notification(tr('notification_copied'), 2000)
                 if hasattr(self, 'pages') and hasattr(self.pages, 'settings_page'):
                     self.pages.update_secret_display()
             else:
                 self.update_status(tr('status_ready'), self.colors['text_secondary'])
                 return
-        
-        if not self._tg_instruction:
-            self.show_tg_proxy_instruction()
-            return
         
         self._do_start_tg_proxy()
 
@@ -1166,13 +1151,13 @@ class ZapretLauncher:
         self.root.clipboard_append(link)
         self.root.update()
         
-        self.show_notification("Скопирован в буфер обмена", 3000)
+        self.show_notification(tr('notification_copied'), 3000)
         messagebox.showinfo(
-            "Секрет обновлен",
-            f"Новый секрет: {self._tg_secret}\n\n"
-            f"Ссылка скопирована в буфер обмена.\n"
-            f"Вставьте её в Telegram для подключения.\n\n"
-            f"Прокси перезапущен с новым секретом."
+            tr('tg_secret_updated'),
+            f"{tr('tg_secret_new')} {self._tg_secret}\n\n"
+            f"{tr('notification_copied')}\n"
+            f"{tr('tg_paste_instruction')}\n\n"
+            f"{tr('tg_proxy_restarted')}"
         )
         
     def _do_start_tg_proxy(self):
@@ -1402,12 +1387,6 @@ class ZapretLauncher:
             self.stats_speed_up_label.config(text=f"⬆ {stats['speed_up_str']}")
         if hasattr(self, 'stats_speed_down_label'):
             self.stats_speed_down_label.config(text=f"⬇ {stats['speed_down_str']}")
-
-        if hasattr(self, 'tray_icon') and self.tray_icon and hasattr(self.tray_icon, 'icon') and self.tray_icon.icon:
-            try:
-                self.tray_icon.icon.title = self.tray_icon.get_tooltip_text()
-            except:
-                pass
 
     def _update_rtt(self):
         try:
@@ -2516,8 +2495,7 @@ class ZapretLauncher:
                             self.stop_stats_monitoring()
 
                     self._tg_instruction = data.get('tg_instruction', False)
-                    self._show_tooltip = data.get('show_tooltip', True)
-                    self.current_theme = data.get('theme', 'Dark')
+                    #self.current_theme = data.get('theme', 'Dark')
                     self._tg_secret = data.get('tg_secret', None)
         except:
             pass
@@ -2529,9 +2507,8 @@ class ZapretLauncher:
                 'autostart_enabled': self.check_autostart_status(),
                 'update_interval': self.update_interval_index,
                 'tg_instruction': getattr(self, '_tg_instruction', False),
-                'show_tooltip': getattr(self, '_show_tooltip', True),
                 'language': self.languages.get_current_language(),
-                'theme': self.current_theme,
+                #'theme': self.current_theme,
                 'tg_secret': getattr(self, '_tg_secret', None),
             }
             with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
@@ -3274,7 +3251,7 @@ class ZapretLauncher:
 
         secret = getattr(self, '_tg_secret', None)
         if not secret:
-            secret = "не сгенерирован"
+            secret = tr('error_secret_not_found')
         
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 250
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 310
@@ -3362,7 +3339,7 @@ class ZapretLauncher:
         def copy_link(event=None):
             secret = getattr(self, '_tg_secret', None)
             if not secret:
-                secret = "секрет не сгенерирован"
+                secret = tr('error_secret_not_found')
             self.root.clipboard_clear()
             self.root.clipboard_append(f"tg://proxy?server=127.0.0.1&port=1080&secret={secret}")
             self.root.update()
@@ -3441,128 +3418,6 @@ class ZapretLauncher:
                 self.connect_btn.set_enabled(True)
         else:
             pass
-
-    def _create_tooltip(self, widget):
-        def show_tooltip():
-            try:
-                if not self._show_tooltip:
-                    return
-
-                if not self.root.winfo_viewable():
-                    return
-                
-                if self.tooltip_widget and self.tooltip_widget.winfo_exists():
-                    return
-                
-                self.tooltip_widget = tk.Toplevel(self.root)
-                self.tooltip_widget.overrideredirect(True)
-                self.tooltip_widget.configure(bg=self.colors['accent'])
-                self.tooltip_widget.transient(self.root)
-                self.tooltip_widget._is_alive = True
-                
-                def on_iconify():
-                    if self.tooltip_widget and self.tooltip_widget.winfo_exists() and self.tooltip_widget._is_alive:
-                        try:
-                            self.tooltip_widget.withdraw()
-                        except:
-                            pass
-                
-                def on_deiconify():
-                    if self.tooltip_widget and self.tooltip_widget.winfo_exists() and self.tooltip_widget._is_alive and self.root.winfo_viewable():
-                        try:
-                            self.tooltip_widget.deiconify()
-                        except:
-                            pass
-                
-                self.root.bind('<Map>', lambda e: on_deiconify(), add=True)
-                self.root.bind('<Unmap>', lambda e: on_iconify(), add=True)
-                
-                x = widget.winfo_rootx() + widget.winfo_width() // 2 - 100
-                y = widget.winfo_rooty() - 20
-                self.tooltip_widget.geometry(f"200x35+{x}+{y}")
-                
-                try:
-                    self.tooltip_widget.attributes('-alpha', 0.95)
-                except:
-                    pass
-                
-                self.tooltip_widget.lift()
-                
-                frame = tk.Frame(self.tooltip_widget, bg=self.colors['accent'], padx=2, pady=2)
-                frame.pack(fill=tk.BOTH, expand=True)
-                
-                inner = tk.Frame(frame, bg=self.colors['bg_medium'])
-                inner.pack(fill=tk.BOTH, expand=True)
-                
-                label = tk.Label(
-                    inner, 
-                    text=tr('tooltip_settings'),
-                    font=("Segoe UI Variable", 10),
-                    fg=self.colors['text_primary'],
-                    bg=self.colors['bg_medium'],
-                    padx=10, pady=8
-                )
-                label.pack()
-                
-                self.tooltip_widget.attributes('-alpha', 0.0)
-                
-                def fade_in(alpha=0.0):
-                    if not self.root.winfo_viewable():
-                        self._hide_tooltip()
-                        return
-                    if alpha < 0.95:
-                        alpha += 0.1
-                        try:
-                            if self.tooltip_widget and self.tooltip_widget.winfo_exists() and self.tooltip_widget._is_alive:
-                                self.tooltip_widget.attributes('-alpha', alpha)
-                                self.tooltip_widget.after(30, lambda: fade_in(alpha))
-                        except:
-                            pass
-                
-                fade_in()
-                self.tooltip_after_id = self.root.after(60000, self._hide_tooltip)
-            except Exception:
-                pass
-        
-        def on_enter_settings(*args):
-            self._show_tooltip = False
-            self.save_settings()
-            self._hide_tooltip()
-            self.show_settings_page()
-        
-        if hasattr(widget, 'bind'):
-            widget.bind("<Button-1>", on_enter_settings)
-        self.root.after(3000, show_tooltip)
-
-    def _hide_tooltip(self):
-        try:
-            if self.tooltip_after_id:
-                self.root.after_cancel(self.tooltip_after_id)
-                self.tooltip_after_id = None
-            
-            if self.tooltip_widget and self.tooltip_widget.winfo_exists():
-                self.tooltip_widget._is_alive = False
-                
-                def fade_out(alpha=0.95):
-                    if alpha > 0.0:
-                        alpha -= 0.1
-                        try:
-                            if self.tooltip_widget and self.tooltip_widget.winfo_exists():
-                                self.tooltip_widget.attributes('-alpha', alpha)
-                                self.tooltip_widget.after(30, lambda: fade_out(alpha))
-                        except:
-                            pass
-                    else:
-                        try:
-                            if self.tooltip_widget and self.tooltip_widget.winfo_exists():
-                                self.tooltip_widget.destroy()
-                        except:
-                            pass
-                        self.tooltip_widget = None
-                
-                fade_out()
-        except Exception:
-                    pass
         
     def _on_combined_start_success(self, mode_name):
         if hasattr(self, 'mode_label') and self.mode_label:
