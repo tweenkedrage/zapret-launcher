@@ -235,11 +235,14 @@ class TGProxyServer:
         if self._running:
             self.stop()
             time.sleep(1)
-        
-        self._stop_event = asyncio.Event()
+
+        self._stop_event = None
         
         def run_tg_proxy():
             try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                self._stop_event = asyncio.Event()
                 run_proxy(self._host, self._port, self._secret, self._stop_event)
             except Exception as e:
                 print(f"TGProxy error: {e}")
@@ -262,43 +265,29 @@ class TGProxyServer:
                 pass
             self._stop_event = None
         
-        time.sleep(0.5)
-        
-        current_pid = os.getpid()
-        
         try:
-            result = subprocess.run(
-                'netstat -ano | findstr :1080',
-                shell=True,
-                capture_output=True,
-                text=True,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-                timeout=3
-            )
-            
-            pids = set()
-            for line in result.stdout.splitlines():
-                parts = line.split()
-                if len(parts) >= 5:
-                    pid = parts[-1]
-                    if pid.isdigit():
-                        pid_int = int(pid)
-                        if pid_int != current_pid and pid_int != 0:
-                            pids.add(pid_int)
-            
-            for pid in pids:
-                subprocess.run(
-                    f'taskkill /F /PID {pid}',
-                    shell=True,
-                    capture_output=True,
-                    creationflags=subprocess.CREATE_NO_WINDOW,
-                    timeout=2
-                )
-                
-        except Exception as e:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(1)
+            sock.connect((self._host, self._port))
+            sock.close()
+        except:
             pass
         
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=3)
+        
+        if self._thread and self._thread.is_alive():
+            try:
+                ctypes.pythonapi.PyThreadState_SetAsyncExc(
+                    ctypes.c_long(self._thread.ident), 
+                    ctypes.py_object(SystemExit)
+                )
+            except:
+                pass
+            self._thread.join(timeout=1)
+        
         self._thread = None
+        print("TGProxy stopped")
 
     @property
     def is_running(self):
@@ -1193,7 +1182,7 @@ class ZapretLauncher:
             self.start_stats_monitoring()
             
             self.mode_label.config(text=tr('mode_tgproxy'), fg=self.colors['accent_green'])
-            self.update_status(tr('status_connected_tg'), self.colors['accent_green'])
+            self.update_status(tr('status_connected'), self.colors['accent_green'])
             self.update_ui_state()
             self.save_settings()
             self.root.after(100, self.update_stats_display)
@@ -1387,6 +1376,12 @@ class ZapretLauncher:
             self.stats_speed_up_label.config(text=f"⬆ {stats['speed_up_str']}")
         if hasattr(self, 'stats_speed_down_label'):
             self.stats_speed_down_label.config(text=f"⬇ {stats['speed_down_str']}")
+
+        if hasattr(self, 'tray_icon') and self.tray_icon:
+            try:
+                self.tray_icon.update_tooltip()
+            except:
+                pass
 
     def _update_rtt(self):
         try:
@@ -2336,7 +2331,7 @@ class ZapretLauncher:
                         self.tg_proxy.stop()
                     except Exception as e:
                         print(f"TGProxy stop error: {e}")
-                    time.sleep(0.5)
+                    time.sleep(1.5)
                 
                 try:
                     self.zapret.stop_current_strategy()
@@ -3437,6 +3432,9 @@ class ZapretLauncher:
         messagebox.showerror(tr('error_startup'), f"{tr('error_startup')}: {error_msg}")
         if hasattr(self, 'connect_btn') and self.connect_btn:
             self.connect_btn.set_enabled(True)
+
+        if hasattr(self, 'tg_proxy') and self.tg_proxy:
+            self.tg_proxy.stop()
 
 if __name__ == "__main__":
     root = tk.Tk()
