@@ -76,7 +76,6 @@ building/
 build.py                 # Сборка в .exe
 build_resources.py       # Создает zapret_resources.zip
 
-
 gui/
 pages.py                 # Страницы
 tray.py                  # Системный трей
