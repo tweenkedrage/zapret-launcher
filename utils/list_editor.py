@@ -35,6 +35,7 @@ class ListEditor:
         self.text_area.bind('<Control-X>', self.cut_text)
         self.text_area.bind('<Control-a>', self.select_all)
         self.text_area.bind('<Control-A>', self.select_all)
+        
         self.load_content()
         
         button_frame = tk.Frame(main_frame)
@@ -80,7 +81,7 @@ class ListEditor:
                     content = f.read()
                 self.text_area.insert('1.0', content)
             else:
-                self.text_area.insert('1.0', "# Файл не найден. Создайте содержимое и сохраните.")
+                self.text_area.insert('1.0', "# File not found. Create content and save")
         except Exception as e:
             messagebox.showerror(tr('editor_error_load'), f"{tr('editor_error_load')}: {str(e)}")
     
