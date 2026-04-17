@@ -7,6 +7,7 @@ from .utils import *
 from .stats import stats
 from .config import proxy_config
 from .raw_websocket import RawWebSocket
+from .balancer import balancer
 
 log = logging.getLogger('tg-mtproto-proxy')
 _st_I_le = struct.Struct('<I')
@@ -148,17 +149,13 @@ async def _cfproxy_fallback(reader, writer, relay_init, label,
                             dc=None, is_media=False,
                             ctx: CryptoCtx = None, splitter=None):
     media_tag = ' media' if is_media else ''
-
-    active = proxy_config.active_cfproxy_domain
-    others = [d for d in proxy_config.cfproxy_domains if d != active]
-
     ws = None
     chosen_domain = None
 
     log.info("[%s] DC%d%s -> trying CF proxy",
             label, dc, media_tag)
 
-    for base_domain in ([active] + others):
+    for base_domain in balancer.get_domains_for_dc(dc):
         domain = f'kws{dc}.{base_domain}'
         try:
             ws = await RawWebSocket.connect(domain, domain, timeout=10.0)
@@ -171,9 +168,8 @@ async def _cfproxy_fallback(reader, writer, relay_init, label,
     if ws is None:
         return False
 
-    if chosen_domain and chosen_domain != proxy_config.active_cfproxy_domain:
-        log.info("[%s] Switching active CF domain", label)
-        proxy_config.active_cfproxy_domain = chosen_domain
+    if chosen_domain and balancer.update_domain_for_dc(dc, chosen_domain):
+        log.info("[%s] Switched active CF domain", label)
 
     stats.connections_cfproxy += 1
     await ws.send(relay_init)
@@ -211,11 +207,22 @@ async def bridge_ws_reencrypt(reader, writer, ws: RawWebSocket, label,
     down_packets = 0
     start_time = asyncio.get_running_loop().time()
 
+    async def ping_loop():
+        try:
+            while True:
+                await asyncio.sleep(30)
+                try:
+                    await ws.send(b'')
+                except:
+                    break
+        except asyncio.CancelledError:
+            pass
+
     async def tcp_to_ws():
         nonlocal up_bytes, up_packets
         try:
             while True:
-                chunk = await reader.read(65536)
+                chunk = await reader.read(1024 * 1024)
                 if not chunk:
                     if splitter:
                         tail = splitter.flush()
@@ -264,7 +271,8 @@ async def bridge_ws_reencrypt(reader, writer, ws: RawWebSocket, label,
             log.debug("[%s] ws->tcp ended: %s", label, e)
 
     tasks = [asyncio.create_task(tcp_to_ws()),
-             asyncio.create_task(ws_to_tcp())]
+            asyncio.create_task(ws_to_tcp()),
+            asyncio.create_task(ping_loop())]
     try:
         await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
     finally:
