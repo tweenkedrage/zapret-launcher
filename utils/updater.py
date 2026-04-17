@@ -163,7 +163,7 @@ def update_zapret_core(parent, version):
                             pass
                         continue
                     else:
-                        raise Exception(f"Не удалось удалить папку после {max_attempts} попыток. Попробуйте перезагрузить компьютер.")
+                        raise Exception(f"Failed to delete folder after {max_attempts} attempts. Try restarting your computer")
         
         ZAPRET_CORE_DIR.mkdir(parents=True, exist_ok=True)
         
