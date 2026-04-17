@@ -78,12 +78,18 @@ tray.py                  # Системный трей
 theme.py                 # Темная/светлая тема
 widgets.py               # Виджеты
 
-tg_proxy/                # Сервер
-tg_ws_proxy.py           # Логика прокси
-bridge.py                # Мост TCP WebSocket
+tg_proxy/
+__init__.py              # Инициализация пакета
 balancer.py              # Балансировщик CF доменов
-raw_websocket.py         # WebSocket клиент
+bridge.py                # Мост TCP WebSocket
+config.py                # Конфигурация (порт, секрет, DC редиректы, CF proxy, Fake TLS)
 fake_tls.py              # Маскировка под HTTPS
+raw_websocket.py         # WebSocket клиент
+run.py                   # Запуск прокси
+stats.py                 # Сбор статистики прокси (подключения, трафик, ошибки, пул)
+tg_ws_proxy.py           # Логика прокси
+utils.py                 # Вспомогательные функции
+windows.py               # Windows-специфичные утилиты
 
 utils/
 languages.py             # Языки интерфейса
