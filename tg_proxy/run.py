@@ -17,7 +17,6 @@ else:
 
 from tg_proxy.tg_ws_proxy import _run, proxy_config
 from tg_proxy.utils import get_link_host
-from tg_proxy.config import parse_dc_ip_list
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 log = logging.getLogger('tg-proxy-runner')
