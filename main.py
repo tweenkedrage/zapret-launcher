@@ -27,20 +27,18 @@ import os
 import json
 import time
 import threading
+import webbrowser
 import asyncio
+import zipfile
 import psutil
-import traceback
 import socket
 import winreg
-import zipfile
 from pathlib import Path
 import sys
 import re
-import urllib.request
 import ctypes
 from ctypes import windll, byref, c_int
 from typing import Optional, List, Tuple
-import webbrowser
 
 BASE_DIR = Path(__file__).parent
 
@@ -53,7 +51,7 @@ ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
 ZAPRET_API_URL = "https://api.github.com/repos/flowseal/zapret-discord-youtube/releases/latest"
-CURRENT_VERSION = "3.1"
+CURRENT_VERSION = "3.1b"
 
 def is_admin():
     try:
@@ -256,13 +254,16 @@ class TGProxyServer:
         return False
     
     def stop(self):
+        if not self._running and not self._thread:
+            return
+        
         self._running = False
         
         if self._stop_event:
             try:
                 self._stop_event.set()
-            except:
-                pass
+            except Exception as e:
+                print(f"Error setting stop event: {e}")
             self._stop_event = None
         
         try:
@@ -270,24 +271,23 @@ class TGProxyServer:
             sock.settimeout(1)
             sock.connect((self._host, self._port))
             sock.close()
-        except:
+        except Exception:
             pass
         
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=3)
-        
-        if self._thread and self._thread.is_alive():
-            try:
-                ctypes.pythonapi.PyThreadState_SetAsyncExc(
-                    ctypes.c_long(self._thread.ident), 
-                    ctypes.py_object(SystemExit)
-                )
-            except:
-                pass
-            self._thread.join(timeout=1)
+            if self._thread.is_alive():
+                try:
+                    ctypes.pythonapi.PyThreadState_SetAsyncExc(
+                        ctypes.c_long(self._thread.ident), 
+                        ctypes.py_object(SystemExit)
+                    )
+                except:
+                    pass
+                self._thread.join(timeout=1)
         
         self._thread = None
-        print("TGProxy stopped")
+        print("Telegram Proxy stopped")
 
     @property
     def is_running(self):
@@ -474,6 +474,7 @@ class ZapretLauncher:
         self.tgws_var = tk.BooleanVar(value=False)
 
         self._tg_instruction = False
+        self._tg_secret = None
 
         self._notification_queue = []
         self._notification_active = False
@@ -569,6 +570,9 @@ class ZapretLauncher:
         self.is_connected = False
         self.current_strategy = None
         self.current_page = "main"
+
+        self.zapret = ZapretCore(self)
+        self.tg_proxy = TGProxyServer()
         
         self.ensure_appdata_dir()
         self.languages = get_languages()
@@ -576,8 +580,10 @@ class ZapretLauncher:
         self.load_settings()
         self.apply_theme()
 
-        self.zapret = ZapretCore(self)
-        self.tg_proxy = TGProxyServer()
+        if not self._tg_secret:
+            self._tg_secret = os.urandom(16).hex()
+            self.save_settings()
+
         self.tg_proxy.set_secret(getattr(self, '_tg_secret', None))
         
         self.setup_ui()
@@ -699,7 +705,7 @@ class ZapretLauncher:
             self.pages.colors = self.colors
             
             for page_name in ['main_page', 'service_page', 'lists_page', 'diagnostic_page', 
-                            'traffic_page', 'settings_page', 'shutsites_page']:
+                            'traffic_page', 'settings_page']:
                 if hasattr(self.pages, page_name):
                     page = getattr(self.pages, page_name)
                     if page:
@@ -792,7 +798,7 @@ class ZapretLauncher:
             (tr('service_title'), self.show_service_page),
             (tr('lists_title'), self.show_lists_page),
             (tr('diagnostic_title'), self.show_diagnostic_page),
-            (tr('shutdown_title'), self.show_shutdown_sites_page),
+            (tr('additionally_title'), self.show_additionally_page),
             (tr('traffic_title'), self.show_traffic_page),
         ]
         
@@ -1102,6 +1108,7 @@ class ZapretLauncher:
         self.update_ui_state()
         self.save_settings()
         self.root.after(100, self.update_stats_display)
+        self.root.after(500, self.update_tray_icon_state)
         if hasattr(self, 'connect_btn') and self.connect_btn:
             self.connect_btn.set_enabled(True)
 
@@ -1187,10 +1194,11 @@ class ZapretLauncher:
             self.save_settings()
             self.root.after(100, self.update_stats_display)
 
-            self.root.after(500, self.show_tg_proxy_instruction)
+            if not self._tg_instruction:
+                self.root.after(500, self.show_tg_proxy_instruction)
         
         self.connect_btn.set_enabled(True)
-        self.update_tray_icon_state()
+        self.root.after(500, self.update_tray_icon_state)
 
     def _on_tg_proxy_failed_direct(self, error_msg):
         self.update_status(tr('status_error'), self.colors['accent_red'])
@@ -1343,7 +1351,7 @@ class ZapretLauncher:
                 self.update_status(f"{tr('status_connected')}", self.colors['accent_green'])
                 self.update_ui_state()
                 self.save_settings()
-                self.root.after(100, self.update_stats_display)
+                self.root.after(500, self.update_tray_icon_state)
                 if hasattr(self, 'connect_btn') and self.connect_btn:
                     self.connect_btn.set_enabled(True)
         
@@ -1487,8 +1495,12 @@ class ZapretLauncher:
             notification = tk.Toplevel(self.root)
             notification.overrideredirect(True)
             notification.configure(bg=self.colors['bg_medium'])
-            notification.transient(self.root)
             notification._is_alive = True
+
+            try:
+                notification.attributes('-topmost', True)
+            except:
+                pass
             
             def on_iconify():
                 if notification and notification.winfo_exists() and notification._is_alive:
@@ -1754,13 +1766,13 @@ class ZapretLauncher:
             if path.exists():
                 size = path.stat().st_size
                 if size > 0:
-                    self.log_to_diagnostic(f"  {name} - {size} bytes")
+                    self.log_to_diagnostic(f"  {name} - {size} {tr('diagnostic_bytes')}")
                 else:
-                    self.log_to_diagnostic(f"  {name} - empty file (0 bytes)")
-                    errors.append(f"{name} is empty")
+                    self.log_to_diagnostic(f"  {name} - empty file (0 {tr('diagnostic_bytes')})")
+                    errors.append(f"{name} {tr('is_empty')}")
             else:
-                self.log_to_diagnostic(f"  {name} - missing")
-                errors.append(f"{name} missing")
+                self.log_to_diagnostic(f"  {name} - {tr('not_found')}")
+                errors.append(f"{name} {tr('not_found')}")
         
         if ZAPRET_CORE_DIR.exists():
             zapret_files = [
@@ -1779,20 +1791,20 @@ class ZapretLauncher:
                 
                 if file_path.exists():
                     size = file_path.stat().st_size
-                    self.log_to_diagnostic(f"  {file} - {size} bytes")
+                    self.log_to_diagnostic(f"  {file} - {size} {tr('diagnostic_bytes')}")
                 else:
-                    self.log_to_diagnostic(f"  {file} - missing")
-                    errors.append(f"{file} missing")
+                    self.log_to_diagnostic(f"  {file} - {tr('not_found')}")
+                    errors.append(f"{file} {tr('not_found')}")
             
             strategies = list(ZAPRET_CORE_DIR.glob("general*.bat"))
-            self.log_to_diagnostic(f"  Strategies: {len(strategies)} files")
+            self.log_to_diagnostic(f"  {tr('strategies_count')}: {len(strategies)} {tr('files')}")
         else:
-            self.log_to_diagnostic(f"  zapret_core folder missing")
-            errors.append("zapret_core missing")
+            self.log_to_diagnostic(f"  {tr('diagnostic_zapret_missing')}")
+            errors.append(tr('diagnostic_zapret_missing'))
         
         self.log_to_diagnostic("")
         if errors:
-            self.log_to_diagnostic(f"Problems found: {len(errors)}")
+            self.log_to_diagnostic(f"{tr('diagnostic_problems_found')} {len(errors)}")
             for err in errors:
                 self.log_to_diagnostic(f"  - {err}")
         else:
@@ -2008,13 +2020,6 @@ class ZapretLauncher:
         self.log_to_diagnostic("="*50)
         return best_strategy
 
-    def check_zapret_status(self):
-        self.log_to_diagnostic(tr('diagnostic_checking_zapret'))
-        if self.zapret.is_winws_running():
-            self.log_to_diagnostic(f"{tr('diagnostic_zapret_running')} ({tr('diagnostic_strategy')}: {self.current_strategy or 'unknown'})")
-        else:
-            self.log_to_diagnostic(tr('diagnostic_zapret_not_running'))
-
     def check_zapret_logs(self):
         self.log_to_diagnostic(tr('diagnostic_searching_winws'))
         found = False
@@ -2029,33 +2034,6 @@ class ZapretLauncher:
                 pass
         if not found:
             self.log_to_diagnostic(tr('diagnostic_winws_not_found'))
-
-    def restart_zapret(self):
-        self.log_to_diagnostic(tr('diagnostic_restarting_zapret'))
-        if self.is_connected:
-            self.disconnect()
-            time.sleep(2)
-            self.connect()
-            self.log_to_diagnostic(tr('diagnostic_zapret_restarted'))
-        else:
-            self.log_to_diagnostic(tr('diagnostic_zapret_not_started'))
-
-    def check_tgproxy_status(self):
-        self.log_to_diagnostic(tr('diagnostic_checking_tgproxy'))
-        if hasattr(self, 'tg_proxy') and self.tg_proxy._running:
-            self.log_to_diagnostic(tr('diagnostic_tgproxy_running'))
-        else:
-            self.log_to_diagnostic(tr('diagnostic_tgproxy_not_running'))
-
-    def restart_tgproxy(self):
-        self.log_to_diagnostic(tr('diagnostic_restarting_tgproxy'))
-        if self.tg_proxy._running:
-            self.tg_proxy.stop()
-            time.sleep(1)
-            self.tg_proxy.start()
-            self.log_to_diagnostic(tr('diagnostic_tgproxy_restarted'))
-        else:
-            self.log_to_diagnostic(tr('diagnostic_tgproxy_not_started'))
 
     def open_appdata_folder(self):
         self.log_to_diagnostic(f"{tr('diagnostic_opening_folder')}: AppData/Local/Zapret Launcher")
@@ -2112,33 +2090,6 @@ class ZapretLauncher:
             self.diagnostic_text.delete(1.0, tk.END)
         except Exception as e:
             self.log_to_diagnostic(f"{tr('error_occurred')}: {str(e)}")
-
-    def run_full_diagnostic(self):
-        self.diagnostic_text.delete(1.0, tk.END)
-        self.log_to_diagnostic("="*50)
-        self.log_to_diagnostic(tr('diagnostic_full_diagnostic'))
-        self.log_to_diagnostic("="*50)
-        self.log_to_diagnostic(f"{tr('diagnostic_launcher_version')}: {CURRENT_VERSION}")
-        self.log_to_diagnostic("")
-        
-        self.log_to_diagnostic(tr('diagnostic_current_dns'))
-        dns_info = self.get_current_dns_info()
-        for line in dns_info:
-            self.log_to_diagnostic(line)
-        self.log_to_diagnostic("")
-        
-        self.check_zapret_status()
-        self.check_zapret_logs()
-        self.log_to_diagnostic("")
-        
-        self.log_to_diagnostic("")
-        
-        self.check_tgproxy_status()
-        self.log_to_diagnostic("")
-        
-        self.log_to_diagnostic("="*50)
-        self.log_to_diagnostic(tr('diagnostic_complete'))
-        self.log_to_diagnostic("="*50)
 
     def save_diagnostic_report(self):
         try:
@@ -2265,8 +2216,7 @@ class ZapretLauncher:
             self.disconnect()
         else:
             self.show_mode_selector()
-        if hasattr(self, 'tray_icon'):
-            self.tray_icon.update_menu()
+        self.root.after(500, self.update_tray_icon_state)
 
     def connect(self):
         strategy = self.strategy_var.get()
@@ -2307,6 +2257,7 @@ class ZapretLauncher:
         self.root.after(100, self.update_stats_display)
         if hasattr(self, 'connect_btn') and self.connect_btn:
             self.connect_btn.set_enabled(True)
+        self.root.after(500, self.update_tray_icon_state)
 
     def _on_connect_failed(self, msg):
         self.update_status(tr('status_error'), self.colors['accent_red'])
@@ -2417,7 +2368,7 @@ class ZapretLauncher:
             self.traffic_speed_direct_history = {}
             self.hostname_cache = {}
             self.hostname_cache_time = {}
-            self.update_tray_icon_state()
+            self.root.after(500, self.update_tray_icon_state)
         except Exception as e:
             print(f"Error in finish_disconnect: {e}")
 
@@ -2488,12 +2439,18 @@ class ZapretLauncher:
                         
                         if self.update_interval is None:
                             self.stop_stats_monitoring()
-
+    
                     self._tg_instruction = data.get('tg_instruction', False)
                     #self.current_theme = data.get('theme', 'Dark')
                     self._tg_secret = data.get('tg_secret', None)
-        except:
-            pass
+
+                    if not self._tg_secret:
+                        self._tg_secret = os.urandom(16).hex()
+                        self.save_settings()
+                        
+        except Exception as e:
+            print(f"Error loading settings: {e}")
+            self._tg_secret = os.urandom(16).hex()
 
     def save_settings(self):
         try:
@@ -2523,15 +2480,6 @@ class ZapretLauncher:
     def show_diagnostic_page(self):
         self.pages.show_page_with_animation("diagnostic")
 
-    def show_shutdown_sites_page(self):
-        self.pages.show_page_with_animation("shutsites")
-        
-        if not self._shutdown_first_update_done:
-            self.refresh_all_shutdown_status(manual=False)
-            self._shutdown_first_update_done = True
-        
-        self._start_shutdown_monitoring()
-
     def show_settings_page(self):
         self.pages.show_page_with_animation("settings")
 
@@ -2547,301 +2495,352 @@ class ZapretLauncher:
                 pass
         self.update_traffic_table()
 
-    def _start_shutdown_monitoring(self):
-        if hasattr(self, '_shutdown_update_timer') and self._shutdown_update_timer:
-            try:
-                self.root.after_cancel(self._shutdown_update_timer)
-            except:
-                pass
-            self._shutdown_update_timer = None
+    def show_additionally_page(self):
+        self.pages.show_page_with_animation("additionally")
 
-    def stop_shutdown_monitoring(self):
-        if hasattr(self, '_shutdown_update_timer') and self._shutdown_update_timer:
-            try:
-                self.root.after_cancel(self._shutdown_update_timer)
-            except:
-                pass
-            self._shutdown_update_timer = None
-
-    def refresh_all_shutdown_status(self, manual=False):
-        if not hasattr(self.pages, 'shutdown_status_label') or self.pages.shutdown_status_label is None:
-            return
-        
-        self.pages.shutdown_status_label.config(text=tr('shutdown_updating'), fg=self.colors['accent'])
-        
-        def refresh():
-            try:
-                timeout_value = 4 if manual else 6
-                services_status = self._check_all_services_fast(timeout=timeout_value)
+    def add_soundcloud_unblock(self):
+        try:
+            list_general_path = ZAPRET_CORE_DIR / "lists" / "list-general.txt"
+            ipset_all_path = ZAPRET_CORE_DIR / "lists" / "ipset-all.txt"
+            
+            soundcloud_domains = [
+                "soundcloud.com",
+                "www.soundcloud.com",
+                "style.sndcdn.com",
+                "a-v2.sndcdn.com",
+                "api-v2.soundcloud.com",
+                "sb.scorecardresearch.com",
+                "secure.quantserve.com",
+                "eventlogger.soundcloud.com",
+                "api.soundcloud.com",
+                "ssl.google-analytics.com",
+                "sdk-04.moengage.com",
+                "al.sndcdn.com",
+                "i1.sndcdn.com",
+                "i2.sndcdn.com",
+                "i3.sndcdn.com",
+                "i4.sndcdn.com",
+                "wis.sndcdn.com",
+                "va.sndcdn.com",
+                "pixel.quantserve.com",
+                "assets.web.soundcloud.cloud",
+                "*.cloudfront.net",
+                ".soundcloud.",
+                "playback.media-streaming.soundcloud.cloud",
+                "id5-sync.com",
+                "cdn.moengage.com",
+                "htlbid.com",
+                "securepubads.g.doubleclick.net",
+                "cdn.cookielaw.org"
+            ]
+            
+            soundcloud_ips = [
+                "18.165.122.4/32",
+                "18.165.122.6/32",
+                "18.165.122.82/32",
+                "18.165.122.86/32"
+            ]
+            
+            if list_general_path.exists():
+                with open(list_general_path, 'r', encoding='utf-8') as f:
+                    existing = f.read()
                 
-                self.root.after(0, lambda: self._update_shutdown_table(services_status))
-                self.root.after(0, lambda: self.pages.shutdown_last_update_label.config(
-                    text=f"{tr('shutdown_last_update')} {time.strftime('%H:%M:%S')}"))
-                self.root.after(0, lambda: self.pages.shutdown_status_label.config(
-                    text=tr('shutdown_active'), fg=self.colors['accent_green']))
-            except Exception as e:
-                self.root.after(0, lambda: self.pages.shutdown_status_label.config(
-                    text=tr('shutdown_error'), fg=self.colors['accent_red']))
-        thread = threading.Thread(target=refresh, daemon=True)
-        thread.start()
-
-    def _check_all_services_fast(self, timeout=5):
-        services = {
-            # search and social
-            "Google": "https://www.google.com",
-            "Яндекс": "https://yandex.ru",
-            "YouTube": "https://www.youtube.com",
-            "Twitch": "https://www.twitch.tv",
-            "TikTok": "https://www.tiktok.com",
-            "Likee": "https://likee.video",
-            "Spotify": "https://open.spotify.com",
-            "Gmail": "https://mail.google.com",
-            "Mail.ru": "https://mail.ru",
-
-            # messengers
-            "Max": "https://max.ru",
-            "ВКонтакте": "https://vk.com",
-            "Одноклассники": "https://ok.ru",
-            "Telegram": "https://web.telegram.org",
-            "Facebook": "https://www.facebook.com",
-            "Instagram": "https://www.instagram.com",
-            "WhatsApp": "https://web.whatsapp.com",
-            "Twitter": "https://x.com",
-            "Steam": "https://store.steampowered.com",
-            "Discord": "https://discord.com",
-
-            # providers
-            "Ростелеком": "https://msk.rt.ru",
-            "МТС": "https://www.mts.ru",
-            "Билайн": "https://www.beeline.ru",
-            "МегаФон": "https://moscow.megafon.ru",
-            "Tele2": "https://msk.t2.ru",
-            "Yota": "https://www.yota.ru",
-            "Дом.ру": "https://msk.dom.ru",
-            "АКАДО": "https://www.akado.ru",
-            "ТТК": "https://www.ttk.ru",
-
-            # banks
-            "Альфа-Банк": "https://alfabank.ru",
-            "Сбербанк": "https://www.sberbank.ru",
-            "Т-Банк": "https://www.tbank.ru",
-            "ВТБ": "https://www.vtb.ru",
-
-            # other
-            "ГосУслуги": "https://www.gosuslugi.ru",
-        }
-        
-        results = {}
-        
-        def check_service(name, url):
-            try:
-                req = urllib.request.Request(
-                    url, 
-                    headers={
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                        'Accept-Language': 'ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3',
-                    }
-                )
-                req.timeout = timeout
+                added = []
+                with open(list_general_path, 'a', encoding='utf-8') as f:
+                    for domain in soundcloud_domains:
+                        if domain not in existing:
+                            f.write(f"{domain}\n")
+                            added.append(domain)
                 
-                with urllib.request.urlopen(req) as response:
-                    code = response.getcode()
-                    if 200 <= code < 400:
-                        status = tr('shutdown_available')
+            else:
+                return False
+            
+            if ipset_all_path.exists():
+                with open(ipset_all_path, 'r', encoding='utf-8') as f:
+                    existing = f.read()
+                
+                added = []
+                with open(ipset_all_path, 'a', encoding='utf-8') as f:
+                    for ip in soundcloud_ips:
+                        if ip not in existing:
+                            f.write(f"{ip}\n")
+                            added.append(ip)
+                
+            else:
+                return False
+            
+            self.show_notification(tr('soundcloud_unblocked'), 3000)
+            return True
+            
+        except Exception:
+            return False
+
+    def remove_soundcloud_unblock(self):
+        try:
+            list_general_path = ZAPRET_CORE_DIR / "lists" / "list-general.txt"
+            ipset_all_path = ZAPRET_CORE_DIR / "lists" / "ipset-all.txt"
+            
+            soundcloud_domains = [
+                "soundcloud.com",
+                "www.soundcloud.com",
+                "style.sndcdn.com",
+                "a-v2.sndcdn.com",
+                "api-v2.soundcloud.com",
+                "sb.scorecardresearch.com",
+                "secure.quantserve.com",
+                "eventlogger.soundcloud.com",
+                "api.soundcloud.com",
+                "ssl.google-analytics.com",
+                "sdk-04.moengage.com",
+                "al.sndcdn.com",
+                "i1.sndcdn.com",
+                "i2.sndcdn.com",
+                "i3.sndcdn.com",
+                "i4.sndcdn.com",
+                "wis.sndcdn.com",
+                "va.sndcdn.com",
+                "pixel.quantserve.com",
+                "assets.web.soundcloud.cloud",
+                "*.cloudfront.net",
+                ".soundcloud.",
+                "playback.media-streaming.soundcloud.cloud",
+                "id5-sync.com",
+                "cdn.moengage.com",
+                "htlbid.com",
+                "securepubads.g.doubleclick.net",
+                "cdn.cookielaw.org"
+            ]
+            
+            soundcloud_ips = [
+                "18.165.122.4/32",
+                "18.165.122.6/32",
+                "18.165.122.82/32",
+                "18.165.122.86/32"
+            ]
+            
+            if list_general_path.exists():
+                with open(list_general_path, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                
+                new_lines = []
+                removed = []
+                for line in lines:
+                    line_stripped = line.strip()
+                    if line_stripped not in soundcloud_domains:
+                        new_lines.append(line)
                     else:
-                        status = f"{tr('shutdown_code')} {code}"
-                            
-            except urllib.error.HTTPError as e:
-                if e.code in [301, 302, 303, 307, 308]:
-                    status = tr('shutdown_redirect')
-                elif e.code == 403:
-                    status = tr('shutdown_limited')
-                elif e.code == 404:
-                    status = tr('shutdown_not_found')
-                elif e.code >= 500:
-                    status = tr('shutdown_server_error')
-                else:
-                    status = f"HTTP {e.code}"
-            except (urllib.error.URLError, socket.timeout):
-                status = tr('shutdown_timeout')
-            except Exception:
-                status = tr('shutdown_error')
-            
-            results[name] = {
-                "status": status,
-                "source": url.split('/')[2],
-                "category": self._get_category(name)
-            }
-        
-        threads = []
-        for name, url in services.items():
-            thread = threading.Thread(target=check_service, args=(name, url))
-            thread.start()
-            threads.append(thread)
-        
-        for thread in threads:
-            thread.join(timeout=timeout + 1)
-        
-        for name, url in services.items():
-            if name not in results:
-                results[name] = {
-                    "status": tr('shutdown_timeout'),
-                    "source": url.split('/')[2],
-                    "category": self._get_category(name)
-                }
-        return results
-
-    def _check_all_services(self, timeout=8):
-        services_status = {}
-        
-        services = {
-            # search and social
-            "Google": "https://www.google.com",
-            "Яндекс": "https://yandex.ru",
-            "YouTube": "https://www.youtube.com",
-            "Twitch": "https://www.twitch.tv",
-            "TikTok": "https://www.tiktok.com",
-            "Likee": "https://likee.video",
-            "Spotify": "https://open.spotify.com",
-            "Gmail": "https://mail.google.com",
-            "Mail.ru": "https://mail.ru",
-
-            # messengers
-            "Max": "https://max.ru",
-            "ВКонтакте": "https://vk.com",
-            "Одноклассники": "https://ok.ru",
-            "Telegram": "https://web.telegram.org",
-            "Facebook": "https://www.facebook.com",
-            "Instagram": "https://www.instagram.com",
-            "WhatsApp": "https://web.whatsapp.com",
-            "Twitter": "https://x.com",
-            "Steam": "https://store.steampowered.com",
-            "Discord": "https://discord.com",
-
-            # providers
-            "Ростелеком": "https://msk.rt.ru",
-            "МТС": "https://www.mts.ru",
-            "Билайн": "https://www.beeline.ru",
-            "МегаФон": "https://moscow.megafon.ru",
-            "Tele2": "https://msk.t2.ru",
-            "Yota": "https://www.yota.ru",
-            "Дом.ру": "https://msk.dom.ru",
-            "АКАДО": "https://www.akado.ru",
-            "ТТК": "https://www.ttk.ru",
-
-            # banks
-            "Альфа-Банк": "https://alfabank.ru",
-            "Сбербанк": "https://www.sberbank.ru",
-            "Т-Банк": "https://www.tbank.ru",
-            "ВТБ": "https://www.vtb.ru",
-
-            # other
-            "ГосУслуги": "https://www.gosuslugi.ru",
-        }
-        
-        for name, url in services.items():
-            try:
-                req = urllib.request.Request(
-                    url, 
-                    headers={
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                        'Accept-Language': 'ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3',
-                        'Connection': 'keep-alive',
-                    }
-                )
-                req.timeout = timeout
+                        removed.append(line_stripped)
                 
-                with urllib.request.urlopen(req) as response:
-                    code = response.getcode()
-                    if 200 <= code < 400:
-                        status = tr('shutdown_available')
+                with open(list_general_path, 'w', encoding='utf-8') as f:
+                    f.writelines(new_lines)
+            
+            if ipset_all_path.exists():
+                with open(ipset_all_path, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                
+                new_lines = []
+                removed = []
+                for line in lines:
+                    line_stripped = line.strip()
+                    if line_stripped not in soundcloud_ips:
+                        new_lines.append(line)
                     else:
-                        status = f"{tr('shutdown_code')} {code}"
-                        
-            except urllib.error.HTTPError as e:
-                if e.code in [301, 302, 303, 307, 308]:
-                    status = tr('shutdown_redirect')
-                elif e.code == 403:
-                    status = tr('shutdown_limited')
-                elif e.code == 404:
-                    status = tr('shutdown_not_found')
-                elif e.code == 500 or e.code == 502 or e.code == 503 or e.code == 504:
-                    status = tr('shutdown_server_error')
-                else:
-                    status = f"HTTP {e.code}"
-            except urllib.error.URLError as e:
-                if "timed out" in str(e).lower():
-                    status = tr('shutdown_timeout')
-                else:
-                    status = tr('shutdown_no_connection')
-            except socket.timeout:
-                status = tr('shutdown_timeout')
-            except Exception as e:
-                status = tr('shutdown_error')
+                        removed.append(line_stripped)
+                
+                with open(ipset_all_path, 'w', encoding='utf-8') as f:
+                    f.writelines(new_lines)
             
-            services_status[name] = {
-                "status": status,
-                "source": url.split('/')[2],
-                "category": self._get_category(name)
-            }
-            time.sleep(0.05 if timeout == 3 else 0.1)
-        return services_status
+            self.show_notification(tr('soundcloud_removed'), 3000)
+            return True
+            
+        except Exception:
+            return False
 
-    def _get_category(self, name):
-        providers = ["Ростелеком", "МТС", "Билайн", "МегаФон", "Yota", "Дом.ру", "АКАДО", "Tele2", "ТТК"]
-        banks = ["Альфа-Банк", "Сбербанк", "Т-Банк", "ВТБ"]
-        messengers = ["Telegram", "WhatsApp", "Discord"]
-        search = ["Google", "Яндекс"]
-        social = ["ВКонтакте"]
-        gov = ["ГосУслуги"]
-        games = ["Steam"]
-        
-        if name in providers:
-            return tr('category_providers')
-        elif name in messengers:
-            return tr('category_messengers')
-        elif name in social:
-            return tr('category_social')
-        elif name in search:
-            return tr('category_search')
-        elif name in games:
-            return tr('category_games')
-        elif name in banks:
-            return tr('category_banks')
-        elif name in gov:
-            return tr('category_gov')
-        else:
-            return tr('category_other')
+    def check_soundcloud_enabled(self):
+        try:
+            list_general_path = ZAPRET_CORE_DIR / "lists" / "list-general.txt"
+            
+            if not list_general_path.exists():
+                return False
+            
+            with open(list_general_path, 'r', encoding='utf-8') as f:
+                content = f.read()
 
-    def _update_shutdown_table(self, services_data):
-        if not hasattr(self.pages, 'shutdown_tree') or self.pages.shutdown_tree is None:
-            return
-        
-        for item in self.pages.shutdown_tree.get_children():
-            self.pages.shutdown_tree.delete(item)
-        
-        sorted_items = sorted(services_data.items(), key=lambda x: (x[1].get('category', ''), x[0]))
-        
-        for service, data in sorted_items:
-            status = data.get("status", tr('shutdown_unknown'))
+            return "soundcloud.com" in content
             
-            item = self.pages.shutdown_tree.insert("", "end", values=(
-                service,
-                status,
-                data.get("source", "-")
-            ))
+        except Exception:
+            return False
+        
+    def add_facebook_instagram_unblock(self):
+        try:
+            list_general_path = ZAPRET_CORE_DIR / "lists" / "list-general.txt"
+            ipset_all_path = ZAPRET_CORE_DIR / "lists" / "ipset-all.txt"
             
-            if tr('shutdown_available') in status or tr('shutdown_redirect') in status:
-                self.pages.shutdown_tree.tag_configure('good', foreground='#4ade80')
-                self.pages.shutdown_tree.item(item, tags=('good',))
-            elif tr('shutdown_timeout') in status or tr('shutdown_error') in status.lower() or tr('shutdown_limited') in status:
-                self.pages.shutdown_tree.tag_configure('warning', foreground='#fbbf24')
-                self.pages.shutdown_tree.item(item, tags=('warning',))
-            elif "HTTP" in status or tr('shutdown_code') in status:
-                self.pages.shutdown_tree.tag_configure('bad', foreground='#f87171')
-                self.pages.shutdown_tree.item(item, tags=('bad',))
+            meta_domains = [
+                "facebook.com",
+                "www.facebook.com",
+                "fb.com",
+                "www.fb.com",
+                "fbcdn.net",
+                "www.fbcdn.net",
+                "static.xx.fbcdn.net",
+                "scontent.xx.fbcdn.net",
+                "graph.facebook.com",
+                "api.facebook.com",
+                "m.facebook.com",
+                "business.facebook.com",
+                "developers.facebook.com",
+                "connect.facebook.net",
+                "facebook.net",
+                "fbcdn-profile-a.akamaihd.net",
+                "fbstatic-a.akamaihd.net",
+                "fbexternal-a.akamaihd.net",
+
+                "instagram.com",
+                "www.instagram.com",
+                "cdninstagram.com",
+                "www.cdninstagram.com",
+                "scontent.cdninstagram.com",
+                "graph.instagram.com",
+                "api.instagram.com",
+                "i.instagram.com",
+                "instagr.am",
+                "www.instagr.am",
+
+                "meta.com",
+                "www.meta.com",
+                "cdn.meta.com",
+                "metacdn.com",
+                "whatsapp.com",
+                "www.whatsapp.com",
+            ]
+            
+            meta_ips = [
+                "31.13.24.0/21",
+                "31.13.64.0/18",
+                "66.220.144.0/20",
+                "69.63.176.0/20",
+                "69.171.224.0/19",
+                "74.119.76.0/22",
+                "103.4.96.0/22",
+                "129.134.0.0/16",
+                "147.75.208.0/20",
+                "157.240.0.0/16",
+                "173.252.64.0/18",
+                "179.60.192.0/22",
+                "185.60.216.0/22",
+                "185.89.216.0/22",
+                "199.96.56.0/21",
+                "204.15.20.0/22",
+            ]
+            
+            if list_general_path.exists():
+                with open(list_general_path, 'r', encoding='utf-8') as f:
+                    existing = f.read()
+                
+                added = []
+                with open(list_general_path, 'a', encoding='utf-8') as f:
+                    for domain in meta_domains:
+                        if domain not in existing:
+                            f.write(f"{domain}\n")
+                            added.append(domain)
+            else:
+                return False
+            
+            if ipset_all_path.exists():
+                with open(ipset_all_path, 'r', encoding='utf-8') as f:
+                    existing = f.read()
+                
+                added = []
+                with open(ipset_all_path, 'a', encoding='utf-8') as f:
+                    for ip in meta_ips:
+                        if ip not in existing:
+                            f.write(f"{ip}\n")
+                            added.append(ip)
+            
+            self.show_notification(tr('meta_unblocked'), 3000)
+            return True
+            
+        except Exception as e:
+            self.log_to_diagnostic(f"Error adding Meta rules: {e}")
+            return False
+
+    def remove_facebook_instagram_unblock(self):
+        try:
+            list_general_path = ZAPRET_CORE_DIR / "lists" / "list-general.txt"
+            ipset_all_path = ZAPRET_CORE_DIR / "lists" / "ipset-all.txt"
+            
+            meta_domains = [
+                "facebook.com", "www.facebook.com", "fb.com", "www.fb.com",
+                "fbcdn.net", "www.fbcdn.net", "static.xx.fbcdn.net", "scontent.xx.fbcdn.net",
+                "graph.facebook.com", "api.facebook.com", "m.facebook.com", "business.facebook.com",
+                "developers.facebook.com", "connect.facebook.net", "facebook.net",
+                "fbcdn-profile-a.akamaihd.net", "fbstatic-a.akamaihd.net", "fbexternal-a.akamaihd.net",
+                "instagram.com", "www.instagram.com", "cdninstagram.com", "www.cdninstagram.com",
+                "scontent.cdninstagram.com", "graph.instagram.com", "api.instagram.com", "i.instagram.com",
+                "instagr.am", "www.instagr.am", "meta.com", "www.meta.com", "cdn.meta.com",
+                "metacdn.com", "whatsapp.com", "www.whatsapp.com"
+            ]
+            
+            meta_ips = [
+                "31.13.24.0/21", "31.13.64.0/18", "66.220.144.0/20", "69.63.176.0/20",
+                "69.171.224.0/19", "74.119.76.0/22", "103.4.96.0/22", "129.134.0.0/16",
+                "147.75.208.0/20", "157.240.0.0/16", "173.252.64.0/18", "179.60.192.0/22",
+                "185.60.216.0/22", "185.89.216.0/22", "199.96.56.0/21", "204.15.20.0/22"
+            ]
+            
+            if list_general_path.exists():
+                with open(list_general_path, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                
+                new_lines = []
+                removed = []
+                for line in lines:
+                    line_stripped = line.strip()
+                    if line_stripped not in meta_domains:
+                        new_lines.append(line)
+                    else:
+                        removed.append(line_stripped)
+                
+                with open(list_general_path, 'w', encoding='utf-8') as f:
+                    f.writelines(new_lines)
+            
+            if ipset_all_path.exists():
+                with open(ipset_all_path, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                
+                new_lines = []
+                removed = []
+                for line in lines:
+                    line_stripped = line.strip()
+                    if line_stripped not in meta_ips:
+                        new_lines.append(line)
+                    else:
+                        removed.append(line_stripped)
+                
+                with open(ipset_all_path, 'w', encoding='utf-8') as f:
+                    f.writelines(new_lines)
+            
+            self.show_notification(tr('meta_removed'), 3000)
+            return True
+            
+        except Exception:
+            return False
+
+    def check_meta_enabled(self):
+        try:
+            list_general_path = ZAPRET_CORE_DIR / "lists" / "list-general.txt"
+            
+            if not list_general_path.exists():
+                return False
+            
+            with open(list_general_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            return "facebook.com" in content or "instagram.com" in content
+            
+        except Exception:
+            return False
 
     def _reset_traffic_history(self):
         self.traffic_history = {}
@@ -3326,7 +3325,7 @@ class ZapretLauncher:
         copy_frame = tk.Frame(link_frame, bg=self.colors['bg_light'], cursor="hand2")
         copy_frame.pack(side=tk.LEFT, padx=(0, 10))
         
-        link_text = tr('tg_copy_link')
+        link_text = tr('tg_copy_secret')
         copy_label = tk.Label(copy_frame, text=link_text, font=("Segoe UI Variable", 10),
                             fg=self.colors['accent'], bg=self.colors['bg_light'])
         copy_label.pack()
@@ -3336,10 +3335,10 @@ class ZapretLauncher:
             if not secret:
                 secret = tr('error_secret_not_found')
             self.root.clipboard_clear()
-            self.root.clipboard_append(f"tg://proxy?server=127.0.0.1&port=1080&secret={secret}")
+            self.root.clipboard_append(f"{secret}")
             self.root.update()
             copy_label.config(text=tr('tg_copied'), fg=self.colors['accent_green'])
-            self.show_notification(tr('notification_copied'), 1500)
+            self.show_notification(tr('notification_copied_secret'), 1500)
         
         copy_label.bind("<Button-1>", copy_link)
         
@@ -3425,7 +3424,7 @@ class ZapretLauncher:
         if hasattr(self, 'connect_btn') and self.connect_btn:
             self.connect_btn.set_enabled(True)
 
-        self.update_tray_icon_state()
+        self.root.after(500, self.update_tray_icon_state)
 
     def _on_combined_start_failed(self, error_msg):
         self.update_status(tr('status_error'), self.colors['accent_red'])
