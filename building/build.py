@@ -67,7 +67,7 @@ def build_exe():
         '--add-data', f'resources{os.pathsep}resources',
         '--add-data', f'tg_proxy{os.pathsep}tg_proxy',
     ]
-    
+
     if os.path.exists('zapret_resources.zip'):
         data_files.extend(['--add-data', f'zapret_resources.zip{os.pathsep}.'])
         print("Found zapret_resources.zip")
@@ -80,7 +80,7 @@ def build_exe():
     if result.returncode == 0:
         print()
         print("=" * 50)
-        print("Build completed successfully!")
+        print("Build completed")
         print(f"File: {os.path.abspath('dist/Zapret Launcher.exe')}")
         print("=" * 50)
     else:
@@ -91,29 +91,13 @@ def build_exe():
         sys.exit(1)
 
 if __name__ == '__main__':
-    print("=" * 50)
-    print("Zapret Launcher - Build Script")
-    print("=" * 50)
+    print("building...")
     print()
     
     if not os.path.exists('resources/icon.ico'):
         print("Warning: resources/icon.ico not found")
         print()
-    
-    print("Choose action:")
-    print("1 - Full build")
-    print("2 - Clean + build")
-    print()
-    
-    choice = input("Enter choice (1-2): ")
-    
-    if choice == '1':
-        install_requirements()
-        clean_build()
-        build_exe()
-    elif choice == '2':
-        clean_build()
-        build_exe()
-        print("Cleaning completed")
-    else:
-        print("Wrong choice!")
+
+    install_requirements()
+    clean_build()
+    build_exe()
