@@ -4,7 +4,6 @@ from utils.updater import check_launcher_updates
 import time
 import ctypes
 from pathlib import Path
-import sys
 from tkinter import messagebox
 from utils.languages import tr
 
@@ -71,8 +70,7 @@ class ModernSystemTray:
                     width=1
                 )
             
-        except Exception as e:
-            print(f"Error creating tray icon: {e}")
+        except Exception:
             image = Image.new('RGBA', (64, 64), color=self.colors['accent'])
             draw = ImageDraw.Draw(image)
             draw.text((20, 20), "Z", fill='white')
@@ -140,11 +138,31 @@ class ModernSystemTray:
                 menu
             )
 
+    def update_tooltip(self):
+        if self.icon:
+            try:
+                self.icon.title = self.get_tooltip_text()
+            except:
+                pass
+
     def update_icon_state(self):
         try:
             if not self.icon:
                 self.create_icon()
                 return
+            
+            is_connected = False
+            
+            if hasattr(self.app, 'zapret') and self.app.zapret:
+                if self.app.zapret.is_winws_running():
+                    is_connected = True
+            
+            if hasattr(self.app, 'tg_proxy') and self.app.tg_proxy:
+                if self.app.tg_proxy.is_running:
+                    is_connected = True
+            
+            if not is_connected and hasattr(self.app, 'is_connected'):
+                is_connected = self.app.is_connected
             
             icon_paths = [
                 BASE_DIR / "resources" / "icon.ico",
@@ -171,7 +189,7 @@ class ModernSystemTray:
                 indicator_x = 64 - indicator_size - 4
                 indicator_y = 64 - indicator_size - 4
                 
-                if self.app.is_connected:
+                if is_connected:
                     indicator_color = self._hex_to_rgb(self.colors['accent_green'])
                 else:
                     indicator_color = self._hex_to_rgb(self.colors['accent_red'])
@@ -187,13 +205,22 @@ class ModernSystemTray:
                     width=1
                 )
                 self.icon.icon = image
-            self.icon.title = self.get_tooltip_text()
             
-        except Exception as e:
-            print(f"Error updating tray icon: {e}")
+        except Exception:
+            pass
 
     def quit_from_tray(self):
-        if self.app.is_connected or self.app.zapret.is_winws_running():
+        is_any_running = False
+        if hasattr(self.app, 'zapret') and self.app.zapret:
+            if self.app.zapret.is_winws_running():
+                is_any_running = True
+        if hasattr(self.app, 'tg_proxy') and self.app.tg_proxy:
+            if self.app.tg_proxy.is_running:
+                is_any_running = True
+        if hasattr(self.app, 'is_connected') and self.app.is_connected:
+            is_any_running = True
+        
+        if is_any_running:
             result = messagebox.askyesno(
                 tr('dialog_exit'),
                 tr('dialog_exit_message')
@@ -233,8 +260,8 @@ class ModernSystemTray:
                 ctypes.windll.user32.SetForegroundWindow(hwnd)
             except Exception:
                 pass
-        except Exception as e:
-            print(f"Error showing window: {e}")
+        except Exception:
+            pass
 
     def check_launcher_updates(self):
         check_launcher_updates(self.app, silent=False)
