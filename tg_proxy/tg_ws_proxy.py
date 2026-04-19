@@ -3,7 +3,6 @@ import os
 import sys
 import time
 import struct
-import random
 import asyncio
 import hashlib
 import argparse
