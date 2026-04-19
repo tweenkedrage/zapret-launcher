@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import TYPE_CHECKING
 from utils.languages import tr
-from gui.theme import get_theme_names
+# from gui.theme import get_theme_names
 
 if TYPE_CHECKING:
     from main import ZapretLauncher
@@ -11,6 +11,7 @@ from utils.list_editor import ListEditor
 from gui.widgets import RoundedButton
 import os
 from pathlib import Path
+import webbrowser
 
 APPDATA_DIR = Path(os.getenv('LOCALAPPDATA')) / 'Zapret Launcher'
 ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
@@ -45,10 +46,6 @@ class Pages:
         
         self.current_page = "main"
         self.pages = {}
-
-        self.shutdown_status_label = None
-        self.shutdown_last_update_label = None
-        self.shutdown_tree = None
 
         self._pending_page = None
         self._animation_active = False
@@ -315,7 +312,12 @@ class Pages:
         lists_content = tk.Frame(self.lists_page, bg=self.colors['bg_light'])
         lists_content.pack(fill=tk.X, padx=30, pady=10)
         
-        for label, filename in [(tr('lists_general'), "list-general.txt"), (tr('lists_google'), "list-google.txt")]:
+        for label, filename in [
+            (tr('lists_general'), "list-general.txt"), 
+            (tr('lists_google'), "list-google.txt"), 
+            (tr('lists_ipset'), "ipset-all.txt")
+        ]:
+            
             frame = tk.Frame(lists_content, bg=self.colors['bg_light'])
             frame.pack(fill=tk.X, pady=15, padx=20)
             
@@ -387,15 +389,8 @@ class Pages:
         right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, anchor='n')
         
         self._create_diagnostic_card(left_panel, "Zapret", [
-            (tr('diagnostic_zapret_status'), self.app.check_zapret_status),
             (tr('diagnostic_zapret_logs'), self.app.check_zapret_logs),
-            (tr('diagnostic_zapret_restart'), self.app.restart_zapret),
             (tr('diagnostic_zapret_auto'), self.app.auto_select_strategy),
-        ])
-        
-        self._create_diagnostic_card(left_panel, "TGProxy", [
-            (tr('diagnostic_tgproxy_status'), self.app.check_tgproxy_status),
-            (tr('diagnostic_tgproxy_restart'), self.app.restart_tgproxy),
         ])
         
         self._create_diagnostic_card(left_panel, tr('diagnostic_system'), [
@@ -408,10 +403,9 @@ class Pages:
         ])
         
         self._create_diagnostic_card(left_panel, tr('diagnostic_general'), [
-            (tr('diagnostic_general_full'), self.app.run_full_diagnostic),
-            (tr('diagnostic_general_report'), self.app.save_diagnostic_report),
             (tr('diagnostic_general_integrity'), self.app.check_file_integrity),
             (tr('diagnostic_general_clear'), self.app.clear_cache),
+            (tr('diagnostic_general_report'), self.app.save_diagnostic_report),
         ])
         
         result_frame = tk.Frame(right_panel, bg=self.colors['bg_medium'])
@@ -511,121 +505,6 @@ class Pages:
         if len(buttons) % 2 == 1 and row:
             filler = tk.Frame(row, bg=self.colors['bg_light'])
             filler.pack(side=tk.LEFT, expand=True, fill=tk.X)
-
-    def create_shutdown_sites_page(self, parent):
-        page = tk.Frame(parent, bg=self.app.colors['bg_dark'])
-        
-        main_container = tk.Frame(page, bg=self.app.colors['bg_dark'])
-        main_container.pack(fill=tk.BOTH, expand=True, padx=30, pady=20)
-        
-        title_label = tk.Label(
-            main_container,
-            text=tr('shutdown_title'),
-            font=("Inter", 20, "bold"),
-            fg=self.app.colors['text_primary'],
-            bg=self.app.colors['bg_dark']
-        )
-        title_label.pack(anchor='w', pady=(0, 5))
-        
-        desc_label = tk.Label(
-            main_container,
-            text=tr('shutdown_desc'),
-            font=("Inter", 10),
-            fg=self.app.colors['text_secondary'],
-            bg=self.app.colors['bg_dark']
-        )
-        desc_label.pack(anchor='w', pady=(0, 20))
-        
-        top_frame = tk.Frame(main_container, bg=self.app.colors['bg_dark'])
-        top_frame.pack(fill=tk.X, pady=(0, 15))
-        
-        self.shutdown_refresh_btn = RoundedButton(
-            top_frame,
-            text=tr('shutdown_refresh'),
-            command=lambda: self.app.refresh_all_shutdown_status(manual=True),
-            width=120, height=35,
-            bg=self.app.colors['accent'],
-            fg=self.app.colors['text_primary'],
-            font=("Inter", 10),
-            corner_radius=8
-        )
-        self.shutdown_refresh_btn.pack(side=tk.LEFT, padx=(0, 15))
-        
-        self.shutdown_status_label = tk.Label(
-            top_frame,
-            text=tr('shutdown_active'),
-            font=("Inter", 10),
-            fg=self.app.colors['accent_green'],
-            bg=self.app.colors['bg_dark']
-        )
-        self.shutdown_status_label.pack(side=tk.LEFT, padx=(0, 10))
-        
-        self.shutdown_update_info = tk.Label(
-            top_frame,
-            text=tr('shutdown_update_info'),
-            font=("Inter", 9),
-            fg=self.app.colors['text_secondary'],
-            bg=self.app.colors['bg_dark']
-        )
-        self.shutdown_update_info.pack(side=tk.LEFT, padx=(10, 0))
-        
-        self.shutdown_last_update_label = tk.Label(
-            top_frame,
-            text=f"{tr('shutdown_last_update')} --:--:--",
-            font=("Inter", 9),
-            fg=self.app.colors['text_secondary'],
-            bg=self.app.colors['bg_dark']
-        )
-        self.shutdown_last_update_label.pack(side=tk.RIGHT)
-        
-        table_card = tk.Frame(main_container, bg=self.app.colors['bg_light'], relief=tk.FLAT, bd=0)
-        table_card.pack(fill=tk.BOTH, expand=True)
-        
-        table_inner = tk.Frame(table_card, bg=self.app.colors['bg_light'])
-        table_inner.pack(fill=tk.BOTH, expand=True, padx=1, pady=1)
-        
-        tree_frame = tk.Frame(table_inner, bg=self.app.colors['bg_light'])
-        tree_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
-        
-        v_scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", style="Custom.Vertical.TScrollbar")
-        v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        self.shutdown_tree = ttk.Treeview(
-            tree_frame,
-            columns=("service", "status", "source"),
-            show="headings",
-            height=18,
-            yscrollcommand=v_scrollbar.set,
-            style="Custom.Treeview"
-        )
-        
-        self.shutdown_tree.heading("service", text=tr('shutdown_service'))
-        self.shutdown_tree.heading("status", text=tr('shutdown_status'))
-        self.shutdown_tree.heading("source", text=tr('shutdown_source'))
-        self.shutdown_tree.column("service", width=250, anchor='w')
-        self.shutdown_tree.column("status", width=150, anchor='center')
-        self.shutdown_tree.column("source", width=300, anchor='w')
-        self.shutdown_tree.pack(fill=tk.BOTH, expand=True)
-        
-        v_scrollbar.config(command=self.shutdown_tree.yview)
-        
-        style = ttk.Style()
-        style.configure(
-            "Custom.Treeview",
-            background=self.app.colors['bg_light'],
-            foreground=self.app.colors['text_primary'],
-            fieldbackground=self.app.colors['bg_light'],
-            rowheight=28,
-            font=("Inter", 9)
-        )
-        style.configure(
-            "Custom.Treeview.Heading",
-            background=self.app.colors['bg_medium'],
-            foreground=self.app.colors['text_primary'],
-            font=("Inter", 10, "bold")
-        )
-        style.map('Custom.Treeview', background=[('selected', self.app.colors['accent'])])
-        return page
 
     def create_traffic_page(self, parent):
         self.traffic_page = tk.Frame(parent, bg=self.colors['bg_dark'])
@@ -738,7 +617,7 @@ class Pages:
         self.diagnostic_page = self.create_diagnostic_page(parent)
         self.traffic_page = self.create_traffic_page(parent)
         self.settings_page = self.create_settings_page(parent)
-        self.shutsites_page = self.create_shutdown_sites_page(parent)
+        self.additionally_page = self.create_additionally_page(parent)
         
         self.pages = {
             "main": self.main_page,
@@ -747,7 +626,7 @@ class Pages:
             "diagnostic": self.diagnostic_page,
             "traffic": self.traffic_page,
             "settings": self.settings_page,
-            "shutsites": self.shutsites_page
+            "additionally": self.additionally_page
         }
         self.main_page.place(x=0, y=0, width=950, height=800)
         self.current_page = "main"
@@ -810,12 +689,23 @@ class Pages:
         
         def on_language_change(event=None):
             new_lang = lang_var.get()
-            if new_lang != self.app.languages.get_current_language():
+            current_lang = self.app.languages.get_current_language()
+            
+            if new_lang != current_lang:
+                restart_msg = tr('restart_manual_message')
+                restart_title = tr('restart_manual_title')
+                
                 self.app.languages.set_language(new_lang)
-                messagebox.showinfo(
-                    tr('restart_manual_title'),
-                    tr('restart_manual_message')
+                self.app.save_settings()
+                
+                result = messagebox.showwarning(
+                    restart_title,
+                    restart_msg + "\n\n",
+                    type=messagebox.OKCANCEL
                 )
+                
+                if result == 'ok':
+                    self.app.quit_from_tray()
 
         lang_combo.bind("<<ComboboxSelected>>", on_language_change)
 
@@ -858,7 +748,7 @@ class Pages:
                 self.app.root.clipboard_clear()
                 self.app.root.clipboard_append(link)
                 self.app.root.update()
-                self.app.show_notification(tr('notification_copied'))
+                self.app.show_notification(tr('notification_copied_secret'))
             else:
                 messagebox.showwarning(tr('error_secret_not_found'), tr('error_telegram_proxy_start'))
 
@@ -920,6 +810,233 @@ class Pages:
             font=("Inter", 10), fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
         self.current_interval_label.pack(anchor='w', pady=2)
         return self.settings_page
+    
+    def create_additionally_page(self, parent):
+        frame = tk.Frame(parent, bg=self.colors['bg_dark'])
+        
+        title_label = tk.Label(
+            frame,
+            text=tr('additionally_title'),
+            font=("Inter", 20, "bold"),
+            fg=self.colors['text_primary'],
+            bg=self.colors['bg_dark']
+        )
+        title_label.pack(anchor='w', pady=(30, 5), padx=30)
+        
+        desc_label = tk.Label(
+            frame,
+            text=tr('additionally_desc'),
+            font=("Inter", 10),
+            fg=self.colors['text_secondary'],
+            bg=self.colors['bg_dark']
+        )
+        desc_label.pack(anchor='w', pady=(0, 20), padx=30)
+        
+        soundcloud_card = tk.Frame(
+            frame,
+            bg=self.colors['bg_medium'],
+            relief=tk.FLAT,
+            bd=0
+        )
+        soundcloud_card.pack(fill=tk.X, padx=30, pady=10)
+        
+        inner = tk.Frame(soundcloud_card, bg=self.colors['bg_medium'])
+        inner.pack(fill=tk.X, padx=20, pady=15)
+        
+        sc_title = tk.Label(
+            inner,
+            text="SoundCloud",
+            font=("Inter", 16, "bold"),
+            fg=self.colors['accent'],
+            bg=self.colors['bg_medium'],
+            cursor="hand2"
+        )
+        sc_title.pack(anchor='w')
+            
+        def on_enter(event):
+            sc_title.config(fg=self.colors['accent_hover'])
+            
+        def on_leave(event):
+            sc_title.config(fg=self.colors['accent'])
+            
+        def on_click(event):
+            webbrowser.open("https://soundcloud.com")
+            
+        sc_title.bind("<Enter>", on_enter)
+        sc_title.bind("<Leave>", on_leave)
+        sc_title.bind("<Button-1>", on_click)
+        
+        sc_desc = tk.Label(
+            inner,
+            text=tr('soundcloud_description'),
+            font=("Inter", 10),
+            fg=self.colors['text_secondary'],
+            bg=self.colors['bg_medium'],
+            wraplength=800,
+            justify=tk.LEFT
+        )
+        sc_desc.pack(anchor='w', pady=(5, 15))
+        
+        btn_frame = tk.Frame(inner, bg=self.colors['bg_medium'])
+        btn_frame.pack(fill=tk.X, pady=5)
+        
+        status_label = tk.Label(
+            inner,
+            text="",
+            font=("Inter", 10),
+            fg=self.colors['text_secondary'],
+            bg=self.colors['bg_medium']
+        )
+        status_label.pack(anchor='w', pady=(10, 0))
+        
+        def update_buttons():
+            is_enabled = self.app.check_soundcloud_enabled()
+            
+            if is_enabled:
+                for widget in btn_frame.winfo_children():
+                    widget.destroy()
+                
+                disable_btn = RoundedButton(
+                    btn_frame,
+                    text=tr('disable'),
+                    command=lambda: [self.app.remove_soundcloud_unblock(), update_buttons()],
+                    width=120, height=35,
+                    bg=self.colors['button_bg'],
+                    fg=self.colors['text_secondary'],
+                    font=("Inter", 10),
+                    corner_radius=8
+                )
+                disable_btn.pack(side=tk.LEFT)
+                
+                status_label.config(
+                    text=f"{tr('enabled_additionally')}",
+                    fg=self.colors['accent_green']
+                )
+            else:
+                for widget in btn_frame.winfo_children():
+                    widget.destroy()
+                
+                enable_btn = RoundedButton(
+                    btn_frame,
+                    text=tr('enable'),
+                    command=lambda: [self.app.add_soundcloud_unblock(), update_buttons()],
+                    width=120, height=35,
+                    bg=self.colors['accent'],
+                    fg=self.colors['text_primary'],
+                    font=("Inter", 10),
+                    corner_radius=8
+                )
+                enable_btn.pack(side=tk.LEFT)
+                
+                status_label.config(
+                    text=f"{tr('disabled_additionally')}",
+                    fg=self.colors['text_secondary']
+                )
+
+        meta_card = tk.Frame(
+        frame,
+        bg=self.colors['bg_medium'],
+        relief=tk.FLAT,
+        bd=0
+        )
+                
+        meta_card.pack(fill=tk.X, padx=30, pady=5)
+        meta_inner = tk.Frame(meta_card, bg=self.colors['bg_medium'])
+        meta_inner.pack(fill=tk.X, padx=20, pady=10)
+
+        meta_title = tk.Label(
+            meta_inner,
+            text="Meta",
+            font=("Inter", 16, "bold"),
+            fg=self.colors['accent'],
+            bg=self.colors['bg_medium'],
+            cursor="hand2"
+        )
+        meta_title.pack(anchor='w')
+
+        def on_enter_meta(event):
+            meta_title.config(fg=self.colors['accent_hover'])
+
+        def on_leave_meta(event):
+            meta_title.config(fg=self.colors['accent'])
+
+        def on_click_meta(event):
+            webbrowser.open("https://www.facebook.com")
+
+        meta_title.bind("<Enter>", on_enter_meta)
+        meta_title.bind("<Leave>", on_leave_meta)
+        meta_title.bind("<Button-1>", on_click_meta)
+
+        meta_desc = tk.Label(
+            meta_inner,
+            text=tr('meta_description'),
+            font=("Inter", 10),
+            fg=self.colors['text_secondary'],
+            bg=self.colors['bg_medium'],
+            wraplength=800,
+            justify=tk.LEFT
+        )
+        meta_desc.pack(anchor='w', pady=(5, 10))
+
+        meta_btn_frame = tk.Frame(meta_inner, bg=self.colors['bg_medium'])
+        meta_btn_frame.pack(fill=tk.X, pady=5)
+
+        meta_status_label = tk.Label(
+            meta_inner,
+            text="",
+            font=("Inter", 10),
+            fg=self.colors['text_secondary'],
+            bg=self.colors['bg_medium']
+        )
+        meta_status_label.pack(anchor='w', pady=(5, 0))
+
+        def update_meta_buttons():
+            is_enabled = self.app.check_meta_enabled()
+            
+            if is_enabled:
+                for widget in meta_btn_frame.winfo_children():
+                    widget.destroy()
+                
+                disable_btn = RoundedButton(
+                    meta_btn_frame,
+                    text=tr('disable'),
+                    command=lambda: [self.app.remove_facebook_instagram_unblock(), update_meta_buttons()],
+                    width=120, height=35,
+                    bg=self.colors['button_bg'],
+                    fg=self.colors['text_secondary'],
+                    font=("Inter", 10),
+                    corner_radius=8
+                )
+                disable_btn.pack(side=tk.LEFT)
+                
+                meta_status_label.config(
+                    text=f"{tr('enabled_additionally')}",
+                    fg=self.colors['accent_green']
+                )
+            else:
+                for widget in meta_btn_frame.winfo_children():
+                    widget.destroy()
+                
+                enable_btn = RoundedButton(
+                    meta_btn_frame,
+                    text=tr('enable'),
+                    command=lambda: [self.app.add_facebook_instagram_unblock(), update_meta_buttons()],
+                    width=120, height=35,
+                    bg=self.colors['accent'],
+                    fg=self.colors['text_primary'],
+                    font=("Inter", 10),
+                    corner_radius=8
+                )
+                enable_btn.pack(side=tk.LEFT)
+                
+                meta_status_label.config(
+                    text=f"{tr('disabled_additionally')}",
+                    fg=self.colors['text_secondary']
+                )
+
+        update_meta_buttons()
+        update_buttons()
+        return frame
     
     def update_secret_display(self):
         if hasattr(self, 'secret_label') and self.secret_label:
