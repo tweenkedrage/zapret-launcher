@@ -85,21 +85,21 @@ build_resources.py       # Создает zapret_resources.zip
 gui/
 pages.py                 # Страницы
 tray.py                  # Системный трей
-theme.py                 # Темная/светлая тема
+theme.py                 # Тема
 widgets.py               # Виджеты
 
-resources/               # Иконки и ресурсы
+resources/               # Иконки/Фотографии
 
 tg_proxy/
 __init__.py              # Инициализация пакета
 balancer.py              # Балансировщик CF доменов
 bridge.py                # Мост TCP WebSocket
 config.py                # Конфигурация (порт, секрет, DC редиректы, CF proxy, Fake TLS)
-fake_tls.py              # Маскировка под HTTPS
+fake_tls.py              # Маскировка под HTTPS (Временно заморожена)
 raw_websocket.py         # WebSocket клиент
-run.py                   # Запуск прокси
-stats.py                 # Сбор статистики прокси (подключения, трафик, ошибки, пул)
-tg_ws_proxy.py           # Логика прокси
+run.py                   # Запуск
+stats.py                 # Сбор статистики (подключения, трафик, ошибки, пул)
+tg_ws_proxy.py           # Логика
 utils.py                 # Вспомогательные функции
 windows.py               # Windows-специфичные утилиты
 
@@ -107,5 +107,5 @@ utils/
 languages.py             # Языки интерфейса
 network_set.py           # Оптимизация сети, DNS
 updater.py               # Проверка обновлений
-list_editor.py           # Редактор списков
+list_editor.py           # Редактор списков (list-general, list-google, ipset-all)
 ```
