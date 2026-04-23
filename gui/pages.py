@@ -272,12 +272,14 @@ class Pages:
             for btn_text, cmd in items:
                 if cmd == "check_launcher":
                     btn = RoundedButton(card, text=btn_text, 
-                                    command=lambda: self.app.check_launcher_updates(self.app, silent=False),
+                                    command=lambda: [self.app.log_event("info", "Checking for launcher updates..."), 
+                                                    self.app.check_launcher_updates(self.app, silent=False)],
                                     width=200, height=35, bg=self.colors['button_bg'],
                                     font=self.font_primary, corner_radius=8)
                 elif cmd == "check_zapret":
                     btn = RoundedButton(card, text=btn_text, 
-                                    command=lambda: self.app.check_zapret_updates(self.app, silent=False),
+                                    command=lambda: [self.app.log_event("info", "Checking for zapret updates..."),
+                                                    self.app.check_zapret_updates(self.app, silent=False)],
                                     width=200, height=35, bg=self.colors['button_bg'],
                                     font=self.font_primary, corner_radius=8)
                 else:
@@ -286,7 +288,7 @@ class Pages:
                                     width=200, height=35, bg=self.colors['button_bg'],
                                     font=self.font_primary, corner_radius=8)
                 btn.pack(anchor='w', padx=15, pady=2)
-        return self.service_page
+        return self.service_page 
     
     def create_lists_page(self, parent):
         self.lists_page = tk.Frame(parent, bg=self.colors['bg_dark'])
@@ -618,6 +620,7 @@ class Pages:
         self.traffic_page = self.create_traffic_page(parent)
         self.settings_page = self.create_settings_page(parent)
         self.additionally_page = self.create_additionally_page(parent)
+        self.logs_page = self.create_logs_page(parent)
         
         self.pages = {
             "main": self.main_page,
@@ -626,10 +629,128 @@ class Pages:
             "diagnostic": self.diagnostic_page,
             "traffic": self.traffic_page,
             "settings": self.settings_page,
+            "logs": self.logs_page,
             "additionally": self.additionally_page
         }
         self.main_page.place(x=0, y=0, width=950, height=800)
         self.current_page = "main"
+
+    def create_logs_page(self, parent):
+        self.logs_page = tk.Frame(parent, bg=self.colors['bg_dark'])
+        
+        title_label = tk.Label(
+            self.logs_page,
+            text=tr('logs_title'),
+            font=("Inter", 20, "bold"),
+            fg=self.colors['text_primary'],
+            bg=self.colors['bg_dark']
+        )
+        title_label.pack(anchor='w', pady=(30, 5), padx=30)
+        
+        desc_label = tk.Label(
+            self.logs_page,
+            text=tr('logs_desc'),
+            font=("Inter", 10),
+            fg=self.colors['text_secondary'],
+            bg=self.colors['bg_dark']
+        )
+        desc_label.pack(anchor='w', pady=(0, 20), padx=30)
+        
+        control_frame = tk.Frame(self.logs_page, bg=self.colors['bg_dark'])
+        control_frame.pack(fill=tk.X, padx=30, pady=(0, 10))
+        
+        clear_btn = RoundedButton(
+            control_frame,
+            text=tr('logs_clear'),
+            command=self.app.clear_logs,
+            width=120, height=32,
+            bg=self.colors['button_bg'],
+            fg=self.colors['text_secondary'],
+            font=("Inter", 10),
+            corner_radius=8
+        )
+        clear_btn.pack(side=tk.RIGHT, padx=(5, 0))
+        
+        refresh_btn = RoundedButton(
+            control_frame,
+            text=tr('logs_refresh'),
+            command=self.update_logs_display,
+            width=120, height=32,
+            bg=self.colors['button_bg'],
+            fg=self.colors['text_secondary'],
+            font=("Inter", 10),
+            corner_radius=8
+        )
+        refresh_btn.pack(side=tk.RIGHT)
+        
+        logs_container = tk.Frame(self.logs_page, bg=self.colors['bg_medium'])
+        logs_container.pack(fill=tk.BOTH, expand=True, padx=30, pady=10)
+        
+        self.logs_text = tk.Text(
+            logs_container,
+            bg=self.colors['bg_light'],
+            fg=self.colors['text_secondary'],
+            font=("Consolas", 10),
+            wrap=tk.WORD,
+            borderwidth=0,
+            relief=tk.FLAT,
+            highlightthickness=1,
+            highlightbackground=self.colors['separator'],
+            highlightcolor=self.colors['accent'],
+            selectbackground=self.colors['accent'],
+            selectforeground='white',
+            padx=10,
+            pady=10
+        )
+        
+        scrollbar = ttk.Scrollbar(
+            logs_container,
+            command=self.logs_text.yview,
+            style="Custom.Vertical.TScrollbar"
+        )
+        self.logs_text.configure(yscrollcommand=scrollbar.set)
+        
+        self.logs_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.update_logs_display()
+        return self.logs_page
+
+    def update_logs_display(self):
+        if not hasattr(self, 'logs_text') or not self.logs_text.winfo_exists():
+            return
+        
+        self.logs_text.delete(1.0, tk.END)
+        
+        logs = self.app.load_logs()
+        
+        for log_line in logs:
+            log_line = log_line.strip()
+            if log_line:
+                self.logs_text.insert(tk.END, log_line + "\n")
+        
+        self.logs_text.see(tk.END)
+
+    def _update_logs_ui(self):
+        if hasattr(self, 'logs_text') and self.logs_text.winfo_exists():
+            self.logs_text.delete(1.0, tk.END)
+            logs = self.app.load_logs()
+            for log_line in logs:
+                log_line = log_line.strip()
+                if not log_line:
+                    continue
+                if "Connected" in log_line:
+                    tag = "connect"
+                elif "Disconnected" in log_line:
+                    tag = "disconnect"
+                elif "Error" in log_line:
+                    tag = "error"
+                elif "winws.exe" in log_line.lower():
+                    tag = "winws"
+                else:
+                    tag = "info"
+                self.logs_text.insert(tk.END, log_line + "\n", tag)
+            self.logs_text.see(tk.END)
 
     def create_settings_page(self, parent):
         self.settings_page = tk.Frame(parent, bg=self.colors['bg_dark'])
@@ -692,6 +813,8 @@ class Pages:
             current_lang = self.app.languages.get_current_language()
             
             if new_lang != current_lang:
+                self.app.log_event("info", f"Interface language changed: {current_lang} -> {new_lang}")
+
                 restart_msg = tr('restart_manual_message')
                 restart_title = tr('restart_manual_title')
                 
@@ -1128,6 +1251,7 @@ class Pages:
             self.app.update_traffic_table()
         
         self.app.show_notification(tr('notification_interval_fast'))
+        self.app.log_event("info", f"Interface refresh interval is set to fast")
 
     def _set_update_interval_5(self):
         if self.app.update_interval_index == 1:
@@ -1151,6 +1275,7 @@ class Pages:
             self.app.update_traffic_table()
         
         self.app.show_notification(tr('notification_interval_5'))
+        self.app.log_event("info", f"Interface refresh interval is set to 5 seconds")
 
     def _set_update_interval_10(self):
         if self.app.update_interval_index == 2:
@@ -1174,6 +1299,7 @@ class Pages:
             self.app.update_traffic_table()
         
         self.app.show_notification(tr('notification_interval_10'))
+        self.app.log_event("info", f"Interface refresh interval is set to 10 seconds")
 
     def _set_update_interval_30(self):
         if self.app.update_interval_index == 3:
@@ -1197,6 +1323,7 @@ class Pages:
             self.app.update_traffic_table()
         
         self.app.show_notification(tr('notification_interval_30'))
+        self.app.log_event("info", f"Interface refresh interval is set to 30 seconds")
 
     def _set_update_interval_60(self):
         if self.app.update_interval_index == 4:
@@ -1220,6 +1347,7 @@ class Pages:
             self.app.update_traffic_table()
         
         self.app.show_notification(tr('notification_interval_60'))
+        self.app.log_event("info", f"Interface refresh interval is set to 60 seconds")
 
     def _set_update_interval_none(self):
         if self.app.update_interval_index == 5:
@@ -1244,6 +1372,7 @@ class Pages:
                 self.app.pages.traffic_tree.delete(item)
         
         self.app.show_notification(tr('notification_interval_off'))
+        self.app.log_event("info", f"Interface refresh interval is set to never")
 
     def _update_interval_ui(self):
         if hasattr(self, 'current_interval_label'):
