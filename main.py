@@ -3491,7 +3491,6 @@ class ZapretLauncher:
             self.tg_proxy.stop()
 
     def load_logs(self) -> list:
-        """Загрузка логов из файла"""
         logs = []
         log_file = APPDATA_DIR / "logs.txt"
         
@@ -3505,7 +3504,6 @@ class ZapretLauncher:
         return logs[-1000:]
     
     def clear_logs(self):
-        """Очистка логов"""
         log_file = APPDATA_DIR / "logs.txt"
         try:
             if log_file.exists():
