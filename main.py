@@ -5,6 +5,7 @@ from gui.tray import ModernSystemTray
 from utils.languages import tr, get_languages
 from typing import List, Optional
 from gui.theme import get_theme
+from datetime import datetime
 from tg_proxy import run_proxy
 from utils.updater import check_launcher_updates, check_zapret_updates
 from utils.network_set import (
@@ -41,7 +42,6 @@ from ctypes import windll, byref, c_int
 from typing import Optional, List, Tuple
 
 BASE_DIR = Path(__file__).parent
-
 APPDATA_DIR = Path(os.getenv('LOCALAPPDATA')) / 'Zapret Launcher'
 CONFIG_FILE = APPDATA_DIR / 'config.json'
 ICON_PATH = BASE_DIR / "resources" / "icon.ico"
@@ -51,7 +51,7 @@ ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
 ZAPRET_API_URL = "https://api.github.com/repos/flowseal/zapret-discord-youtube/releases/latest"
-CURRENT_VERSION = "3.1b"
+CURRENT_VERSION = "3.1c"
 
 def is_admin():
     try:
@@ -369,6 +369,9 @@ class ZapretCore:
             
         try:
             self.stop_current_strategy()
+            if hasattr(self, 'parent') and self.parent:
+                self.parent.log_event("winws", f"Launching winws.exe with strategy {strategy_name}")
+
             self.current_process = subprocess.Popen(
                 [str(strategy_path)],
                 shell=True,
@@ -385,6 +388,8 @@ class ZapretCore:
                 time.sleep(0.5)
             return False, tr('error_winws_not_found')
         except Exception as e:
+            if hasattr(self, 'parent') and self.parent:
+                self.parent.log_event("error", f"Error starting strategy {strategy_name}: {str(e)}")
             return False, f"{tr('error_startup')}: {str(e)}"
             
     def stop_current_strategy(self):
@@ -744,6 +749,38 @@ class ZapretLauncher:
         self.pages = Pages(self)
         self.pages.create_all_pages(self.content_panel)
 
+    def log_event(self, event_type: str, message: str, mode_name: str = None):
+        
+        timestamp = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+        
+        if event_type == "connect" and mode_name:
+            log_entry = f"[{timestamp}] Mode {mode_name} is connected"
+        
+        elif event_type == "disconnect" and mode_name:
+            log_entry = f"[{timestamp}] Disconnected from mode {mode_name}"
+        
+        elif event_type == "error":
+            log_entry = f"[{timestamp}] Error: {message}"
+        
+        elif event_type == "winws":
+            log_entry = f"[{timestamp}] {message}"
+        
+        elif event_type == "info":
+            log_entry = f"[{timestamp}] {message}"
+
+        else:
+            log_entry = f"[{timestamp}] ℹ{message}"
+        
+        try:
+            log_file = APPDATA_DIR / "logs.txt"
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.write(log_entry + "\n")
+        except Exception as e:
+            print(f"Error writing log: {e}")
+        
+        if hasattr(self, 'pages') and self.pages.current_page == "logs":
+            self.pages.update_logs_display()
+
     def create_left_panel(self):
         left_panel = tk.Frame(self.main_container, bg=self.colors['bg_medium'], width=250)
         left_panel.pack(side=tk.LEFT, fill=tk.Y)
@@ -800,6 +837,7 @@ class ZapretLauncher:
             (tr('diagnostic_title'), self.show_diagnostic_page),
             (tr('additionally_title'), self.show_additionally_page),
             (tr('traffic_title'), self.show_traffic_page),
+            (tr('logs_title'), self.show_logs_page),
         ]
         
         for text, command in nav_buttons:
@@ -1137,23 +1175,22 @@ class ZapretLauncher:
         self._tg_secret = os.urandom(16).hex()
         self.save_settings()
         
+        self.log_event("info", f"New secret-key has been generated: {self._tg_secret[:8]}...")
         self.tg_proxy.set_secret(self._tg_secret)
 
         if hasattr(self, 'pages') and hasattr(self.pages, 'settings_page'):
             self.pages.update_secret_display()
         
-        link = f"tg://proxy?server=127.0.0.1&port=1080&secret={self._tg_secret}"
+        link = f"{self._tg_secret}"
         self.root.clipboard_clear()
         self.root.clipboard_append(link)
         self.root.update()
         
-        self.show_notification(tr('notification_copied'), 3000)
+        self.show_notification(tr('notification_updated_secret'), 3000)
         messagebox.showinfo(
             tr('tg_secret_updated'),
-            f"{tr('tg_secret_new')} {self._tg_secret}\n\n"
-            f"{tr('notification_copied')}\n"
-            f"{tr('tg_paste_instruction')}\n\n"
-            f"{tr('tg_proxy_restarted')}"
+            f"{tr('notification_copied_secret')}\n"
+            f"{tr('tg_paste_instruction')}"
         )
         
     def _do_start_tg_proxy(self):
@@ -1193,6 +1230,7 @@ class ZapretLauncher:
             self.update_ui_state()
             self.save_settings()
             self.root.after(100, self.update_stats_display)
+            self.log_event("connect", "", tr('mode_tgproxy'))
 
             if not self._tg_instruction:
                 self.root.after(500, self.show_tg_proxy_instruction)
@@ -2259,6 +2297,9 @@ class ZapretLauncher:
             self.connect_btn.set_enabled(True)
         self.root.after(500, self.update_tray_icon_state)
 
+        mode_name = strategy.replace(".bat", "").replace("general", "").strip() or "Стандартный"
+        self.log_event("connect", "", mode_name)
+
     def _on_connect_failed(self, msg):
         self.update_status(tr('status_error'), self.colors['accent_red'])
         messagebox.showerror(tr('error_startup'), msg)
@@ -2268,6 +2309,11 @@ class ZapretLauncher:
     def disconnect(self):
         if not self.is_connected and not self.zapret.is_winws_running():
             return
+        
+        if self.mode_label and hasattr(self.mode_label, 'cget'):
+            current_mode = self.mode_label.cget('text')
+            if current_mode and current_mode != tr('mode_not_selected'):
+                self.log_event("disconnect", "", current_mode)
             
         self.update_status(tr('status_disconnecting'), self.colors['accent'])
         if hasattr(self, 'connect_btn') and self.connect_btn:
@@ -2359,7 +2405,6 @@ class ZapretLauncher:
                     pass
                 self.rtt_timer_id = None
             
-            self.stop_shutdown_monitoring()
             self.traffic_history = {}
             self.traffic_history_vpn = {}
             self.traffic_history_direct = {}
@@ -2450,6 +2495,7 @@ class ZapretLauncher:
                         
         except Exception as e:
             print(f"Error loading settings: {e}")
+            self.log_event("info", "New secret key has been generated (first run)")
             self._tg_secret = os.urandom(16).hex()
 
     def save_settings(self):
@@ -2494,6 +2540,10 @@ class ZapretLauncher:
             except:
                 pass
         self.update_traffic_table()
+
+    def show_logs_page(self):
+        self.pages.show_page_with_animation("logs")
+        self.pages.update_logs_display()
 
     def show_additionally_page(self):
         self.pages.show_page_with_animation("additionally")
@@ -2570,6 +2620,7 @@ class ZapretLauncher:
                 return False
             
             self.show_notification(tr('soundcloud_unblocked'), 3000)
+            self.log_event("info", f"SoundCloud rules added to list-general.txt and ipset-all.txt")
             return True
             
         except Exception:
@@ -2651,6 +2702,7 @@ class ZapretLauncher:
                     f.writelines(new_lines)
             
             self.show_notification(tr('soundcloud_removed'), 3000)
+            self.log_event("info", f"SoundCloud rules have been removed from list-general.txt and ipset-all.txt")
             return True
             
         except Exception:
@@ -2759,6 +2811,7 @@ class ZapretLauncher:
                             added.append(ip)
             
             self.show_notification(tr('meta_unblocked'), 3000)
+            self.log_event("info", f"Meta rules added to list-general.txt and ipset-all.txt")
             return True
             
         except Exception as e:
@@ -2822,6 +2875,7 @@ class ZapretLauncher:
                     f.writelines(new_lines)
             
             self.show_notification(tr('meta_removed'), 3000)
+            self.log_event("info", f"Meta rules have been removed from list-general.txt and ipset-all.txt")
             return True
             
         except Exception:
@@ -3425,6 +3479,7 @@ class ZapretLauncher:
             self.connect_btn.set_enabled(True)
 
         self.root.after(500, self.update_tray_icon_state)
+        self.log_event("connect", "", mode_name)
 
     def _on_combined_start_failed(self, error_msg):
         self.update_status(tr('status_error'), self.colors['accent_red'])
@@ -3434,6 +3489,32 @@ class ZapretLauncher:
 
         if hasattr(self, 'tg_proxy') and self.tg_proxy:
             self.tg_proxy.stop()
+
+    def load_logs(self) -> list:
+        """Загрузка логов из файла"""
+        logs = []
+        log_file = APPDATA_DIR / "logs.txt"
+        
+        try:
+            if log_file.exists():
+                with open(log_file, 'r', encoding='utf-8') as f:
+                    logs = f.readlines()
+        except Exception as e:
+            print(f"Error loading logs: {e}")
+        
+        return logs[-1000:]
+    
+    def clear_logs(self):
+        """Очистка логов"""
+        log_file = APPDATA_DIR / "logs.txt"
+        try:
+            if log_file.exists():
+                with open(log_file, 'w', encoding='utf-8') as f:
+                    f.write("")
+            if hasattr(self, 'pages') and self.pages.current_page == "logs":
+                self.pages.update_logs_display()
+        except Exception as e:
+            print(f"Error clearing logs: {e}")
 
 if __name__ == "__main__":
     root = tk.Tk()
