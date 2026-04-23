@@ -16,7 +16,19 @@ ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
 ZAPRET_API_URL = "https://api.github.com/repos/flowseal/zapret-discord-youtube/releases/latest"
-CURRENT_VERSION = "3.1"
+CURRENT_VERSION = "3.1c"
+
+def log_update_event(message: str):
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+    log_entry = f"[{timestamp}] {message}"
+    
+    try:
+        log_file = APPDATA_DIR / "logs.txt"
+        with open(log_file, 'a', encoding='utf-8') as f:
+            f.write(log_entry + "\n")
+    except Exception as e:
+        print(f"Error writing update log: {e}")
 
 def check_launcher_updates(parent, silent=False):
     try:
@@ -31,6 +43,8 @@ def check_launcher_updates(parent, silent=False):
                     break
             
             if latest_version and latest_version > CURRENT_VERSION:
+                log_update_event(f"Launcher update found: {CURRENT_VERSION} -> {latest_version}")
+                
                 if silent:
                     result = messagebox.askyesno(
                         tr('update_launcher_title'),
@@ -63,6 +77,7 @@ def check_launcher_updates(parent, silent=False):
     except KeyboardInterrupt:
         return False
     except Exception as e:
+        log_update_event(f"Error checking for launcher updates: {str(e)}")
         if not silent:
             try:
                 messagebox.showerror(tr('error_update_check'), f"{tr('error_update_check')}: {str(e)}")
@@ -83,6 +98,8 @@ def check_zapret_updates(parent, silent=False):
                     current_zapret_version = f.read().strip()
             
             if latest_version and latest_version > current_zapret_version:
+                log_update_event(f"Zapret update found: {current_zapret_version} -> {latest_version}")
+                
                 try:
                     result = messagebox.askyesno(
                         tr('update_zapret_title'),
@@ -106,6 +123,7 @@ def check_zapret_updates(parent, silent=False):
     except KeyboardInterrupt:
         return False
     except Exception as e:
+        log_update_event(f"Error checking for updates Zapret: {str(e)}")
         if not silent:
             try:
                 messagebox.showerror(tr('error_update_check'), f"{tr('error_update_check')} Zapret: {str(e)}")
@@ -115,24 +133,31 @@ def check_zapret_updates(parent, silent=False):
 
 def update_zapret_core(parent, version):
     try:
+        log_update_event(f"Starting Zapret update to version {version}")
         parent.update_status(tr('status_updating_zapret'), parent.colors['accent'])
         parent.root.update()
         
         if parent.zapret.is_winws_running():
+            log_update_event("Stop the current Zaprot strategy before updating")
             parent.zapret.stop_current_strategy()
             time.sleep(1)
 
         user_lists = {}
         lists_dir = ZAPRET_CORE_DIR / "lists"
         if lists_dir.exists():
+            user_lists_count = 0
             for file in lists_dir.glob("*-user.txt"):
                 try:
                     with open(file, 'r', encoding='utf-8') as f:
                         user_lists[file.name] = f.read()
+                        user_lists_count += 1
                 except:
                     pass
+            if user_lists_count > 0:
+                log_update_event(f"{user_lists_count} user lists saved")
         
         download_url = f"https://github.com/flowseal/zapret-discord-youtube/archive/refs/heads/master.zip"
+        log_update_event(f"Downloading the Zapret archive from GitHub...")
         
         with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_file:
             urllib.request.urlretrieve(download_url, tmp_file.name)
@@ -145,6 +170,7 @@ def update_zapret_core(parent, version):
                 subprocess.run('taskkill /F /IM nfqws.exe', shell=True, capture_output=True)
                 subprocess.run('sc stop windivert', shell=True, capture_output=True)
                 time.sleep(1)
+                log_update_event("winws.exe processes have stopped")
             except:
                 pass
 
@@ -153,6 +179,7 @@ def update_zapret_core(parent, version):
                 try:
                     if ZAPRET_CORE_DIR.exists():
                         shutil.rmtree(ZAPRET_CORE_DIR)
+                    log_update_event(f"Removed old Zapret folder (attempt {attempt + 1})")
                     break
                 except Exception as delete_error:
                     if attempt < max_attempts - 1:
@@ -163,7 +190,7 @@ def update_zapret_core(parent, version):
                             pass
                         continue
                     else:
-                        raise Exception(f"Failed to delete folder after {max_attempts} attempts. Try restarting your computer")
+                        raise Exception(f"Failed to delete folder after {max_attempts} attempts")
         
         ZAPRET_CORE_DIR.mkdir(parents=True, exist_ok=True)
         
@@ -197,6 +224,8 @@ def update_zapret_core(parent, version):
                     f.write(content)
             except:
                 pass
+        if user_lists:
+            log_update_event(f"{len(user_lists)} user lists restored")
         
         parent.zapret.load_strategies()
         if hasattr(parent, 'strategy_combo'):
@@ -205,7 +234,10 @@ def update_zapret_core(parent, version):
                 parent.strategy_var.set(parent.zapret.available_strategies[0])
         
         parent.update_status(tr('status_ready'))
+        log_update_event(f"Zapret has been successfully updated to version {version}")
         messagebox.showinfo(tr('update_zapret_success'), f"{tr('update_zapret_success')} {version}") 
     except Exception as e:
-        messagebox.showerror(tr('update_zapret_failed'), f"{tr('update_zapret_failed')}: {str(e)}")
+        error_msg = str(e)
+        log_update_event(f"Zapret update error: {error_msg}")
+        messagebox.showerror(tr('update_zapret_failed'), f"{tr('update_zapret_failed')}: {error_msg}")
         parent.update_status(tr('status_ready'))
