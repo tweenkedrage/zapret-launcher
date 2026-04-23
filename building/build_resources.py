@@ -24,7 +24,7 @@ try:
         file_size = os.path.getsize(temp_zip)
         
         if file_size < 100000:
-            raise Exception(f"File too small ({file_size} byte)")
+            raise Exception(f"File too small ({file_size} bytes)")
     
     with tempfile.TemporaryDirectory() as temp_dir:
         
@@ -74,7 +74,7 @@ try:
 
     if os.path.exists(ZIP_FILENAME):
         print(f"File created: {ZIP_FILENAME}")
-        print(f"Size: {os.path.getsize(ZIP_FILENAME)} byte")
+        print(f"Size: {os.path.getsize(ZIP_FILENAME)} bytes")
     else:
         print("Error: file is not created!")
         
