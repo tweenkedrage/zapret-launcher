@@ -3500,7 +3500,6 @@ class ZapretLauncher:
                     logs = f.readlines()
         except Exception as e:
             print(f"Error loading logs: {e}")
-        
         return logs[-1000:]
     
     def clear_logs(self):
