@@ -88,7 +88,12 @@ class Languages:
             'traffic_total': 'Всего',
             'traffic_no_connections': 'Нет активных соединений',
             'error_traffic_collection': 'Ошибка сбора трафика',
-            
+
+            'logs_title': 'Логи',
+            'logs_desc': 'Журнал событий программы',
+            'logs_clear': 'Очистить',
+            'logs_refresh': 'Обновить',
+                        
             'settings_title': 'Настройки',
             'settings_desc': 'Настройка интерфейса и параметров работы',
             'settings_interface': 'Обновление интерфейса',
@@ -122,6 +127,7 @@ class Languages:
             
             'notification_copied': 'Ссылка скопирована',
             'notification_copied_secret': 'Секрет-ключ скопирован',
+            'notification_updated_secret': 'Секрет-ключ обновлен',
             'notification_interval_fast': 'Обновление интерфейса: быстро',
             'notification_interval_5': 'Обновление интерфейса: 5 секунд',
             'notification_interval_10': 'Обновление интерфейса: 10 секунд',
@@ -194,8 +200,7 @@ class Languages:
             'tg_secret_required_message': 'Для работы Telegram Proxy требуется секрет-ключ.\n\nСгенерировать новый секрет и продолжить?',
             'tg_secret_updated': 'Секрет-ключ обновлен',
             'tg_secret_new': 'Новый секрет:',
-            'tg_paste_instruction': 'Вставьте её в Telegram для подключения.',
-            'tg_proxy_restarted': 'Прокси перезапущен с новым секретом.',
+            'tg_paste_instruction': 'Вставьте секрет в Telegram для подключения',
                         
             'status_connecting': 'Запуск...',
             'status_disconnecting': 'Отключение...',
@@ -399,8 +404,8 @@ class Languages:
             'meta_removed': 'Meta rules removed',
             'enabled_additionally': 'Unlocked',
             'disabled_additionally': 'Not unlocked',
-            'enable': 'Turn on',
-            'disable': 'Disable',
+            'enable': 'Enable',
+            'disable': 'Disabled',
             
             'traffic_title': 'Traffic',
             'traffic_desc': 'Network traffic monitoring by process',
@@ -413,6 +418,11 @@ class Languages:
             'traffic_total': 'Total',
             'traffic_no_connections': 'No active connections',
             'error_traffic_collection': 'Traffic collection error',
+
+            'logs_title': 'Logs',
+            'logs_desc': 'Program event log',
+            'logs_clear': 'Clear',
+            'logs_refresh': 'Refresh',
             
             'settings_title': 'Settings',
             'settings_desc': 'Interface and operation settings',
@@ -447,6 +457,7 @@ class Languages:
             
             'notification_copied': 'Link copied',
             'notification_copied_secret': 'Secret-key copied',
+            'notification_updated_secret': 'Secret-key updated',
             'notification_interval_fast': 'Interface refresh: fast',
             'notification_interval_5': 'Interface refresh: 5 seconds',
             'notification_interval_10': 'Interface refresh: 10 seconds',
@@ -461,8 +472,6 @@ class Languages:
             'dialog_admin_message': 'The program requires administrator rights to run\n\nRun as administrator?',
             'restart_manual_title': 'Restart Required',
             'restart_manual_message': 'Settings have been saved.\n\nPlease restart the program to apply the changes',\
-            
-            
             
             'tg_instruction_title': 'Telegram Setup',
             'tg_instruction_subtitle': 'To use the proxy, follow these steps:',
@@ -521,6 +530,16 @@ class Languages:
             'tg_secret_new': 'New secret:',
             'tg_paste_instruction': 'Paste it into Telegram to connect.',
             'tg_proxy_restarted': 'Proxy restarted with new secret.',
+
+            'fake_tls_desc': 'Masking traffic under TLS',
+            'fake_tls_enabled': 'Disable',
+            'fake_tls_disabled': 'Enable',
+            'fake_tls_domain_label': 'Domain',
+            'fake_tls_apply': 'Apply',
+            'fake_tls_status_enabled': 'Included with domain:',
+            'fake_tls_status_disabled': 'Fake TLS is disabled',
+            'fake_tls_error_no_domain': 'Please enter a domain',
+            'fake_tls_domain_updated': 'Domain updated',
                         
             'status_connecting': 'Starting...',
             'status_disconnecting': 'Disconnecting...',
