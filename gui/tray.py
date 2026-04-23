@@ -5,7 +5,9 @@ import time
 import ctypes
 from pathlib import Path
 from tkinter import messagebox
+import subprocess
 from utils.languages import tr
+import re
 
 BASE_DIR = Path(__file__).parent.parent
 
@@ -13,6 +15,8 @@ class ModernSystemTray:
     def __init__(self, app):
         self.app = app
         self.icon = None
+        self.current_rtt = None
+        self.last_rtt_update = 0
         self.colors = {
             'bg_dark': '#1E1E24',
             'bg_medium': '#2D2D35',
@@ -85,13 +89,21 @@ class ModernSystemTray:
         if self.app.is_connected:
             stats = self.app.stats.get_stats_dict()
             mode_text = self.app.mode_label.cget('text') if hasattr(self.app, 'mode_label') and self.app.mode_label else tr('status_connected')
+            
+            rtt_text = ""
+            if hasattr(self.app, 'stats_rtt_label') and self.app.stats_rtt_label:
+                rtt_value = self.app.stats_rtt_label.cget('text')
+                if rtt_value and rtt_value != "-- ms":
+                    rtt_text = f"{rtt_value}"
+            
             return (
                 f"Zapret Launcher\n"
                 f"{tr('mode')} {mode_text}\n"
                 f"\n"
                 f"{stats['session_time_str']}\n"
-                f"{stats['down_str']} / {stats['up_str']}\n"
-                f"{stats['speed_down_str']} / {stats['speed_up_str']}"
+                f"{rtt_text}\n"
+                f"{stats['speed_down_str']} / {stats['speed_up_str']}\n"
+                f"{stats['down_str']} / {stats['up_str']}"
             )
         else:
             return (
@@ -272,6 +284,21 @@ class ModernSystemTray:
         else:
             self.app.show_mode_selector()
         self.update_icon_state()
+
+    def get_rtt(self):
+        try:
+            result = subprocess.run(
+                ['ping', '-n', '1', '8.8.8.8'],
+                capture_output=True, text=True,
+                timeout=2
+            )
+            if result.returncode == 0:
+                match = re.search(r'(?:время|time)[=<>]\s*(\d+)', result.stdout, re.IGNORECASE)
+                if match:
+                    return int(match.group(1))
+        except:
+            pass
+        return None
 
     def run(self):
         self.icon.run()
