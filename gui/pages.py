@@ -258,7 +258,6 @@ class Pages:
             ]),
             (tr('service_updates'), [
                 (tr('service_update_launcher'), "check_launcher"),
-                (tr('service_update_zapret'), "check_zapret"),
             ]),
         ]
         
@@ -316,6 +315,7 @@ class Pages:
         
         for label, filename in [
             (tr('lists_general'), "list-general.txt"), 
+            (tr('lists_general_user'), "list-general-user.txt"),
             (tr('lists_google'), "list-google.txt"), 
             (tr('lists_ipset'), "ipset-all.txt")
         ]:
@@ -355,7 +355,7 @@ class Pages:
             return
         lists_path = os.path.join(self.app.zapret.zapret_dir, "lists")
         file_path = os.path.join(lists_path, filename)
-        ListEditor(self.app.root, file_path, filename)
+        ListEditor(self.app.root, file_path, filename, app=self.app)
     
     def create_diagnostic_page(self, parent):
         self.diagnostic_page = tk.Frame(parent, bg=self.colors['bg_dark'])
