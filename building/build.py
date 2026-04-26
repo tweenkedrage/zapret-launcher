@@ -42,8 +42,31 @@ def build_exe():
     print("Building Zapret Launcher...")
     print()
     
+    pyinstaller_paths = [
+        r"C:\Users\***\AppData\Roaming\Python\Python314\Scripts\pyinstaller.exe",
+        r"C:\Users\***\AppData\Local\Python\pythoncore-3.14-64\Scripts\pyinstaller.exe",
+        'pyinstaller'
+    ]
+    
+    pyinstaller = None
+    for path in pyinstaller_paths:
+        if os.path.exists(path):
+            pyinstaller = path
+            break
+        elif path == 'pyinstaller':
+            result = subprocess.run(['where', 'pyinstaller'], capture_output=True, text=True)
+            if result.returncode == 0:
+                pyinstaller = 'pyinstaller'
+                break
+    
+    if not pyinstaller:
+        print("pyinstaller not found!")
+        sys.exit(1)
+    
+    print(f"Using pyinstaller: {pyinstaller}")
+    
     cmd = [
-        'pyinstaller',
+        pyinstaller,
         '--onefile',
         '--windowed',
         '--name', 'Zapret Launcher',
@@ -66,15 +89,13 @@ def build_exe():
         '--add-data', f'utils{os.pathsep}utils',
         '--add-data', f'resources{os.pathsep}resources',
         '--add-data', f'tg_proxy{os.pathsep}tg_proxy',
+        '--add-data', f'zapret_core{os.pathsep}zapret_core',
     ]
-
-    if os.path.exists('zapret_resources.zip'):
-        data_files.extend(['--add-data', f'zapret_resources.zip{os.pathsep}.'])
-        print("Found zapret_resources.zip")
     
     cmd.extend(data_files)
     cmd.append('main.py')
     
+    print("Command:", ' '.join(cmd))
     result = subprocess.run(cmd)
     
     if result.returncode == 0:
