@@ -4,7 +4,8 @@ import os
 from utils.languages import tr
 
 class ListEditor:
-    def __init__(self, parent, file_path, title):
+    def __init__(self, parent, file_path, title, app=None):
+        self.app = app
         self.parent = parent
         self.file_path = file_path
         self.title = title
@@ -83,6 +84,7 @@ class ListEditor:
             else:
                 self.text_area.insert('1.0', "# File not found. Create content and save")
         except Exception as e:
+            self.app.log_event("info", f"Failed to upload file: {os.path.basename(self.file_path)}")
             messagebox.showerror(tr('editor_error_load'), f"{tr('editor_error_load')}: {str(e)}")
     
     def save_content(self):
@@ -91,6 +93,8 @@ class ListEditor:
             os.makedirs(os.path.dirname(self.file_path), exist_ok=True)
             with open(self.file_path, 'w', encoding='utf-8') as f:
                 f.write(content)
+
+            self.app.log_event("info", f"File has been saved: {os.path.basename(self.file_path)}")
             messagebox.showinfo(tr('editor_success'), tr('editor_success'))
             self.dialog.destroy()
         except Exception as e:
