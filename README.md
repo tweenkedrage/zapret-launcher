@@ -11,7 +11,7 @@
 - Автоматическая генерация секрет-ключа.
 
 #### Zapret (DPI обход):
-- Редактирование списков (`list-general.txt`, `list-google.txt`, `ipset-all.txt`);
+- Редактирование списков (`list-general.txt`, `list-general-user.txt`, `list-google.txt`, `ipset-all.txt`);
 - Выбор стратегий обхода из предустановленного набора;
 - Автоматический подбор оптимальной стратегии.
 
@@ -40,21 +40,7 @@
 
 ## Требования:
 - Windows **10+**
-- 50 MB свободного места
-
-## Установка:
-1. [Скачайте любой архив](https://github.com/tweenkedrage/zapret-launcher/releases/latest) (`.rar`, `.zip`) и распакуйте в любое место 2 файла: `Zapret Launcher.exe` и `zapret_resources.zip` (Главное чтобы они были в одном месте и не в отдельных папках);
-2. Запустите **Zapret Launcher.exe**;
-3. Выберите режим использования;
-4. Пользуйтесь.
-
-### `zapret_resources.zip`:
-- Архив со всеми файлами оригинального **Zapret**, которые необходимы для работы лаунчера;
-- При первом запуске лаунчер распаковывает ресурсы `zapret_resources.zip` в `AppData/Local/Zapret Launcher/`.
-
-### Не удаляйте `zapret_resources.zip` если:
-1. Папка **zapret_core** в `AppData/Local/Zapret Launcher/` **отсутствует** или **повреждена**;
-2. Вы хотите поделиться программой (Архив `zapret_resources.zip` должен быть **рядом** с `Zapret Launcher.exe`).
+- 40 MB свободного места
 
 ### Если антивирус ругается:
 1. Добавьте папку с лаунчером в **Исключение/Белый список**;
@@ -66,7 +52,6 @@ main.py                  # Главное окно
 
 building/
 build.py                 # Сборка в .exe
-build_resources.py       # Создает zapret_resources.zip
 
 gui/
 pages.py                 # Страницы
@@ -92,6 +77,6 @@ windows.py               # Windows-специфичные утилиты
 utils/
 languages.py             # Языки интерфейса
 network_set.py           # Оптимизация сети, DNS
-updater.py               # Проверка обновлений
-list_editor.py           # Редактор списков (list-general, list-google, ipset-all)
+updater.py               # Проверка обновлений лаунчера
+list_editor.py           # Редактор списков (list-general, list-general-user, list-google, ipset-all)
 ```
