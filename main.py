@@ -6,8 +6,9 @@ from utils.languages import tr, get_languages
 from typing import List, Optional
 from gui.theme import get_theme
 from datetime import datetime
+from utils.network_set import set_logger
 from tg_proxy import run_proxy
-from utils.updater import check_launcher_updates, check_zapret_updates
+from utils.updater import check_launcher_updates
 from utils.network_set import (
     optimize_network_latency,
     find_best_dns,
@@ -32,6 +33,7 @@ import webbrowser
 import asyncio
 import zipfile
 import psutil
+import shutil
 import socket
 import winreg
 from pathlib import Path
@@ -46,12 +48,10 @@ APPDATA_DIR = Path(os.getenv('LOCALAPPDATA')) / 'Zapret Launcher'
 CONFIG_FILE = APPDATA_DIR / 'config.json'
 ICON_PATH = BASE_DIR / "resources" / "icon.ico"
 ICON_PNG_PATH = BASE_DIR / "resources" / "icon.png"
-ZAPRET_RESOURCES_ZIP = "zapret_resources.zip"
 ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
-ZAPRET_API_URL = "https://api.github.com/repos/flowseal/zapret-discord-youtube/releases/latest"
-CURRENT_VERSION = "3.1c"
+CURRENT_VERSION = "3.1d"
 
 def is_admin():
     try:
@@ -307,44 +307,63 @@ class ZapretCore:
         self.ensure_resources()
         self.load_strategies()
         
+    def get_resource_path(self, relative_path):
+        if getattr(sys, 'frozen', False):
+            base_path = Path(sys._MEIPASS)
+        else:
+            base_path = Path(__file__).parent
+        
+        return base_path / relative_path
+        
     def ensure_resources(self):
-        if self.zapret_dir.exists():
+        if self.zapret_dir.exists() and (self.zapret_dir / "version.txt").exists():
+            print(f"Resources already exist at {self.zapret_dir}")
             return
             
-        self.zapret_dir.mkdir(parents=True, exist_ok=True)
-        possible_paths = [
-            Path(__file__).parent / ZAPRET_RESOURCES_ZIP,
-            Path(sys.executable).parent / ZAPRET_RESOURCES_ZIP if getattr(sys, 'frozen', False) else None,
-        ]
+        print(f"Copying zapret_core to {self.zapret_dir}...")
+        source_dir = self.get_resource_path("zapret_core")
         
-        archive_path = None
-        for p in possible_paths:
-            if p and p.exists():
-                archive_path = p
-                break
-                
-        if not archive_path:
+        if not source_dir.exists():
             messagebox.showerror(
                 tr('error_zapret_folder'), 
-                f"{tr('error_zapret_folder')}\n"
-                f"Resource file not found {ZAPRET_RESOURCES_ZIP}\n"
-                "Start build_resources.py"
+                f"Zapret core folder not found in executable!\n"
+                f"Expected location: {source_dir}\n\n"
+                f"Please reinstall the application."
             )
             sys.exit(1)
-            
+        
         try:
-            with zipfile.ZipFile(archive_path, 'r') as zipf:
-                zipf.extractall(self.zapret_dir)
+            self.zapret_dir.mkdir(parents=True, exist_ok=True)
+            
+            for item in source_dir.iterdir():
+                dest_item = self.zapret_dir / item.name
+                if item.is_dir():
+                    if dest_item.exists():
+                        shutil.rmtree(dest_item)
+                    shutil.copytree(item, dest_item)
+                else:
+                    shutil.copy2(item, dest_item)
+                    
+            print(f"Successfully copied zapret_core to {self.zapret_dir}")
             
             version_file = self.zapret_dir / "version.txt"
             if not version_file.exists():
                 with open(version_file, 'w') as f:
-                    f.write("1.9.7b")  
+                    f.write("1.0")
+                    
         except Exception as e:
-            messagebox.showerror(tr('error_zapret_folder'), f"Failed to unpack resources: {e}")
+            messagebox.showerror(
+                tr('error_zapret_folder'), 
+                f"Failed to copy zapret_core: {e}\n\n"
+                f"Source: {source_dir}\n"
+                f"Destination: {self.zapret_dir}"
+            )
             sys.exit(1)
             
     def load_strategies(self):
+        if not self.zapret_dir.exists():
+            return
+            
         self.available_strategies = []
         for item in self.zapret_dir.glob("general*.bat"):
             self.available_strategies.append(item.name)
@@ -384,13 +403,13 @@ class ZapretCore:
             time.sleep(3.0)
             for _ in range(10):
                 if self.is_winws_running():
-                    return True, f"{tr('status_strategy_started')}: {self.get_strategy_display_name(strategy_name)}"
+                    return True, f"{tr('status_strategy_started')} {self.get_strategy_display_name(strategy_name)}"
                 time.sleep(0.5)
             return False, tr('error_winws_not_found')
         except Exception as e:
             if hasattr(self, 'parent') and self.parent:
-                self.parent.log_event("error", f"Error starting strategy {strategy_name}: {str(e)}")
-            return False, f"{tr('error_startup')}: {str(e)}"
+                self.parent.log_event("error", f"Error starting strategy {strategy_name} {str(e)}")
+            return False, f"{tr('error_startup')} {str(e)}"
             
     def stop_current_strategy(self):
         if self.current_process:
@@ -430,7 +449,7 @@ class ZapretCore:
             current_idx = modes.index(self.ipset_filter_mode)
             self.ipset_filter_mode = modes[(current_idx + 1) % 3]
             return True, f"IPSet Filter: {self.ipset_filter_mode}"
-        return False, f"{tr('error_unknown_command')}: {command}"
+        return False, f"{tr('error_unknown_command')} {command}"
 
 class ZapretLauncher:
     def __init__(self, root):
@@ -491,6 +510,9 @@ class ZapretLauncher:
 
         self.rtt_timer_id = None
         self.rtt_update_interval = 10000
+
+        self.MAX_HISTORY_SIZE = 100
+        self.MAX_HISTORY_AGE = 3600
 
         self.traffic_history = {}
         self.traffic_history_vpn = {}
@@ -585,6 +607,8 @@ class ZapretLauncher:
         self.load_settings()
         self.apply_theme()
 
+        set_logger(self)
+
         if not self._tg_secret:
             self._tg_secret = os.urandom(16).hex()
             self.save_settings()
@@ -594,7 +618,6 @@ class ZapretLauncher:
         self.setup_ui()
         self.root.after(100, self.check_initial_status)
         self.root.after(1000, lambda: check_launcher_updates(self, silent=True))
-        self.root.after(2000, lambda: check_zapret_updates(self, silent=True))
         self.show_main_page()
                 
         self.tray_icon = ModernSystemTray(self)
@@ -766,6 +789,9 @@ class ZapretLauncher:
             log_entry = f"[{timestamp}] {message}"
         
         elif event_type == "info":
+            log_entry = f"[{timestamp}] {message}"
+
+        elif event_type == "success":
             log_entry = f"[{timestamp}] {message}"
 
         else:
@@ -1240,7 +1266,7 @@ class ZapretLauncher:
 
     def _on_tg_proxy_failed_direct(self, error_msg):
         self.update_status(tr('status_error'), self.colors['accent_red'])
-        messagebox.showerror(tr('error_tgproxy_start'), f"{tr('error_tgproxy_start')}: {error_msg}")
+        messagebox.showerror(tr('error_tgproxy_start'), f"{tr('error_tgproxy_start')} {error_msg}")
         if hasattr(self, 'connect_btn') and self.connect_btn:
             self.connect_btn.set_enabled(True)
 
@@ -1307,7 +1333,7 @@ class ZapretLauncher:
             selection = strategy_listbox.curselection()
             if selection:
                 strategy = self.zapret.available_strategies[selection[0]]
-                desc_label.config(text=f"{tr('selected')}: {strategy}")
+                desc_label.config(text=f"{tr('selected')} {strategy}")
         
         strategy_listbox.bind("<<ListboxSelect>>", on_select)
         
@@ -1316,7 +1342,7 @@ class ZapretLauncher:
                 idx = self.zapret.available_strategies.index(self.current_strategy)
                 strategy_listbox.selection_set(idx)
                 strategy_listbox.see(idx)
-                desc_label.config(text=f"{tr('selected')}: {self.current_strategy}")
+                desc_label.config(text=f"{tr('selected')} {self.current_strategy}")
             except:
                 pass
         
@@ -1660,7 +1686,7 @@ class ZapretLauncher:
             self.log_to_diagnostic(tr('dns_optimize_complete'))
             messagebox.showinfo(tr('dns_optimize_success'), tr('dns_optimize'))
         else:
-            self.log_to_diagnostic(f"{tr('error_occurred')}: {msg}")
+            self.log_to_diagnostic(f"{tr('error_occurred')} {msg}")
             messagebox.showerror(tr('error_occurred'), msg)
         
         self.log_to_diagnostic("="*50)
@@ -1678,9 +1704,9 @@ class ZapretLauncher:
             try:
                 primary, secondary, latency, name = find_best_dns()
                 
-                self.log_to_diagnostic(f"{tr('dns_best_set')}: {name}")
-                self.log_to_diagnostic(f"{tr('dns_primary')}: {primary} ({tr('dns_latency')}: {latency:.1f} ms)")
-                self.log_to_diagnostic(f"{tr('dns_secondary')}: {secondary}")
+                self.log_to_diagnostic(f"{tr('dns_best_set')} {name}")
+                self.log_to_diagnostic(f"{tr('dns_primary')} {primary} ({tr('dns_latency')} {latency:.1f} ms)")
+                self.log_to_diagnostic(f"{tr('dns_secondary')} {secondary}")
                 
                 if not is_admin():
                     self.log_to_diagnostic(tr('error_admin_required'))
@@ -1795,22 +1821,6 @@ class ZapretLauncher:
         self.log_to_diagnostic("="*50)
         
         errors = []
-        
-        required_files = [
-            ("zapret_resources.zip", Path(__file__).parent / "zapret_resources.zip"),
-        ]
-        
-        for name, path in required_files:
-            if path.exists():
-                size = path.stat().st_size
-                if size > 0:
-                    self.log_to_diagnostic(f"  {name} - {size} {tr('diagnostic_bytes')}")
-                else:
-                    self.log_to_diagnostic(f"  {name} - empty file (0 {tr('diagnostic_bytes')})")
-                    errors.append(f"{name} {tr('is_empty')}")
-            else:
-                self.log_to_diagnostic(f"  {name} - {tr('not_found')}")
-                errors.append(f"{name} {tr('not_found')}")
         
         if ZAPRET_CORE_DIR.exists():
             zapret_files = [
@@ -1973,7 +1983,7 @@ class ZapretLauncher:
         try:
             command()
         except Exception as e:
-            self.log_to_diagnostic(f"{tr('error_occurred')}: {str(e)}")
+            self.log_to_diagnostic(f"{tr('error_occurred')} {str(e)}")
 
     def log_to_diagnostic(self, message):
         self.diagnostic_text.insert(tk.END, message + "\n")
@@ -2003,7 +2013,7 @@ class ZapretLauncher:
         best_success_count = 0
         
         for strategy in strategies:
-            self.log_to_diagnostic(f"\n{tr('diagnostic_testing')}: {strategy}")
+            self.log_to_diagnostic(f"\n{tr('diagnostic_testing')} {strategy}")
             
             if was_connected:
                 self.disconnect()
@@ -2034,7 +2044,7 @@ class ZapretLauncher:
             self.zapret.stop_current_strategy()
             
             score = success_count
-            self.log_to_diagnostic(f"  {tr('diagnostic_result')}: {success_count}/{len(test_sites)}")
+            self.log_to_diagnostic(f"  {tr('diagnostic_result')} {success_count}/{len(test_sites)}")
             
             if score > best_score:
                 best_score = score
@@ -2042,8 +2052,8 @@ class ZapretLauncher:
                 best_success_count = success_count
         
         if best_strategy:
-            self.log_to_diagnostic(f"\n{tr('diagnostic_best_strategy')}: {best_strategy}")
-            self.log_to_diagnostic(f"{tr('diagnostic_result')}: {best_success_count}/{len(test_sites)}")
+            self.log_to_diagnostic(f"\n{tr('diagnostic_best_strategy')} {best_strategy}")
+            self.log_to_diagnostic(f"{tr('diagnostic_result')} {best_success_count}/{len(test_sites)}")
             
             self.strategy_var.set(best_strategy)
             self.current_strategy = best_strategy
@@ -2074,7 +2084,7 @@ class ZapretLauncher:
             self.log_to_diagnostic(tr('diagnostic_winws_not_found'))
 
     def open_appdata_folder(self):
-        self.log_to_diagnostic(f"{tr('diagnostic_opening_folder')}: AppData/Local/Zapret Launcher")
+        self.log_to_diagnostic(f"{tr('diagnostic_opening_folder')} AppData/Local/Zapret Launcher")
         try:
             os.startfile(APPDATA_DIR)
         except Exception as e:
@@ -2906,6 +2916,7 @@ class ZapretLauncher:
         self.traffic_last_update = time.time()
     
     def get_process_traffic(self):
+        self._cleanup_traffic_history()
         processes = []
         current_time = time.time()
         time_diff = current_time - self.traffic_last_update
@@ -2920,9 +2931,37 @@ class ZapretLauncher:
         
         self.traffic_last_update = current_time
         
+        connections = []
         try:
             connections = psutil.net_connections(kind='inet')
-            
+        except psutil.AccessDenied:
+            self.log_event("error", "Administrator rights required to view network connections")
+            self._cached_processes = [{
+                'name': tr('error_admin_required'),
+                'speed': '-',
+                'vpn': '-',
+                'direct': '-',
+                'connections': 0,
+                'host': '',
+                'total': '-'
+            }]
+            self._last_process_time = current_time
+            return self._cached_processes
+        except Exception as e:
+            self.log_event("error", f"Failed to get network connections: {str(e)}")
+            self._cached_processes = [{
+                'name': tr('error_traffic_collection'),
+                'speed': '-',
+                'vpn': '-',
+                'direct': '-',
+                'connections': 0,
+                'host': '',
+                'total': '-'
+            }]
+            self._last_process_time = current_time
+            return self._cached_processes
+        
+        try:
             pid_counts = {}
             pid_hosts = {}
             
@@ -3022,7 +3061,6 @@ class ZapretLauncher:
                     if time_diff > 0 and total_bytes >= prev_total:
                         raw_speed = (total_bytes - prev_total) / time_diff
                         raw_speed = max(0, raw_speed)
-                        
                         raw_speed = min(raw_speed, 100 * 1024 * 1024)
                         
                         if proc_name in self.traffic_speed_history:
@@ -3086,7 +3124,16 @@ class ZapretLauncher:
             processes = processes[:40]
             
         except Exception as e:
-            self.log_to_diagnostic(f"{tr('error_traffic_collection')}: {e}")
+            self.log_event("error", f"Error collecting traffic: {str(e)}")
+            processes = [{
+                'name': tr('error_traffic_collection'),
+                'speed': '-',
+                'vpn': '-',
+                'direct': '-',
+                'connections': 0,
+                'host': '',
+                'total': '-'
+            }]
         
         if not processes:
             processes.append({
@@ -3098,6 +3145,7 @@ class ZapretLauncher:
                 'host': '',
                 'total': '-'
             })
+        
         self._cached_processes = processes
         self._last_process_time = current_time
         return processes
@@ -3235,6 +3283,20 @@ class ZapretLauncher:
 
     def is_any_connection_active(self):
         return self.is_connected or self.zapret.is_winws_running() or (hasattr(self, 'tg_proxy') and self.tg_proxy.is_running)
+
+    def _cleanup_traffic_history(self):
+        current_time = time.time()
+        
+        if len(self.traffic_history) > self.MAX_HISTORY_SIZE:
+            to_remove = len(self.traffic_history) - self.MAX_HISTORY_SIZE
+            oldest_keys = list(self.traffic_history.keys())[:to_remove]
+            for key in oldest_keys:
+                self.traffic_history.pop(key, None)
+                self.traffic_history_vpn.pop(key, None)
+                self.traffic_history_direct.pop(key, None)
+                self.traffic_speed_history.pop(key, None)
+                self.traffic_speed_vpn_history.pop(key, None)
+                self.traffic_speed_direct_history.pop(key, None)
 
     def setup_scrollbar_style(self):
         style = ttk.Style()
