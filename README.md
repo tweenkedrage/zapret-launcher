@@ -46,6 +46,8 @@
 1. Добавьте папку с лаунчером в **Исключение/Белый список**;
 2. Cкомпилируйте программу из [исходников](https://github.com/tweenkedrage/zapret-launcher/archive/refs/heads/main.zip).
 
+[Проверка **VirusTotal**](https://www.virustotal.com/gui/file/e83a3135debf70bef801cefb3b6a42bba89ff807aee68088ea923dd742806dcf/detection)
+
 ## Структура:
 ```
 main.py                  # Главное окно
