@@ -43,8 +43,8 @@ def build_exe():
     print()
     
     pyinstaller_paths = [
-        r"C:\Users\***\AppData\Roaming\Python\Python314\Scripts\pyinstaller.exe",
-        r"C:\Users\***\AppData\Local\Python\pythoncore-3.14-64\Scripts\pyinstaller.exe",
+        r"C:\Users\***\AppData\Roaming\Python\Python314\Scripts\pyinstaller.exe", # Change path
+        r"C:\Users\***\AppData\Local\Python\pythoncore-3.14-64\Scripts\pyinstaller.exe", # Change path
         'pyinstaller'
     ]
     
