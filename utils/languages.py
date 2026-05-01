@@ -331,6 +331,8 @@ class Languages:
             'diagnostic_check_error': 'ошибка проверки',
             'diagnostic_file_integrity': 'ПРОВЕРКА ЦЕЛОСТНОСТИ ФАЙЛОВ',
             'diagnostic_check_site': 'Проверка сайта',
+            
+            'already_running': 'Лаунчер уже запущен!',
         },
         
         'English': {
@@ -658,6 +660,8 @@ class Languages:
             'diagnostic_all_ok': 'All files OK',
             'diagnostic_file_integrity': 'FILE INTEGRITY CHECK',
             'diagnostic_check_site': 'Check site',
+            
+            'already_running': 'The launcher is already running!',
         }
     }
     
