@@ -36,6 +36,7 @@ import psutil
 import shutil
 import socket
 import winreg
+import ctypes.wintypes
 from pathlib import Path
 import sys
 import re
@@ -51,7 +52,17 @@ ICON_PNG_PATH = BASE_DIR / "resources" / "icon.png"
 ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
-CURRENT_VERSION = "3.1d"
+CURRENT_VERSION = "3.1e"
+
+def check_single_instance():
+    mutex_name = "ZapretLauncher_3_1e_SingleInstance"
+    
+    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
+    last_error = ctypes.windll.kernel32.GetLastError()
+    
+    if last_error == 183:
+        return False, None
+    return True, mutex
 
 def is_admin():
     try:
@@ -1452,6 +1463,12 @@ class ZapretLauncher:
         if hasattr(self, 'tray_icon') and self.tray_icon:
             try:
                 self.tray_icon.update_tooltip()
+            except:
+                pass
+
+        if hasattr(self, 'tray_icon') and self.tray_icon:
+            try:
+                self.tray_icon.update_icon_state()
             except:
                 pass
 
@@ -3576,6 +3593,20 @@ class ZapretLauncher:
             print(f"Error clearing logs: {e}")
 
 if __name__ == "__main__":
+    is_first_instance, mutex_handle = check_single_instance()
+    
+    if not is_first_instance:
+        messagebox.showwarning(
+            "Zapret Launcher",
+            tr('already_running')
+        )
+        sys.exit(0)
+    
     root = tk.Tk()
     app = ZapretLauncher(root)
-    root.mainloop()
+    
+    try:
+        root.mainloop()
+    finally:
+        if mutex_handle:
+            ctypes.windll.kernel32.CloseHandle(mutex_handle)
