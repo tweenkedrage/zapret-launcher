@@ -15,7 +15,7 @@ APPDATA_DIR = Path(os.getenv('LOCALAPPDATA')) / 'Zapret Launcher'
 ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
-CURRENT_VERSION = "3.1d"
+CURRENT_VERSION = "3.1e"
 
 def log_update_event(message: str):
     from datetime import datetime
