@@ -4,7 +4,6 @@ chcp 65001 > nul
 
 cd /d "%~dp0"
 call service.bat status_zapret
-call service.bat check_updates
 call service.bat load_game_filter
 call service.bat load_user_lists
 echo:
