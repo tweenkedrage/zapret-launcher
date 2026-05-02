@@ -39,14 +39,14 @@
 - **Игровой** - оптимизация для игр через **Zapret**.
 
 ## Требования:
-- Windows **10** / **11** (**64 bit**)
-- 40 MB свободного места
+- Windows **10** / **11**
+- 50 MB свободного места
 
 ### Если антивирус ругается:
 1. Добавьте папку с лаунчером в **Исключение/Белый список**;
 2. Cкомпилируйте программу из [исходников](https://github.com/tweenkedrage/zapret-launcher/archive/refs/heads/main.zip).
 
-[Проверка **VirusTotal**](https://www.virustotal.com/gui/file/e83a3135debf70bef801cefb3b6a42bba89ff807aee68088ea923dd742806dcf/detection)
+[Проверка **VirusTotal**](https://www.virustotal.com/gui/file/41654f103832317c50895cf215b6c13ae673239dc94e777d6b14b457dcc4c724/detection) (**3.1e**)
 
 ## Структура:
 ```
