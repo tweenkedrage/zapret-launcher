@@ -47,6 +47,7 @@
 2. Cкомпилируйте программу из [исходников](https://github.com/tweenkedrage/zapret-launcher/archive/refs/heads/main.zip).
 
 [Проверка **VirusTotal**](https://www.virustotal.com/gui/file/41654f103832317c50895cf215b6c13ae673239dc94e777d6b14b457dcc4c724/detection) (**3.1e**)
+[zapret_core.zip](https://github.com/user-attachments/files/27364135/zapret_core.zip)
 
 ## Структура:
 ```
