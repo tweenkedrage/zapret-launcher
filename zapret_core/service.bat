@@ -1,5 +1,5 @@
 @echo off
-set "LOCAL_VERSION=1.9.8b"
+set "LOCAL_VERSION=1.9.8c"
 
 :: External commands
 if "%~1"=="status_zapret" (
@@ -43,11 +43,14 @@ setlocal EnableDelayedExpansion
 cls
 call :ipset_switch_status
 call :game_switch_status
+call :check_updates_switch_status
+call :get_strategy_name
 
 set "menu_choice=null"
 
 echo.
 echo   ZAPRET SERVICE MANAGER v!LOCAL_VERSION!
+echo.  !CurrentStrategy!
 echo   ----------------------------------------
 echo.
 echo   :: SERVICE
@@ -105,6 +108,7 @@ exit /b
 
 :: TCP ENABLE ==========================
 :tcp_enable
+chcp 437 > nul
 netsh interface tcp show global | findstr /i "timestamps" | findstr /i "enabled" > nul || netsh interface tcp set global timestamps=enabled > nul 2>&1
 exit /b
 
@@ -336,6 +340,7 @@ reg add "HKLM\System\CurrentControlSet\Services\zapret" /v zapret-discord-youtub
 
 pause
 goto menu
+
 
 :: DIAGNOSTICS =========================
 :service_diagnostics
@@ -712,6 +717,7 @@ call :PrintYellow "Restart the zapret to apply the changes"
 pause
 goto menu
 
+
 :: IPSET SWITCH =======================
 :ipset_switch_status
 chcp 437 > nul
@@ -898,6 +904,13 @@ echo.
 start "" powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0utils\test zapret.ps1"
 pause
 goto menu
+
+
+:: Get strategy name
+:get_strategy_name
+set "CurrentStrategy="
+for /f "tokens=2*" %%A in ('reg query "HKLM\System\CurrentControlSet\Services\zapret" /v zapret-discord-youtube 2^>nul') do set "CurrentStrategy=Strategy: %%B"
+exit /b
 
 
 :: Utility functions
