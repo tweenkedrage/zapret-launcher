@@ -15,7 +15,7 @@ APPDATA_DIR = Path(os.getenv('LOCALAPPDATA')) / 'Zapret Launcher'
 ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
-CURRENT_VERSION = "3.1e"
+CURRENT_VERSION = "3.1f"
 
 def log_update_event(message: str):
     from datetime import datetime
@@ -83,24 +83,3 @@ def check_launcher_updates(parent, silent=False):
             except KeyboardInterrupt:
                 pass
         return False
-
-def check_zapret_updates(parent, silent=False):
-    if not silent:
-        try:
-            messagebox.showinfo(
-                tr('update_zapret_title'), 
-                "Zapret updates are disabled. Only the initial extraction is performed."
-            )
-        except KeyboardInterrupt:
-            pass
-    return False
-
-def update_zapret_core(parent, version):
-    try:
-        messagebox.showwarning(
-            "Update Disabled", 
-            "Zapret auto-update is disabled. The core files are fixed and will not be updated."
-        )
-        parent.update_status(tr('status_ready'))
-    except:
-        pass
