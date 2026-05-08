@@ -23,28 +23,12 @@ def clean_build():
         print("Spec file removed")
     print()
 
-def install_requirements():
-    requirements = [
-        'pystray',
-        'pillow', 
-        'cryptography',
-        'psutil',
-        'pyinstaller'
-    ]
-    
-    print("Installing dependencies...")
-    for req in requirements:
-        subprocess.run([sys.executable, '-m', 'pip', 'install', '--quiet', req])
-        print(f"  {req}")
-    print()
-
 def build_exe():
     print("Building Zapret Launcher...")
     print()
     
     pyinstaller_paths = [
-        r"C:\Users\***\AppData\Roaming\Python\Python314\Scripts\pyinstaller.exe", # Change path
-        r"C:\Users\***\AppData\Local\Python\pythoncore-3.14-64\Scripts\pyinstaller.exe", # Change path
+        r"C:\Users\**\AppData\Local\Programs\Python\Python312\Scripts\pyinstaller.exe", # Change path
         'pyinstaller'
     ]
     
@@ -119,6 +103,5 @@ if __name__ == '__main__':
         print("Warning: resources/icon.ico not found")
         print()
 
-    install_requirements()
     clean_build()
     build_exe()
