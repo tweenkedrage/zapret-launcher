@@ -31,12 +31,10 @@ import time
 import threading
 import webbrowser
 import asyncio
-import zipfile
 import psutil
 import shutil
 import socket
 import winreg
-import ctypes.wintypes
 from pathlib import Path
 import sys
 import re
@@ -52,10 +50,10 @@ ICON_PNG_PATH = BASE_DIR / "resources" / "icon.png"
 ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
-CURRENT_VERSION = "3.1e"
+CURRENT_VERSION = "3.1f"
 
 def check_single_instance():
-    mutex_name = "ZapretLauncher_3_1e_SingleInstance"
+    mutex_name = "ZapretLauncher_SingleInstance"
     
     mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
     last_error = ctypes.windll.kernel32.GetLastError()
@@ -593,7 +591,7 @@ class ZapretLauncher:
         
         if not is_admin():
             result = messagebox.askyesno(
-                tr('dialog_admin_required'),
+                "Zapret Launcher",
                 tr('dialog_admin_message')
             )
             if result:
@@ -963,7 +961,6 @@ class ZapretLauncher:
         main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
         
         canvas = tk.Canvas(main_frame, bg=self.colors['bg_medium'], highlightthickness=0)
-        #scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview, style="Custom.Vertical.TScrollbar")
         scrollable_frame = tk.Frame(canvas, bg=self.colors['bg_medium'])
         
         scrollable_frame.bind(
@@ -974,19 +971,6 @@ class ZapretLauncher:
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw", width=440)
         canvas.configure(yscrollcommand=None)
         canvas.pack(side="left", fill="both", expand=True)
-        #scrollbar.pack(side="right", fill="y")
-        
-        #def _on_mousewheel(event):
-        #    try:
-        #        if canvas and canvas.winfo_exists():
-        #           canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        #    except (tk.TclError, AttributeError):
-        #        pass
-        
-        #dialog.bind_all("<MouseWheel>", _on_mousewheel)
-        #dialog._mousewheel_handler = _on_mousewheel
-        #canvas.bind("<MouseWheel>", _on_mousewheel)
-        #scrollable_frame.bind("<MouseWheel>", _on_mousewheel)
         
         modes = [
             {"name": tr('mode_standard'), "desc": tr('mode_standard_desc'), 
@@ -1583,31 +1567,41 @@ class ZapretLauncher:
             except:
                 pass
             
-            def on_iconify():
+            def close_notification():
                 if notification and notification.winfo_exists() and notification._is_alive:
                     try:
-                        notification.withdraw()
+                        notification._is_alive = False
+                        notification.destroy()
                     except:
                         pass
+                return True
             
-            def on_deiconify():
-                if notification and notification.winfo_exists() and notification._is_alive and self.root.winfo_viewable():
-                    try:
-                        notification.deiconify()
-                    except:
-                        pass
+            def on_focus_out(event):
+                notification.after(100, lambda: close_notification() if not self.root.focus_get() else None)
             
-            for binding in self.root.bindtags():
-                if '<Map>' in binding or '<Unmap>' in binding:
-                    pass
+            def on_iconify(event):
+                close_notification()
             
-            self.root.bind('<Map>', lambda e: on_deiconify(), add=True)
-            self.root.bind('<Unmap>', lambda e: on_iconify(), add=True)
+            def on_deactivate(event):
+                close_notification()
             
-            try:
-                notification.attributes('-alpha', 0.95)
-            except:
-                pass
+            self.root.bind('<FocusOut>', on_focus_out, add=True)
+            self.root.bind('<Unmap>', on_iconify, add=True)
+            self.root.bind('<Deactivate>', on_deactivate, add=True)
+            
+            if not hasattr(self, '_notification_bindings'):
+                self._notification_bindings = []
+            
+            def check_window_visibility():
+                if notification and notification.winfo_exists() and notification._is_alive:
+                    if not self.root.winfo_viewable() or not self.root.focus_displayof():
+                        close_notification()
+                        return False
+                    notification.after(200, check_window_visibility)
+                    return True
+                return False
+            
+            notification.after(100, check_window_visibility)
             
             x = self.root.winfo_x() + self.root.winfo_width() - 300
             y = self.root.winfo_y() + 50
@@ -1629,11 +1623,7 @@ class ZapretLauncher:
             notification.attributes('-alpha', 0.0)
             
             def fade_in(alpha=0.0):
-                if not self.root.winfo_viewable():
-                    try:
-                        notification.destroy()
-                    except:
-                        pass
+                if not self.root.winfo_viewable() or not notification.winfo_exists():
                     return
                 if alpha < 0.95:
                     alpha += 0.1
@@ -1656,16 +1646,12 @@ class ZapretLauncher:
                     except:
                         pass
                 else:
-                    try:
-                        if notification and notification.winfo_exists():
-                            notification._is_alive = False
-                            notification.destroy()
-                    except:
-                        pass
+                    close_notification()
             
             fade_in()
-        except Exception:
-                    pass
+            
+        except Exception as e:
+            print(f"Notification error: {e}")
 
     def save_interval_setting(self):
         try:
@@ -2234,9 +2220,6 @@ class ZapretLauncher:
 
     def check_launcher_updates(self, parent, silent=False):
         return check_launcher_updates(parent, silent)
-    
-    def check_zapret_updates(self, parent, silent=False):
-        return check_zapret_updates(parent, silent)
 
     def update_status(self, text, color=None):
         if color is None:
@@ -2513,7 +2496,6 @@ class ZapretLauncher:
                             self.stop_stats_monitoring()
     
                     self._tg_instruction = data.get('tg_instruction', False)
-                    #self.current_theme = data.get('theme', 'Dark')
                     self._tg_secret = data.get('tg_secret', None)
 
                     if not self._tg_secret:
@@ -2533,7 +2515,6 @@ class ZapretLauncher:
                 'update_interval': self.update_interval_index,
                 'tg_instruction': getattr(self, '_tg_instruction', False),
                 'language': self.languages.get_current_language(),
-                #'theme': self.current_theme,
                 'tg_secret': getattr(self, '_tg_secret', None),
             }
             with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
@@ -3556,6 +3537,9 @@ class ZapretLauncher:
         self.root.after(100, self.update_stats_display)
         if hasattr(self, 'connect_btn') and self.connect_btn:
             self.connect_btn.set_enabled(True)
+
+        if not self._tg_instruction:
+            self.root.after(500, self.show_tg_proxy_instruction)
 
         self.root.after(500, self.update_tray_icon_state)
         self.log_event("connect", "", mode_name)
