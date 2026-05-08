@@ -2,7 +2,6 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import TYPE_CHECKING
 from utils.languages import tr
-# from gui.theme import get_theme_names
 
 if TYPE_CHECKING:
     from main import ZapretLauncher
@@ -886,37 +885,6 @@ class Pages:
             corner_radius=8
         )
         copy_btn.pack(anchor='w', pady=5)
-
-        #theme_card = tk.Frame(left_column, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
-        #theme_card.pack(fill=tk.X, pady=6)
-        #theme_inner = tk.Frame(theme_card, bg=self.colors['bg_light'])
-        #theme_inner.pack(fill=tk.X, padx=10, pady=8)
-
-        #tk.Label(theme_inner, text=tr('settings_theme'), font=("Inter", 12, "bold"),
-        #        fg=self.colors['accent'], bg=self.colors['bg_light']).pack(anchor='w', pady=(0, 5))
-
-        #tk.Label(theme_inner, text=tr('settings_theme_desc'),
-        #        font=("Inter", 9), fg=self.colors['text_secondary'], bg=self.colors['bg_light']).pack(anchor='w', pady=(0, 10))
-
-        #theme_var = tk.StringVar(value=self.app.current_theme)
-        #theme_combo = ttk.Combobox(theme_inner, textvariable=theme_var, 
-        #                values=get_theme_names(),
-        #                state='readonly', width=15)
-        #theme_combo.pack(anchor='w', pady=5)
-
-        #def on_theme_change(event=None):
-        #    new_theme = theme_var.get()
-        #    if new_theme != self.app.current_theme:
-        #        self.app.current_theme = new_theme
-        #        self.app.save_settings()
-        #        result = messagebox.askyesno(
-        #            tr('dialog_restart_title'),
-        #            tr('notification_theme_restart')
-        #        )
-        #        if result:
-        #            self.app.restart_main()
-
-        #theme_combo.bind("<<ComboboxSelected>>", on_theme_change)
 
         info_card = tk.Frame(left_column, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
         info_card.pack(fill=tk.X, pady=6)
