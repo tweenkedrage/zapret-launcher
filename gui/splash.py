@@ -7,6 +7,7 @@ import subprocess
 import sys
 import threading
 import re
+import ctypes
 import time
 
 class SplashWindow:
@@ -38,6 +39,18 @@ class SplashWindow:
 
         self.setup_window()
         self.setup_ui()
+
+    def is_admin(self):
+        try:
+            return ctypes.windll.shell32.IsUserAnAdmin()
+        except:
+            return False
+
+    def run_as_admin(self):
+        ctypes.windll.shell32.ShellExecuteW(
+            None, "runas", sys.executable, " ".join(sys.argv), None, 1
+        )
+        sys.exit()
         
     def after(self, ms, func):
         if not self._is_closing:
@@ -149,6 +162,10 @@ class SplashWindow:
             pass
     
     def start(self):
+        if not self.is_admin():
+            self.run_as_admin()
+            return
+    
         self._check_internet()
         self.window.mainloop()
 
@@ -268,6 +285,7 @@ class SplashWindow:
             return False
 
     def _download_and_update(self):
+        was_admin = self.is_admin()
         def update_worker():
             temp_file = None
             try:
@@ -288,7 +306,10 @@ class SplashWindow:
                 
                 current_exe.rename(old_exe)
                 temp_file.rename(current_exe)
-                subprocess.Popen([str(current_exe), '--no-splash', '--from-splash'])
+                if was_admin:
+                    subprocess.Popen([str(current_exe), '--no-splash', '--from-splash'], shell=True)
+                else:
+                    subprocess.Popen([str(current_exe), '--no-splash', '--from-splash'])
                 self.after(500, self.close)
                 sys.exit(0)
 
