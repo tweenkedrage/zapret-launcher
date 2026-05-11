@@ -6,9 +6,9 @@ from utils.languages import tr, get_languages
 from typing import List, Optional
 from gui.theme import get_theme
 from datetime import datetime
+from gui.splash import SplashWindow
 from utils.network_set import set_logger
 from tg_proxy import run_proxy
-from utils.updater import check_launcher_updates
 from utils.network_set import (
     optimize_network_latency,
     find_best_dns,
@@ -20,7 +20,6 @@ from utils.network_set import (
 )
 from gui.widgets import RoundedButton
 try:
-    from tg_proxy import run_proxy_server
     TG_PROXY_AVAILABLE = True
 except ImportError:
     TG_PROXY_AVAILABLE = False
@@ -43,14 +42,14 @@ from ctypes import windll, byref, c_int
 from typing import Optional, List, Tuple
 
 BASE_DIR = Path(__file__).parent
-APPDATA_DIR = Path(os.getenv('LOCALAPPDATA')) / 'Zapret Launcher'
+APPDATA_DIR = Path(os.getenv('APPDATA')) / 'Zapret Launcher'
 CONFIG_FILE = APPDATA_DIR / 'config.json'
 ICON_PATH = BASE_DIR / "resources" / "icon.ico"
 ICON_PNG_PATH = BASE_DIR / "resources" / "icon.png"
 ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
-CURRENT_VERSION = "3.1f"
+CURRENT_VERSION = "3.2.0"
 
 def check_single_instance():
     mutex_name = "ZapretLauncher_SingleInstance"
@@ -317,12 +316,17 @@ class ZapretCore:
         self.load_strategies()
         
     def get_resource_path(self, relative_path):
+        exe_dir = Path(sys.executable).parent
+        local_path = exe_dir / relative_path
+        
+        if local_path.exists():
+            return local_path
+        
         if getattr(sys, 'frozen', False):
             base_path = Path(sys._MEIPASS)
+            return base_path / relative_path
         else:
-            base_path = Path(__file__).parent
-        
-        return base_path / relative_path
+            return Path(__file__).parent / relative_path
         
     def ensure_resources(self):
         if self.zapret_dir.exists() and (self.zapret_dir / "version.txt").exists():
@@ -626,7 +630,6 @@ class ZapretLauncher:
         
         self.setup_ui()
         self.root.after(100, self.check_initial_status)
-        self.root.after(1000, lambda: check_launcher_updates(self, silent=True))
         self.show_main_page()
                 
         self.tray_icon = ModernSystemTray(self)
@@ -686,8 +689,11 @@ class ZapretLauncher:
             self.zapret.stop_current_strategy()
             if hasattr(self, 'tg_proxy'):
                 self.tg_proxy.stop()
-            if hasattr(self, 'tray_icon') and self.tray_icon.icon:
-                self.tray_icon.icon.stop()
+            if hasattr(self, 'tray_icon') and self.tray_icon and hasattr(self.tray_icon, 'icon'):
+                try:
+                    self.tray_icon.icon.stop()
+                except:
+                    pass
             time.sleep(0.5)
             self.root.quit()
             self.root.destroy()
@@ -769,7 +775,12 @@ class ZapretLauncher:
             pass
 
     def quit_from_tray(self):
-        self._force_exit()
+        try:
+            self.root.quit()
+            self.root.destroy()
+        except:
+            pass
+        sys.exit(0)
 
     def setup_ui(self):
         self.main_container = tk.Frame(self.root, bg=self.colors['bg_dark'])
@@ -829,6 +840,7 @@ class ZapretLauncher:
             icon_paths = [
                 BASE_DIR / "resources" / "icon.png",
                 BASE_DIR / "resources" / "icon.ico",
+                Path(sys._MEIPASS) / "resources" / "icon.ico",
                 Path("resources/icon.png"),
                 Path("icon.png")
             ]
@@ -921,8 +933,8 @@ class ZapretLauncher:
         
         tk.Label(
             credit_frame,
-            text=f"v{CURRENT_VERSION}",
-            font=("Segoe UI Variable", 9),
+            text=f"v{CURRENT_VERSION} beta",
+            font=("Segoe UI Variable", 8),
             fg=self.colors['text_secondary'],
             bg=self.colors['bg_medium']
         ).pack(pady=(5, 0))
@@ -1567,41 +1579,31 @@ class ZapretLauncher:
             except:
                 pass
             
-            def close_notification():
+            def on_iconify():
                 if notification and notification.winfo_exists() and notification._is_alive:
                     try:
-                        notification._is_alive = False
-                        notification.destroy()
+                        notification.withdraw()
                     except:
                         pass
-                return True
             
-            def on_focus_out(event):
-                notification.after(100, lambda: close_notification() if not self.root.focus_get() else None)
+            def on_deiconify():
+                if notification and notification.winfo_exists() and notification._is_alive and self.root.winfo_viewable():
+                    try:
+                        notification.deiconify()
+                    except:
+                        pass
             
-            def on_iconify(event):
-                close_notification()
+            for binding in self.root.bindtags():
+                if '<Map>' in binding or '<Unmap>' in binding:
+                    pass
             
-            def on_deactivate(event):
-                close_notification()
+            self.root.bind('<Map>', lambda e: on_deiconify(), add=True)
+            self.root.bind('<Unmap>', lambda e: on_iconify(), add=True)
             
-            self.root.bind('<FocusOut>', on_focus_out, add=True)
-            self.root.bind('<Unmap>', on_iconify, add=True)
-            self.root.bind('<Deactivate>', on_deactivate, add=True)
-            
-            if not hasattr(self, '_notification_bindings'):
-                self._notification_bindings = []
-            
-            def check_window_visibility():
-                if notification and notification.winfo_exists() and notification._is_alive:
-                    if not self.root.winfo_viewable() or not self.root.focus_displayof():
-                        close_notification()
-                        return False
-                    notification.after(200, check_window_visibility)
-                    return True
-                return False
-            
-            notification.after(100, check_window_visibility)
+            try:
+                notification.attributes('-alpha', 0.95)
+            except:
+                pass
             
             x = self.root.winfo_x() + self.root.winfo_width() - 300
             y = self.root.winfo_y() + 50
@@ -1623,7 +1625,11 @@ class ZapretLauncher:
             notification.attributes('-alpha', 0.0)
             
             def fade_in(alpha=0.0):
-                if not self.root.winfo_viewable() or not notification.winfo_exists():
+                if not self.root.winfo_viewable():
+                    try:
+                        notification.destroy()
+                    except:
+                        pass
                     return
                 if alpha < 0.95:
                     alpha += 0.1
@@ -1646,12 +1652,16 @@ class ZapretLauncher:
                     except:
                         pass
                 else:
-                    close_notification()
+                    try:
+                        if notification and notification.winfo_exists():
+                            notification._is_alive = False
+                            notification.destroy()
+                    except:
+                        pass
             
             fade_in()
-            
-        except Exception as e:
-            print(f"Notification error: {e}")
+        except Exception:
+                    pass
 
     def save_interval_setting(self):
         try:
@@ -2087,7 +2097,7 @@ class ZapretLauncher:
             self.log_to_diagnostic(tr('diagnostic_winws_not_found'))
 
     def open_appdata_folder(self):
-        self.log_to_diagnostic(f"{tr('diagnostic_opening_folder')} AppData/Local/Zapret Launcher")
+        self.log_to_diagnostic(f"{tr('diagnostic_opening_folder')} AppData/Roaming/Zapret Launcher")
         try:
             os.startfile(APPDATA_DIR)
         except Exception as e:
@@ -2217,9 +2227,6 @@ class ZapretLauncher:
             self.update_ui_state()
             if hasattr(self, 'tray_icon'):
                 self.tray_icon.update_menu()
-
-    def check_launcher_updates(self, parent, silent=False):
-        return check_launcher_updates(parent, silent)
 
     def update_status(self, text, color=None):
         if color is None:
@@ -3577,20 +3584,21 @@ class ZapretLauncher:
             print(f"Error clearing logs: {e}")
 
 if __name__ == "__main__":
-    is_first_instance, mutex_handle = check_single_instance()
-    
-    if not is_first_instance:
-        messagebox.showwarning(
-            "Zapret Launcher",
-            tr('already_running')
-        )
-        sys.exit(0)
-    
-    root = tk.Tk()
-    app = ZapretLauncher(root)
-    
-    try:
+    if '--no-splash' not in sys.argv and '--from-splash' not in sys.argv:
+        splash = SplashWindow(current_version=CURRENT_VERSION)
+        splash.start()
+    else:
+        mutex_name = "ZapretLauncher_SingleInstance"
+        mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
+        last_error = ctypes.windll.kernel32.GetLastError()
+        
+        if last_error == 183:
+            messagebox.showwarning("Zapret Launcher", "Лаунчер уже запущен!")
+            sys.exit(0)
+        
+        root = tk.Tk()
+        app = ZapretLauncher(root)
         root.mainloop()
-    finally:
-        if mutex_handle:
-            ctypes.windll.kernel32.CloseHandle(mutex_handle)
+        
+        if mutex:
+            ctypes.windll.kernel32.CloseHandle(mutex)
