@@ -9,7 +9,6 @@ def clean_build():
     for folder in folders:
         if os.path.exists(folder):
             shutil.rmtree(folder)
-            print(f"Folder {folder} has been deleted")
     
     for root, dirs, files in os.walk('.'):
         if '__pycache__' in dirs:
@@ -20,7 +19,6 @@ def clean_build():
     spec_file = Path('Zapret Launcher.spec')
     if spec_file.exists():
         spec_file.unlink()
-        print("Spec file removed")
     print()
 
 def build_exe():
@@ -47,14 +45,14 @@ def build_exe():
         print("pyinstaller not found!")
         sys.exit(1)
     
-    print(f"Using pyinstaller: {pyinstaller}")
-    
     cmd = [
         pyinstaller,
-        '--onefile',
+        '--onedir',
         '--windowed',
-        '--name', 'Zapret Launcher',
+        '--name', 'updater',
         '--icon', 'resources/icon.ico',
+        '--version-file', 'version_info.txt',
+        '--uac-admin',
         '--clean',
         '--noconfirm',
     ]
@@ -65,6 +63,8 @@ def build_exe():
         '--hidden-import', 'cryptography',
         '--hidden-import', 'psutil',
         '--hidden-import', 'tkinter',
+        '--hidden-import', 'asyncio',
+        '--hidden-import', 'ctypes',
     ]
     cmd.extend(hidden_imports)
     
@@ -73,7 +73,6 @@ def build_exe():
         '--add-data', f'utils{os.pathsep}utils',
         '--add-data', f'resources{os.pathsep}resources',
         '--add-data', f'tg_proxy{os.pathsep}tg_proxy',
-        '--add-data', f'zapret_core{os.pathsep}zapret_core',
     ]
     
     cmd.extend(data_files)
@@ -86,7 +85,7 @@ def build_exe():
         print()
         print("=" * 50)
         print("Build completed")
-        print(f"File: {os.path.abspath('dist/Zapret Launcher.exe')}")
+        print(f"File: {os.path.abspath('dist/updater.exe')}")
         print("=" * 50)
     else:
         print()
