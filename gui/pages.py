@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 import webbrowser
 
-APPDATA_DIR = Path(os.getenv('LOCALAPPDATA')) / 'Zapret Launcher'
+APPDATA_DIR = Path(os.getenv('APPDATA')) / 'Zapret Launcher'
 ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 ZAPRET_LAUNCHER_DIR = APPDATA_DIR
 
@@ -254,9 +254,6 @@ class Pages:
             (tr('service_filters'), [
                 (tr('service_game_filter'), "game_filter"),
                 (tr('service_ipset_filter'), "ipset_filter"),
-            ]),
-            (tr('service_updates'), [
-                (tr('service_update_launcher'), "check_launcher"),
             ]),
         ]
         
