@@ -1122,6 +1122,44 @@ class Pages:
                     fg=self.colors['text_secondary']
                 )
 
+        hosts_card = tk.Frame(frame, bg=self.colors['bg_medium'], relief=tk.FLAT, bd=0)
+        hosts_card.pack(fill=tk.X, padx=30, pady=5)
+
+        hosts_inner = tk.Frame(hosts_card, bg=self.colors['bg_medium'])
+        hosts_inner.pack(fill=tk.X, padx=20, pady=10)
+
+        hosts_title = tk.Label(
+            hosts_inner,
+            text="Telegram Web",
+            font=("Inter", 16, "bold"),
+            fg=self.colors['accent'],
+            bg=self.colors['bg_medium']
+        )
+        hosts_title.pack(anchor='w')
+
+        hosts_desc = tk.Label(
+            hosts_inner,
+            text=tr('hosts_desc_on_page'),
+            font=("Inter", 10),
+            fg=self.colors['text_secondary'],
+            bg=self.colors['bg_medium'],
+            wraplength=800,
+            justify=tk.LEFT
+        )
+        hosts_desc.pack(anchor='w', pady=(5, 10))
+
+        hosts_btn = RoundedButton(
+            hosts_inner,
+            text=tr('hosts_button_unblock'),
+            command=self.app.show_hosts_instruction,
+            width=200, height=35,
+            bg=self.colors['accent'],
+            fg=self.colors['text_primary'],
+            font=("Inter", 10),
+            corner_radius=8
+        )
+        hosts_btn.pack(side=tk.LEFT)
+
         update_meta_buttons()
         update_buttons()
         return frame
