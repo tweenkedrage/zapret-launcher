@@ -13,6 +13,9 @@ class Languages:
     
     TRANSLATIONS = {
         'Russian': {
+            'news_title': 'Новости',
+            'news_desc': 'Telegram новости о проекте',
+
             'main_title': 'Главная',
             'main_desc': 'Управление подключением и мониторинг состояния',
             'status': 'Статус:',
@@ -157,6 +160,21 @@ class Languages:
             'tg_copied': 'Скопировано',
             'tg_dont_show': 'Больше не показывать',
             'tg_start': 'Запустить',
+
+            'instruction_title_window': 'Инструкция (Zapret Launcher)',
+
+            'hosts_instruction_title': 'Доступ к Telegram Web',
+            'hosts_instruction_subtitle': 'Для использования Web версии выполните следующие шаги:',
+            'hosts_step1': 'Откройте "Блокнот" от имени администратора',
+            'hosts_step2': 'Файл - Открыть:',
+            'hosts_step2_desc': 'Путь: C:\Windows\System32\drivers\etc\hosts',
+            'hosts_step3': 'Добавьте следующие строки в конец файла:',
+            'hosts_step4': 'Сохраните файл (Ctrl+S)',
+            'hosts_step5': 'Перезапустите браузер для применения изменений',
+            'hosts_desc_on_page': 'Добавляет IP адреса Telegram в файл hosts',
+            'hosts_copy_lines': 'Скопировать все строки',
+            'hosts_copied_notification': 'Строки скопированы в буфер обмена',
+            'hosts_button_unblock': 'Разблокировать',
             
             'update_launcher_title': 'Обновление Zapret Launcher',
             'update_launcher_available': 'Доступна новая версия лаунчера!',
@@ -476,6 +494,21 @@ class Languages:
             'tg_copied': 'Copied',
             'tg_dont_show': 'Don\'t show again',
             'tg_start': 'Start',
+
+            'instruction_title_window': 'Instruction (Zapret Launcher)',
+
+            'hosts_instruction_title': 'Unblock Telegram Web',
+            'hosts_instruction_subtitle': 'To use the Web version, follow these steps:',
+            'hosts_step1': 'Open Notepad as administrator',
+            'hosts_step2': 'File - Open:',
+            'hosts_step2_desc': 'Path: C:\Windows\System32\drivers\etc\hosts',
+            'hosts_step3': 'Add the following lines to the end of the file:',
+            'hosts_desc_on_page': 'Adds Telegram IP addresses to the hosts file',
+            'hosts_step4': 'Save the file (Ctrl+S)',
+            'hosts_step5': 'Restart your browser to apply changes',
+            'hosts_copy_lines': 'Copy all lines',
+            'hosts_copied_notification': 'Lines have been copied to the clipboard',
+            'hosts_button_unblock': 'Unblock',
             
             'update_launcher_title': 'Zapret Launcher Update',
             'update_launcher_available': 'New launcher version available!',
