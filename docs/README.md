@@ -44,3 +44,5 @@
 ### Если антивирус ругается:
 1. Добавьте папку с лаунчером в **Исключение/Белый список**;
 2. Cкомпилируйте программу из [исходников](https://github.com/tweenkedrage/zapret-launcher/archive/refs/heads/main.zip).
+
+### Есть идея по улучшению лаунчера/Нашли баг? — Discord (@uyolookatme)
