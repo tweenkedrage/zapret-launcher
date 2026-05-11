@@ -391,6 +391,11 @@ class ZapretCore:
     def run_strategy(self, strategy_name: str) -> Tuple[bool, str]:
         if not is_admin():
             return False, tr('error_admin_required')
+        
+        subprocess.run(['sc', 'stop', 'WinDivert'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        time.sleep(1)
+        subprocess.run(['sc', 'start', 'WinDivert'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        time.sleep(1)
             
         if not check_zapret_folder():
             return False, tr('error_zapret_folder')
@@ -775,6 +780,11 @@ class ZapretLauncher:
             pass
 
     def quit_from_tray(self):
+        self._stop_windivert_before_restart()
+        self.zapret.stop_current_strategy()
+        if hasattr(self, 'tg_proxy'):
+            self.tg_proxy.stop()
+        
         try:
             self.root.quit()
             self.root.destroy()
@@ -3593,7 +3603,10 @@ if __name__ == "__main__":
         last_error = ctypes.windll.kernel32.GetLastError()
         
         if last_error == 183:
-            messagebox.showwarning("Zapret Launcher", "Лаунчер уже запущен!")
+            messagebox.showwarning(
+                "Zapret Launcher",
+                tr('already_running')
+            )
             sys.exit(0)
         
         root = tk.Tk()
