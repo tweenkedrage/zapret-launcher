@@ -2,7 +2,7 @@ import json
 import os
 from pathlib import Path
 
-APPDATA_DIR = Path(os.getenv('LOCALAPPDATA')) / 'Zapret Launcher'
+APPDATA_DIR = Path(os.getenv('APPDATA')) / 'Zapret Launcher'
 CONFIG_FILE = APPDATA_DIR / 'config.json'
 
 class Languages:
@@ -29,12 +29,10 @@ class Languages:
             'button_disconnect': 'ОТКЛЮЧИТЬСЯ',
             
             'service_title': 'Сервис',
-            'service_desc': 'Дополнительные сервисы и функции лаунчера',
+            'service_desc': 'Дополнительные сервисы и функции программы',
             'service_filters': 'Фильтры',
             'service_game_filter': 'Game Filter',
             'service_ipset_filter': 'IPSet Filter',
-            'service_updates': 'Обновление',
-            'service_update_launcher': 'Обновить лаунчер',
             
             'lists_title': 'Редактор',
             'lists_desc': 'Редактирование списков для обхода блокировок',
@@ -90,7 +88,7 @@ class Languages:
             'error_traffic_collection': 'Ошибка сбора трафика',
 
             'logs_title': 'Логи',
-            'logs_desc': 'Журнал событий лаунчера',
+            'logs_desc': 'Журнал событий программы',
             'logs_clear': 'Очистить',
             'logs_refresh': 'Обновить',
                         
@@ -136,11 +134,11 @@ class Languages:
             'notification_interval_off': 'Обновление интерфейса: отключено',
             
             'dialog_exit': 'Выход',
-            'dialog_exit_message': 'Активное подключение будет разорвано.\n\nВы действительно хотите закрыть лаунчер?',
-            'dialog_no_connection': 'Лаунчер не может работать без прав администратора',
-            'dialog_admin_message': 'Лаунчер требует прав администратора для работы\n\nЗапустить от имени администратора?',
+            'dialog_exit_message': 'Активное подключение будет разорвано.\n\nВы действительно хотите закрыть программу?',
+            'dialog_no_connection': 'Программа не может работать без прав администратора',
+            'dialog_admin_message': 'Программа требует прав администратора для работы\n\nЗапустить от имени администратора?',
             'restart_manual_title': 'Требуется перезапуск',
-            'restart_manual_message': 'Настройки сохранены.\n\nПожалуйста, перезапустите лаунчер для применения изменений',
+            'restart_manual_message': 'Настройки сохранены.\n\nПожалуйста, перезапустите программу для применения изменений',
             
             'tg_instruction_title': 'Настройка Telegram',
             'tg_instruction_subtitle': 'Для использования прокси выполните следующие шаги:',
@@ -205,7 +203,7 @@ class Languages:
             'status_enabled': 'включен',
             'status_disabled': 'выключен',
             
-            'autostart_enabled': 'Лаунчер будет запускаться при старте Windows',
+            'autostart_enabled': 'Программа будет запускаться при старте Windows',
             'autostart_disabled': 'Автозапуск отключен',
             'autostart_error': 'Не удалось изменить настройки автозапуска',
             
@@ -355,8 +353,6 @@ class Languages:
             'service_filters': 'Filters',
             'service_game_filter': 'Game Filter',
             'service_ipset_filter': 'IPSet Filter',
-            'service_updates': 'Updates',
-            'service_update_launcher': 'Update launcher',
             
             'lists_title': 'Editor',
             'lists_desc': 'Edit lists for bypassing blocks',
@@ -412,7 +408,7 @@ class Languages:
             'error_traffic_collection': 'Traffic collection error',
 
             'logs_title': 'Logs',
-            'logs_desc': 'Launcher event log',
+            'logs_desc': 'Program event log',
             'logs_clear': 'Clear',
             'logs_refresh': 'Refresh',
             
@@ -458,11 +454,11 @@ class Languages:
             'notification_interval_off': 'Interface refresh: disabled',
             
             'dialog_exit': 'Exit',
-            'dialog_exit_message': 'Active connection will be terminated.\n\nDo you really want to close the launcher?',
-            'dialog_no_connection': 'The launcher cannot run without administrator rights',
-            'dialog_admin_message': 'The launcher requires administrator rights to run\n\nRun as administrator?',
+            'dialog_exit_message': 'Active connection will be terminated.\n\nDo you really want to close the program?',
+            'dialog_no_connection': 'The program cannot run without administrator rights',
+            'dialog_admin_message': 'The program requires administrator rights to run\n\nRun as administrator?',
             'restart_manual_title': 'Restart Required',
-            'restart_manual_message': 'Settings have been saved.\n\nPlease restart the launcher to apply the changes',\
+            'restart_manual_message': 'Settings have been saved.\n\nPlease restart the program to apply the changes',\
             
             'tg_instruction_title': 'Telegram Setup',
             'tg_instruction_subtitle': 'To use the proxy, follow these steps:',
@@ -536,7 +532,7 @@ class Languages:
             'status_enabled': 'enabled',
             'status_disabled': 'disabled',
             
-            'autostart_enabled': 'Launcher will start with Windows',
+            'autostart_enabled': 'Program will start with Windows',
             'autostart_disabled': 'Autostart disabled',
             'autostart_error': 'Failed to change autostart settings',
 
