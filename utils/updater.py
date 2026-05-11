@@ -9,7 +9,7 @@ from pathlib import Path
 APPDATA_DIR = Path(os.getenv('APPDATA')) / 'Zapret Launcher'
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
-CURRENT_VERSION = "3.2.0"
+CURRENT_VERSION = "3.2.1"
 
 def log_update_event(message: str):
     from datetime import datetime
