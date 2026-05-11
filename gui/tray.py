@@ -279,11 +279,15 @@ class ModernSystemTray:
         check_launcher_updates(self.app, silent=False)
 
     def toggle_connection(self):
+        self.show_window()
+        self.app.root.after(200, self._do_toggle_connection)
+        self.update_icon_state()
+
+    def _do_toggle_connection(self):
         if self.app.is_connected:
             self.app.disconnect()
         else:
             self.app.show_mode_selector()
-        self.update_icon_state()
 
     def get_rtt(self):
         try:
