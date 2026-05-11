@@ -1,21 +1,15 @@
 from tkinter import messagebox
 from utils.languages import tr
-import subprocess
 import os
 import json
-import time
-import zipfile
-import shutil
-import tempfile
 import urllib.request
 import webbrowser
 from pathlib import Path
 
-APPDATA_DIR = Path(os.getenv('LOCALAPPDATA')) / 'Zapret Launcher'
-ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
+APPDATA_DIR = Path(os.getenv('APPDATA')) / 'Zapret Launcher'
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
-CURRENT_VERSION = "3.1f"
+CURRENT_VERSION = "3.2.0"
 
 def log_update_event(message: str):
     from datetime import datetime
