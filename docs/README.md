@@ -44,5 +44,3 @@
 ### Если антивирус ругается:
 1. Добавьте папку с лаунчером в **Исключение/Белый список**;
 2. Cкомпилируйте программу из [исходников](https://github.com/tweenkedrage/zapret-launcher/archive/refs/heads/main.zip).
-
-- [Проверка **VirusTotal**](https://www.virustotal.com/gui/file/368e1c0b86bf384e7c527d162f77cbaa795a1ea994cbb11803ea9843b130d147/detection) (**3.1f**)
