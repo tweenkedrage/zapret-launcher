@@ -49,7 +49,7 @@ ICON_PNG_PATH = BASE_DIR / "resources" / "icon.png"
 ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
-CURRENT_VERSION = "3.2.1"
+CURRENT_VERSION = "3.2.1.1"
 
 def check_single_instance():
     mutex_name = "ZapretLauncher_SingleInstance"
@@ -941,13 +941,25 @@ class ZapretLauncher:
         )
         self.left_status.pack()
         
+        version_frame = tk.Frame(credit_frame, bg=self.colors['bg_medium'])
+        version_frame.pack()
+
         tk.Label(
-            credit_frame,
-            text=f"v{CURRENT_VERSION} beta",
+            version_frame,
+            text=f"v{CURRENT_VERSION}",
             font=("Segoe UI Variable", 8),
             fg=self.colors['text_secondary'],
             bg=self.colors['bg_medium']
-        ).pack(pady=(5, 0))
+        ).pack(side=tk.LEFT)
+
+        beta_label = tk.Label(
+            version_frame,
+            text="beta",
+            font=("Segoe UI Variable", 8, "bold"),
+            fg=self.colors['accent_hover'],
+            bg=self.colors['bg_medium']
+        )
+        beta_label.pack(side=tk.LEFT)
         
         self.credit_label = tk.Label(
             credit_frame,
