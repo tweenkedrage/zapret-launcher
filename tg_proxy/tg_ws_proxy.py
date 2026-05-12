@@ -38,7 +38,41 @@ from .bridge import MsgSplitter, CryptoCtx, do_fallback, bridge_ws_reencrypt
 from .raw_websocket import RawWebSocket, WsHandshakeError, set_sock_opts
 from .fake_tls import proxy_to_masking_domain, verify_client_hello, build_server_hello, FakeTlsStream, TLS_RECORD_HANDSHAKE
 
-log = logging.getLogger('tg-mtproto-proxy')
+_log_callback = None
+
+def set_log_callback(callback):
+    global _log_callback
+    _log_callback = callback
+
+def _log_to_ui(level: str, message: str):
+    if _log_callback:
+        try:
+            _log_callback(level, message)
+        except:
+            pass
+
+class UILogger:
+    def info(self, msg, *args, **kwargs):
+        if args:
+            msg = msg % args
+        _log_to_ui("info", msg)
+    
+    def debug(self, msg, *args, **kwargs):
+        if args:
+            msg = msg % args
+        _log_to_ui("debug", msg)
+    
+    def warning(self, msg, *args, **kwargs):
+        if args:
+            msg = msg % args
+        _log_to_ui("warning", msg)
+    
+    def error(self, msg, *args, **kwargs):
+        if args:
+            msg = msg % args
+        _log_to_ui("error", msg)
+
+log = UILogger()
 
 DC_FAIL_COOLDOWN = 30.0
 WS_FAIL_TIMEOUT = 2.0
@@ -561,30 +595,30 @@ async def _run(stop_event: Optional[asyncio.Event] = None):
                    f"&port={proxy_config.port}"
                    f"&secret=ee{proxy_config.secret}{domain_hex}")
 
-    log.info("=" * 60)
-    log.info("  Telegram MTProto WS Bridge Proxy")
-    log.info("  Listening on   %s:%d", proxy_config.host, proxy_config.port)
+    _log_to_ui("info", "=" * 60)
+    _log_to_ui("info", "  Telegram MTProto WS Bridge Proxy")
+    _log_to_ui("info", f"  Listening on   {proxy_config.host}:{proxy_config.port}")
     if ftls:
-        log.info("  Fake TLS:      %s", ftls)
-    log.info("  Target DC IPs:")
+        _log_to_ui("info", f"  Fake TLS:      {ftls}")
+    _log_to_ui("info", "  Target DC IPs:")
     for dc in sorted(proxy_config.dc_redirects.keys()):
         ip = proxy_config.dc_redirects.get(dc)
-        log.info("    DC%d: %s", dc, ip)
+        _log_to_ui("info", f"    DC{dc}: {ip}")
     if proxy_config.fallback_cfproxy:
         prio = 'CF first' if proxy_config.fallback_cfproxy_priority else 'TCP first'
         user_domain = "user" if proxy_config.cfproxy_user_domain else "auto"
-        log.info("  CF proxy:      enabled (%s | %s)", prio, user_domain)
-    log.info("=" * 60)
-    log.info("  Connect links:")
-    log.info("    ee (Fake TLS):        %s", ee_link)
-    log.info("=" * 60)
+        _log_to_ui("info", f"  CF proxy:      enabled ({prio} | {user_domain})")
+    _log_to_ui("info", "=" * 60)
+    _log_to_ui("info", "  Connect links:")
+    _log_to_ui("info", f"    ee (Fake TLS):        {ee_link}")
+    _log_to_ui("info", "=" * 60)
 
     async def log_stats():
         try:
             while True:
                 await asyncio.sleep(60)
                 bl = ', '.join(f'DC{k}' for k in sorted(ws_blacklist)) or 'none'
-                log.info("stats: %s | ws_bl: %s", stats.summary(), bl)
+                _log_to_ui("info", f"stats: {stats.summary()} | ws_bl: {bl}")
         except asyncio.CancelledError:
             raise
 
@@ -600,7 +634,7 @@ async def _run(stop_event: Optional[asyncio.Event] = None):
             await server.wait_closed()
             
             if _client_tasks:
-                log.info(f"Cancelling {len(_client_tasks)} client tasks...")
+                _log_to_ui("info", f"Cancelling {len(_client_tasks)} client tasks...")
                 for task in _client_tasks:
                     if not task.done():
                         task.cancel()
@@ -608,7 +642,7 @@ async def _run(stop_event: Optional[asyncio.Event] = None):
                 try:
                     await asyncio.wait_for(asyncio.gather(*_client_tasks, return_exceptions=True), timeout=5.0)
                 except asyncio.TimeoutError:
-                    log.info("Timeout waiting for client tasks cancellation")
+                    _log_to_ui("info", "Timeout waiting for client tasks cancellation")
             
             log_stats_task.cancel()
             try:
@@ -619,7 +653,7 @@ async def _run(stop_event: Optional[asyncio.Event] = None):
             await server.serve_forever()
             
     except asyncio.CancelledError:
-        log.info("Server cancelled")
+        _log_to_ui("info", "Server cancelled")
         server.close()
         await server.wait_closed()
         for task in _client_tasks:
