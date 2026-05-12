@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 from pathlib import Path
 from PIL import Image, ImageTk
+from utils.languages import tr
 import urllib.request
 import subprocess
 import sys
@@ -99,7 +100,7 @@ class SplashWindow:
         
         self.status_label = tk.Label(
             center_container,
-            text="Checking connection...",
+            text=tr('splash_check_connecting'),
             font=("Segoe UI Variable", 10),
             fg=self.theme['text_secondary'],
             bg=self.theme['bg_dark']
@@ -170,14 +171,14 @@ class SplashWindow:
         self.window.mainloop()
 
     def _check_internet(self):
-        self.update_status("Checking connection...", 10)
+        self.update_status(tr('splash_check_connecting'), 10)
         def check():
             try:
                 req = urllib.request.Request("http://www.google.com", headers={'User-Agent': 'Mozilla/5.0'})
                 urllib.request.urlopen(req, timeout=5)
                 self.after(0, self._check_for_update)
             except Exception:
-                self.after(0, lambda: self.update_status("No connection", 20))
+                self.after(0, lambda: self.update_status(tr('splash_check_connect_error'), 20))
                 self.after(2000, self._launch_main_app)
         threading.Thread(target=check, daemon=True).start()
 
@@ -220,7 +221,7 @@ class SplashWindow:
         return need_update
 
     def _check_for_update(self):
-        self.update_status("Checking updates...", 30)
+        self.update_status(tr('splash_check_updates'), 30)
         
         def check():
             try:
@@ -236,17 +237,17 @@ class SplashWindow:
                 if self._compare_versions(current_version, latest_version):
                     self.after(1000, lambda: self._start_update(latest_version))
                 else:
-                    self.after(0, lambda: self.update_status("Starting...", 100))
+                    self.after(0, lambda: self.update_status(tr('splash_starting_exe'), 100))
                     self.after(1500, self._launch_main_app)
                     
             except Exception:
-                self.after(0, lambda: self.update_status("Starting...", 100))
+                self.after(0, lambda: self.update_status(tr('splash_starting_exe'), 100))
                 self.after(1500, self._launch_main_app)
         
         threading.Thread(target=check, daemon=True).start()
 
     def _start_update(self, new_version):
-        self.update_status(f"Download version: {new_version}", 50)
+        self.update_status(f"{tr('splash_downloading')} {new_version}", 50)
         self.after(500, self._download_and_update)
 
     def _download_with_progress(self, url, dest_path):
@@ -276,7 +277,7 @@ class SplashWindow:
                                 if not self._is_closing:
                                     try:
                                         self.progress_var.set(p)
-                                        self.status_label.config(text=f"Download: {p}%")
+                                        self.status_label.config(text=f"{tr('splash_downloading_percent')} {p}%")
                                     except:
                                         pass
                             self.after(0, update_prog)
@@ -295,9 +296,9 @@ class SplashWindow:
                 success = self._download_with_progress(self.download_url, temp_file)
                 
                 if not success or not temp_file.exists() or temp_file.stat().st_size == 0:
-                    raise Exception("Не удалось скачать файл")
+                    raise Exception("Failed to download file")
 
-                self.after(0, lambda: self.update_status("Installing the update...", 95))
+                self.after(0, lambda: self.update_status(tr('splash_install_update'), 95))
                 self._stop_zapret_processes()
 
                 old_exe = current_exe.with_suffix(".exe.old")
@@ -314,7 +315,7 @@ class SplashWindow:
                 sys.exit(0)
 
             except Exception:
-                self.after(0, lambda: self.update_status("Update error", 100))
+                self.after(0, lambda: self.update_status(tr('splash_update_error'), 100))
                 self.after(2000, self._launch_main_app)
 
         threading.Thread(target=update_worker, daemon=True).start()
@@ -332,7 +333,7 @@ class SplashWindow:
     def _launch_main_app(self):
         if self._is_closing:
             return
-        self.update_status("Starting...", 100)
+        self.update_status(tr('splash_starting_exe'), 100)
         time.sleep(0.5)
         self.close()
         
