@@ -15,6 +15,7 @@ import webbrowser
 APPDATA_DIR = Path(os.getenv('APPDATA')) / 'Zapret Launcher'
 ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 ZAPRET_LAUNCHER_DIR = APPDATA_DIR
+LISTS_DIR = APPDATA_DIR / "zapret_core" / "lists"
 
 def check_zapret_folder():
     if not ZAPRET_CORE_DIR.exists():
@@ -31,7 +32,13 @@ def open_zapret_folder():
     if not check_zapret_folder():
         return
     try:
-        os.startfile(ZAPRET_LAUNCHER_DIR)
+        os.startfile(ZAPRET_CORE_DIR)
+    except Exception as e:
+        messagebox.showerror(tr('error_occurred'), f"Failed to open folder: {str(e)}")
+
+def open_lists_folder():
+    try:
+        os.startfile(LISTS_DIR)
     except Exception as e:
         messagebox.showerror(tr('error_occurred'), f"Failed to open folder: {str(e)}")
 
@@ -340,7 +347,7 @@ class Pages:
         folder_frame.pack(fill=tk.X, padx=30, pady=(20, 10))
         
         open_folder_btn = RoundedButton(folder_frame, text=tr('lists_open_folder'), 
-                                    command=open_zapret_folder,
+                                    command=open_lists_folder,
                                     width=300, height=40, bg=self.colors['button_bg'], 
                                     font=("Inter", 11, "bold"), corner_radius=10)
         open_folder_btn.pack()
