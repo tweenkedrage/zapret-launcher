@@ -8,7 +8,7 @@ from gui.theme import get_theme
 from datetime import datetime
 from gui.splash import SplashWindow
 from utils.network_set import set_logger
-from tg_proxy import run_proxy
+from tg_proxy import run_proxy, run
 from utils.network_set import (
     optimize_network_latency,
     find_best_dns,
@@ -49,7 +49,7 @@ ICON_PNG_PATH = BASE_DIR / "resources" / "icon.png"
 ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
-CURRENT_VERSION = "3.2.1.1"
+CURRENT_VERSION = "3.2.1.2"
 
 def check_single_instance():
     mutex_name = "ZapretLauncher_SingleInstance"
@@ -212,6 +212,15 @@ class TGProxyServer:
         self._host = '127.0.0.1'
         self._secret = None
         self._stop_event = None
+        self._log_callback = None
+
+    def set_log_callback(self, callback):
+        self._log_callback = callback
+        run.set_log_callback(callback)
+    
+    def _log(self, message):
+        if self._log_callback:
+            self._log_callback("info", message)
 
     def set_secret(self, secret):
         self._secret = secret
@@ -618,6 +627,7 @@ class ZapretLauncher:
 
         self.zapret = ZapretCore(self)
         self.tg_proxy = TGProxyServer()
+        self.tg_proxy.set_log_callback(self.log_event)
         
         self.ensure_appdata_dir()
         self.languages = get_languages()
@@ -825,7 +835,7 @@ class ZapretLauncher:
             log_entry = f"[{timestamp}] {message}"
 
         else:
-            log_entry = f"[{timestamp}] ℹ{message}"
+            log_entry = f"[{timestamp}] {message}"
         
         try:
             log_file = APPDATA_DIR / "logs.txt"
@@ -3777,21 +3787,35 @@ class ZapretLauncher:
             print(f"Error clearing logs: {e}")
 
 if __name__ == "__main__":
+    mutex_name = "ZapretLauncher_SingleInstance"
+    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
+    last_error = ctypes.windll.kernel32.GetLastError()
+    
+    if last_error == 183:
+        hwnd = ctypes.windll.user32.FindWindowW(None, "Zapret Launcher")
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 5)
+            ctypes.windll.user32.SetForegroundWindow(hwnd)
+        sys.exit(0)
+    
+    if not is_admin():
+        result = messagebox.askyesno(
+            "Zapret Launcher",
+            tr('dialog_admin_message')
+        )
+        if result:
+            run_as_admin()
+        else:
+            messagebox.showerror(
+                tr('error_no_connection'), 
+                tr('dialog_no_connection')
+            )
+            sys.exit(1)
+    
     if '--no-splash' not in sys.argv and '--from-splash' not in sys.argv:
         splash = SplashWindow(current_version=CURRENT_VERSION)
         splash.start()
     else:
-        mutex_name = "ZapretLauncher_SingleInstance"
-        mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
-        last_error = ctypes.windll.kernel32.GetLastError()
-        
-        if last_error == 183:
-            messagebox.showwarning(
-                "Zapret Launcher",
-                tr('already_running')
-            )
-            sys.exit(0)
-        
         root = tk.Tk()
         app = ZapretLauncher(root)
         root.mainloop()
