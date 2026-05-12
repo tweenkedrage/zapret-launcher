@@ -279,8 +279,12 @@ class ModernSystemTray:
         check_launcher_updates(self.app, silent=False)
 
     def toggle_connection(self):
-        self.show_window()
-        self.app.root.after(200, self._do_toggle_connection)
+        if self.app.is_connected:
+            self._do_toggle_connection()
+        else:
+            self.show_window()
+            self.app.root.after(200, self._do_toggle_connection)
+        
         self.update_icon_state()
 
     def _do_toggle_connection(self):
