@@ -2,8 +2,10 @@ import asyncio
 import logging
 import sys
 import os
+from tg_proxy.tg_ws_proxy import set_log_callback as set_ws_log_callback
 from pathlib import Path
 import time
+from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -18,8 +20,21 @@ else:
 from tg_proxy.tg_ws_proxy import _run, proxy_config
 from tg_proxy.utils import get_link_host
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 log = logging.getLogger('tg-proxy-runner')
+
+_log_callback = None
+
+def set_log_callback(callback):
+    global _log_callback
+    _log_callback = callback
+    set_ws_log_callback(callback)
+
+def _log_to_ui(message: str):
+    if _log_callback:
+        try:
+            _log_callback("info", message)
+        except:
+            pass
 
 def get_tg_link(host: str, port: int, secret: str) -> str:
     link_host = get_link_host(host)
@@ -33,6 +48,7 @@ async def run_with_link(host: str = '127.0.0.1', port: int = 1080, secret: str =
         proxy_config.secret = secret
     else:
         proxy_config.secret = os.urandom(16).hex()
+        _log_to_ui(f"[TGProxy] Generated new secret: {proxy_config.secret[:16]}...")
     
     proxy_config.dc_redirects = {
         2: '149.154.167.220',
@@ -44,20 +60,20 @@ async def run_with_link(host: str = '127.0.0.1', port: int = 1080, secret: str =
     
     proxy_config.fallback_cfproxy = True
     proxy_config.fallback_cfproxy_priority = True
-    # proxy_config.fake_tls_domain = 'cloudflare.com'
     
-    print("\n" + "=" * 60)
-    print("  TELEGRAM MTPROTO PROXY")
-    print("=" * 60)
-    print(f"  Server: {host}:{port}")
-    print(f"  Secret: {proxy_config.secret}")
-    print(f"  Buffer size: {proxy_config.buffer_size // 1024} KB")
-    print(f"  Pool size: {proxy_config.pool_size}")
-    print("\n  Link start proxy:")
+    _log_to_ui("=" * 60)
+    _log_to_ui("  TELEGRAM MTPROTO PROXY")
+    _log_to_ui("=" * 60)
+    _log_to_ui(f"  Server: {host}:{port}")
+    _log_to_ui(f"  Secret: {proxy_config.secret}")
+    _log_to_ui(f"  Buffer size: {proxy_config.buffer_size // 1024} KB")
+    _log_to_ui(f"  Pool size: {proxy_config.pool_size}")
+    _log_to_ui("\n  Link start proxy:")
     link = get_tg_link(host, port, proxy_config.secret)
-    print(f"\n  {link}")
-    print("\n" + "=" * 60)
-    print("=" * 60 + "\n")
+    _log_to_ui(f"\n  {link}")
+    _log_to_ui("=" * 60)
+    _log_to_ui("=" * 60)
+    
     await _run(stop_event)
 
 def run_proxy(host: str = '127.0.0.1', port: int = 1080, secret: str = None, stop_event: asyncio.Event = None):
@@ -67,13 +83,13 @@ def run_proxy(host: str = '127.0.0.1', port: int = 1080, secret: str = None, sto
             asyncio.run(run_with_link(host, port, secret, stop_event))
             break
         except KeyboardInterrupt:
-            print("\nProxy stopped")
+            _log_to_ui("\nProxy stopped")
             break
         except Exception as e:
-            print(f"Error: {e}")
+            _log_to_ui(f"Error: {e}")
             retry_count += 1
             wait_time = min(30, retry_count * 5)
-            print(f"Restarting proxy in {wait_time} seconds...")
+            _log_to_ui(f"Restarting proxy in {wait_time} seconds...")
             time.sleep(wait_time)
             continue
 
