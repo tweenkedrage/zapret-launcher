@@ -44,7 +44,7 @@ class Languages:
             'lists_google': 'Google листы',
             'lists_ipset': 'IPset All',
             'lists_edit': 'Изменить',
-            'lists_open_folder': 'Расположение ZL',
+            'lists_open_folder': 'Папка с листами',
             
             'diagnostic_title': 'Диагностика',
             'diagnostic_desc': 'Проверка состояния компонентов и диагностика сети',
@@ -94,6 +94,16 @@ class Languages:
             'logs_desc': 'Журнал событий программы',
             'logs_clear': 'Очистить',
             'logs_refresh': 'Обновить',
+
+            'splash_check_connecting': 'Проверяем подключение к сети..',
+            'splash_check_updates': 'Проверяем обновления...',
+            'splash_download_update': 'Подготовка к обновлению..',
+            'splash_downloading': 'Загружаем версию:',
+            'splash_downloading_percent': 'Загружено:',
+            'splash_install_update': 'Устанавливаем обновление...',
+            'splash_starting_exe': 'Запускаем лаунчер..',
+            'splash_update_error': 'Ошибка обновления!',
+            'splash_check_connect_error': 'Не удалось установить сетевое соединение',
                         
             'settings_title': 'Настройки',
             'settings_desc': 'Настройка интерфейса и параметров работы',
@@ -137,11 +147,11 @@ class Languages:
             'notification_interval_off': 'Обновление интерфейса: отключено',
             
             'dialog_exit': 'Выход',
-            'dialog_exit_message': 'Активное подключение будет разорвано.\n\nВы действительно хотите закрыть программу?',
-            'dialog_no_connection': 'Программа не может работать без прав администратора',
-            'dialog_admin_message': 'Программа требует прав администратора для работы\n\nЗапустить от имени администратора?',
+            'dialog_exit_message': 'Активное подключение будет разорвано.\nВы действительно хотите закрыть лаунчер?',
+            'dialog_no_connection': 'Лаунчер не может работать без прав администратора',
+            'dialog_admin_message': 'Лаунчер требует прав администратора для работы\nЗапустить от имени администратора?',
             'restart_manual_title': 'Требуется перезапуск',
-            'restart_manual_message': 'Настройки сохранены.\n\nПожалуйста, перезапустите программу для применения изменений',
+            'restart_manual_message': 'Настройки сохранены.\nПожалуйста, перезапустите лаунчер для применения изменений',
             
             'tg_instruction_title': 'Настройка Telegram',
             'tg_instruction_subtitle': 'Для использования прокси выполните следующие шаги:',
@@ -177,11 +187,11 @@ class Languages:
             'hosts_button_unblock': 'Разблокировать',
             
             'update_launcher_title': 'Обновление Zapret Launcher',
-            'update_launcher_available': 'Доступна новая версия лаунчера!',
+            'update_launcher_available': 'Доступна новая версия!',
             'update_launcher_current': 'Текущая версия:',
             'update_launcher_new': 'Новая версия:',
             'update_launcher_question': 'Перейти на страницу загрузки?',
-            'update_launcher_latest': 'У вас установлена последняя версия лаунчера',
+            'update_launcher_latest': 'У вас установлена последняя версия',
             'update_go': 'Перейти',
             
             'error_update_check': 'Не удалось проверить обновления',
@@ -221,7 +231,7 @@ class Languages:
             'status_enabled': 'включен',
             'status_disabled': 'выключен',
             
-            'autostart_enabled': 'Программа будет запускаться при старте Windows',
+            'autostart_enabled': 'Лаунчер будет запускаться после старта Windows',
             'autostart_disabled': 'Автозапуск отключен',
             'autostart_error': 'Не удалось изменить настройки автозапуска',
             
@@ -379,7 +389,7 @@ class Languages:
             'lists_google': 'Google lists',
             'lists_ipset': 'IPset All',
             'lists_edit': 'Edit',
-            'lists_open_folder': 'ZL Location',
+            'lists_open_folder': 'Folder with lists',
             
             'diagnostic_title': 'Diagnostic',
             'diagnostic_desc': 'Component status check and network diagnostics',
@@ -426,9 +436,19 @@ class Languages:
             'error_traffic_collection': 'Traffic collection error',
 
             'logs_title': 'Logs',
-            'logs_desc': 'Program event log',
+            'logs_desc': 'Launcher event log',
             'logs_clear': 'Clear',
             'logs_refresh': 'Refresh',
+
+            'splash_check_connecting': 'Checking your network..',
+            'splash_check_updates': 'Checking for updates...',
+            'splash_download_update': 'Preparing for the update..',
+            'splash_downloading': 'Downloading version:',
+            'splash_downloading_percent': 'Uploaded:',
+            'splash_install_update': 'Installing the update...',
+            'splash_starting_exe': 'Starting..',
+            'splash_update_error': 'Update error!',
+            'splash_check_connect_error': 'Unable to establish connection network!',
             
             'settings_title': 'Settings',
             'settings_desc': 'Interface and operation settings',
@@ -472,11 +492,11 @@ class Languages:
             'notification_interval_off': 'Interface refresh: disabled',
             
             'dialog_exit': 'Exit',
-            'dialog_exit_message': 'Active connection will be terminated.\n\nDo you really want to close the program?',
-            'dialog_no_connection': 'The program cannot run without administrator rights',
-            'dialog_admin_message': 'The program requires administrator rights to run\n\nRun as administrator?',
+            'dialog_exit_message': 'Active connection will be terminated.\nDo you really want to close the launcher?',
+            'dialog_no_connection': 'Launcher cannot run without administrator rights',
+            'dialog_admin_message': 'Launcher requires administrator rights to run\nRun as administrator?',
             'restart_manual_title': 'Restart Required',
-            'restart_manual_message': 'Settings have been saved.\n\nPlease restart the program to apply the changes',\
+            'restart_manual_message': 'Settings have been saved.\nPlease restart the launcher to apply the changes',\
             
             'tg_instruction_title': 'Telegram Setup',
             'tg_instruction_subtitle': 'To use the proxy, follow these steps:',
@@ -511,11 +531,11 @@ class Languages:
             'hosts_button_unblock': 'Unblock',
             
             'update_launcher_title': 'Zapret Launcher Update',
-            'update_launcher_available': 'New launcher version available!',
+            'update_launcher_available': 'New version available!',
             'update_launcher_current': 'Current version:',
             'update_launcher_new': 'New version:',
             'update_launcher_question': 'Go to download page?',
-            'update_launcher_latest': 'You have the latest launcher version',
+            'update_launcher_latest': 'You have the latest version',
             'update_go': 'Go',
             
             'error_update_check': 'Failed to check for updates',
@@ -565,7 +585,7 @@ class Languages:
             'status_enabled': 'enabled',
             'status_disabled': 'disabled',
             
-            'autostart_enabled': 'Program will start with Windows',
+            'autostart_enabled': 'Launcher will start with Windows',
             'autostart_disabled': 'Autostart disabled',
             'autostart_error': 'Failed to change autostart settings',
 
