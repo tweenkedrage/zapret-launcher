@@ -1140,9 +1140,23 @@ class Pages:
             text="Telegram Web",
             font=("Inter", 16, "bold"),
             fg=self.colors['accent'],
-            bg=self.colors['bg_medium']
+            bg=self.colors['bg_medium'],
+            cursor="hand2"
         )
         hosts_title.pack(anchor='w')
+
+        def on_enter_tgweb(event):
+            hosts_title.config(fg=self.colors['accent_hover'])
+            
+        def on_leave_tgweb(event):
+            hosts_title.config(fg=self.colors['accent'])
+            
+        def on_click_tgweb(event):
+            webbrowser.open("https://web.telegram.org")
+
+        hosts_title.bind("<Enter>", on_enter_tgweb)
+        hosts_title.bind("<Leave>", on_leave_tgweb)
+        hosts_title.bind("<Button-1>", on_click_tgweb)
 
         hosts_desc = tk.Label(
             hosts_inner,
