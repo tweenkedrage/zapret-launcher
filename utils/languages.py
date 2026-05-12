@@ -32,7 +32,7 @@ class Languages:
             'button_disconnect': 'ОТКЛЮЧИТЬСЯ',
             
             'service_title': 'Сервис',
-            'service_desc': 'Дополнительные сервисы и функции программы',
+            'service_desc': 'Дополнительные сервисы и функции лаунчера',
             'service_filters': 'Фильтры',
             'service_game_filter': 'Game Filter',
             'service_ipset_filter': 'IPSet Filter',
@@ -91,7 +91,7 @@ class Languages:
             'error_traffic_collection': 'Ошибка сбора трафика',
 
             'logs_title': 'Логи',
-            'logs_desc': 'Журнал событий программы',
+            'logs_desc': 'Журнал событий лаунчера',
             'logs_clear': 'Очистить',
             'logs_refresh': 'Обновить',
 
@@ -147,7 +147,7 @@ class Languages:
             'notification_interval_off': 'Обновление интерфейса: отключено',
             
             'dialog_exit': 'Выход',
-            'dialog_exit_message': 'Активное подключение будет разорвано.\nВы действительно хотите закрыть лаунчер?',
+            'dialog_exit_message': 'Активное подключение будет разорвано\nВы действительно хотите закрыть лаунчер?',
             'dialog_no_connection': 'Лаунчер не может работать без прав администратора',
             'dialog_admin_message': 'Лаунчер требует прав администратора для работы\nЗапустить от имени администратора?',
             'restart_manual_title': 'Требуется перезапуск',
@@ -492,7 +492,7 @@ class Languages:
             'notification_interval_off': 'Interface refresh: disabled',
             
             'dialog_exit': 'Exit',
-            'dialog_exit_message': 'Active connection will be terminated.\nDo you really want to close the launcher?',
+            'dialog_exit_message': 'Active connection will be terminated\nDo you really want to close the launcher?',
             'dialog_no_connection': 'Launcher cannot run without administrator rights',
             'dialog_admin_message': 'Launcher requires administrator rights to run\nRun as administrator?',
             'restart_manual_title': 'Restart Required',
