@@ -1,6 +1,5 @@
 import pystray
 from PIL import Image, ImageDraw
-from utils.updater import check_launcher_updates
 import time
 import ctypes
 from pathlib import Path
@@ -8,8 +7,7 @@ from tkinter import messagebox
 import subprocess
 from utils.languages import tr
 import re
-
-BASE_DIR = Path(__file__).parent.parent
+from config import BASE_DIR
 
 class ModernSystemTray:
     def __init__(self, app):
@@ -121,10 +119,6 @@ class ModernSystemTray:
             pystray.MenuItem(
                 tr('menu_connect') if not self.app.is_connected else tr('menu_disconnect'),
                 self.toggle_connection
-            ),
-            pystray.MenuItem(
-                tr('menu_check_updates'),
-                self.check_launcher_updates
             ),
             pystray.MenuItem(
                 tr('menu_exit'),
@@ -274,9 +268,6 @@ class ModernSystemTray:
                 pass
         except Exception:
             pass
-
-    def check_launcher_updates(self):
-        check_launcher_updates(self.app, silent=False)
 
     def toggle_connection(self):
         if self.app.is_connected:
