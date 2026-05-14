@@ -1,9 +1,5 @@
 import json
-import os
-from pathlib import Path
-
-APPDATA_DIR = Path(os.getenv('APPDATA')) / 'Zapret Launcher'
-CONFIG_FILE = APPDATA_DIR / 'config.json'
+from config import CONFIG_FILE
 
 class Languages:
     LANGUAGES = {
@@ -32,7 +28,7 @@ class Languages:
             'button_disconnect': 'ОТКЛЮЧИТЬСЯ',
             
             'service_title': 'Сервис',
-            'service_desc': 'Дополнительные сервисы и функции лаунчера',
+            'service_desc': 'Дополнительные сервисы и функции',
             'service_filters': 'Фильтры',
             'service_game_filter': 'Game Filter',
             'service_ipset_filter': 'IPSet Filter',
@@ -119,9 +115,19 @@ class Languages:
             'settings_interval_fast_text': 'быстро',
             'settings_interval_off_text': 'отключено',
             'settings_language': 'Язык / Language',
-            'settings_language_desc': 'Выберите язык интерфейса',
-            'settings_theme': 'Тема оформления',
-            'settings_theme_desc': 'Выберите тему интерфейса',
+            'settings_recovery': 'Восстановление',
+            'settings_integrity': 'Проверить целостность',
+            'settings_integrity_title': 'Проверка целостности',
+            'settings_reinstall': 'Переустановить zapret_core',
+            'settings_reinstall_title': 'Переустановка ядра',
+            'settings_integrity_folder_missing': 'папка отсутствует',
+            'settings_integrity_result': 'Результат проверки целостности:',
+            'settings_integrity_missing_count': 'Отсутствует файлов: {count}',
+            'settings_integrity_success': 'Результат проверки целостности:\nВсе файлы имеются',
+            'settings_reinstall_all_exists': 'Все файлы ядра уже имеются\nВы точно хотите переустановить их?',
+            'settings_reinstall_missing': 'Обнаружены отсутствующие файлы ядра\nПереустановить?',
+            'settings_reinstall_active': 'Активное подключение',
+            'settings_reinstall_disconnect': 'Для переустановки ядра необходимо отключить активное подключение\nОтключиться и продолжить?',
             'settings_current_tg_secret': 'Текущий секрет:',
             
             'mode_standard': 'Стандартный',
@@ -151,7 +157,7 @@ class Languages:
             'dialog_no_connection': 'Лаунчер не может работать без прав администратора',
             'dialog_admin_message': 'Лаунчер требует прав администратора для работы\nЗапустить от имени администратора?',
             'restart_manual_title': 'Требуется перезапуск',
-            'restart_manual_message': 'Настройки сохранены.\nПожалуйста, перезапустите лаунчер для применения изменений',
+            'restart_manual_message': 'Настройки сохранены\nНажмите "Ок", чтобы перезапустить лаунчер',
             
             'tg_instruction_title': 'Настройка Telegram',
             'tg_instruction_subtitle': 'Для использования прокси выполните следующие шаги:',
@@ -217,7 +223,7 @@ class Languages:
             'tg_secret_required_message': 'Для работы Telegram Proxy требуется секрет-ключ.\n\nСгенерировать новый секрет и продолжить?',
             'tg_secret_updated': 'Секрет-ключ обновлен',
             'tg_secret_new': 'Новый секрет:',
-            'tg_paste_instruction': 'Вставьте секрет в Telegram для подключения',
+            'tg_paste_instruction': 'Вставьте его в Telegram для подключения',
                         
             'status_connecting': 'Запуск...',
             'status_disconnecting': 'Отключение...',
@@ -284,7 +290,6 @@ class Languages:
             'menu_open': 'Открыть лаунчер',
             'menu_connect': 'Подключиться',
             'menu_disconnect': 'Отключиться',
-            'menu_check_updates': 'Проверить обновления',
             'menu_exit': 'Выход',
             
             'button_start': 'Запустить',
@@ -464,9 +469,19 @@ class Languages:
             'settings_interval_fast_text': 'fast',
             'settings_interval_off_text': 'disabled',
             'settings_language': 'Language',
-            'settings_language_desc': 'Select interface language',
-            'settings_theme': 'Theme',
-            'settings_theme_desc': 'Select interface theme',
+            'settings_recovery': 'Recovery',
+            'settings_integrity': 'Check integrity',
+            'settings_integrity_title': 'Integrity check',
+            'settings_reinstall': 'Reinstall zapret_core',
+            'settings_reinstall_title': 'Reinstalling the core',
+            'settings_integrity_folder_missing': 'folder missing',
+            'settings_integrity_result': 'Check result:',
+            'settings_integrity_missing_count': 'Missing files: {count}',
+            'settings_integrity_success': 'Check result:\nAll files are present',
+            'settings_reinstall_all_exists': 'All core files are already present\nAre you want to reinstall them?',
+            'settings_reinstall_missing': 'Missing core files detected\nReinstall?',
+            'settings_reinstall_active': 'Active connection',
+            'settings_reinstall_disconnect': 'To reinstall the core, you must disconnect the active connection\nDisconnect and continue?',
             'settings_current_tg_secret': 'Current secret:',
             
             'mode_standard': 'Standard',
@@ -496,7 +511,7 @@ class Languages:
             'dialog_no_connection': 'Launcher cannot run without administrator rights',
             'dialog_admin_message': 'Launcher requires administrator rights to run\nRun as administrator?',
             'restart_manual_title': 'Restart Required',
-            'restart_manual_message': 'Settings have been saved.\nPlease restart the launcher to apply the changes',\
+            'restart_manual_message': 'Settings has been saved\nClick "OK" to restart the launcher',
             
             'tg_instruction_title': 'Telegram Setup',
             'tg_instruction_subtitle': 'To use the proxy, follow these steps:',
@@ -638,7 +653,6 @@ class Languages:
             'menu_open': 'Open launcher',
             'menu_connect': 'Connect',
             'menu_disconnect': 'Disconnect',
-            'menu_check_updates': 'Check for updates',
             'menu_exit': 'Exit',
             
             'button_start': 'Start',
