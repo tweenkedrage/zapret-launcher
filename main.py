@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
-from gui.pages import Pages, check_zapret_folder
+from gui.pages import Pages
+from gui.page.lists_page import check_zapret_folder
 from gui.tray import ModernSystemTray
 from utils.languages import tr, get_languages
 from typing import List, Optional
@@ -27,11 +28,11 @@ import subprocess
 import os
 import json
 import time
+import shutil
 import threading
 import webbrowser
 import asyncio
 import psutil
-import shutil
 import socket
 import winreg
 from pathlib import Path
@@ -40,16 +41,7 @@ import re
 import ctypes
 from ctypes import windll, byref, c_int
 from typing import Optional, List, Tuple
-
-BASE_DIR = Path(__file__).parent
-APPDATA_DIR = Path(os.getenv('APPDATA')) / 'Zapret Launcher'
-CONFIG_FILE = APPDATA_DIR / 'config.json'
-ICON_PATH = BASE_DIR / "resources" / "icon.ico"
-ICON_PNG_PATH = BASE_DIR / "resources" / "icon.png"
-ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
-
-LAUNCHER_API_URL = "https://api.github.com/repos/tweenkedrage/zapret-launcher/releases/latest"
-CURRENT_VERSION = "3.2.1.2"
+from config import CURRENT_VERSION, BASE_DIR, APPDATA_DIR, CONFIG_FILE, ZAPRET_CORE_DIR
 
 def check_single_instance():
     mutex_name = "ZapretLauncher_SingleInstance"
@@ -82,7 +74,7 @@ class StatsMonitor:
         self.disconnection_count = 0
         self.is_monitoring = False
         self._monitor_thread = None
-        self._cache_duration = 3.0
+        self._cache_duration = 1.0
         self._stop_event = None
         self.last_up = 0
         self.last_down = 0
@@ -94,6 +86,10 @@ class StatsMonitor:
         self.session_start = time.time()
         self.connection_count += 1
         self.is_monitoring = True
+        self.total_up_bytes = 0
+        self.total_down_bytes = 0
+        self.current_speed_up = 0
+        self.current_speed_down = 0
         self.last_up, self.last_down = self._get_network_stats()
         self.last_update_time = time.time()
         
@@ -111,7 +107,7 @@ class StatsMonitor:
                 ['netstat', '-e'],
                 capture_output=True, text=True, encoding='cp866',
                 creationflags=subprocess.CREATE_NO_WINDOW,
-                timeout=1
+                timeout=2
             )
             lines = result.stdout.split('\n')
             for line in lines:
@@ -119,12 +115,14 @@ class StatsMonitor:
                     parts = line.split()
                     if len(parts) >= 3:
                         try:
-                            recv = int(parts[1].replace(',', ''))
-                            sent = int(parts[2].replace(',', ''))
+                            recv_str = parts[1].replace(',', '').replace(' ', '')
+                            sent_str = parts[2].replace(',', '').replace(' ', '')
+                            recv = int(recv_str)
+                            sent = int(sent_str)
                             self._cached_stats = (recv, sent)
                             self._cached_time = current_time
                             return recv, sent
-                        except:
+                        except (ValueError, IndexError):
                             pass
             return 0, 0
         except:
@@ -138,15 +136,22 @@ class StatsMonitor:
             now = time.time()
             time_diff = now - self.last_update_time
             
-            if time_diff > 0.5:
-                self.current_speed_up = (current_up - self.last_up) / time_diff
-                self.current_speed_down = (current_down - self.last_down) / time_diff
-                self.last_update_time = now
-            
             if current_up > self.last_up:
                 self.total_up_bytes += (current_up - self.last_up)
             if current_down > self.last_down:
                 self.total_down_bytes += (current_down - self.last_down)
+            
+            if time_diff >= 0.5:
+                up_diff = max(0, current_up - self.last_up)
+                down_diff = max(0, current_down - self.last_down)
+                
+                raw_speed_up = up_diff / time_diff if time_diff > 0 else 0
+                raw_speed_down = down_diff / time_diff if time_diff > 0 else 0
+                
+                self.current_speed_up = self.current_speed_up * 0.7 + raw_speed_up * 0.3
+                self.current_speed_down = self.current_speed_down * 0.7 + raw_speed_down * 0.3
+                
+                self.last_update_time = now
             
             self.last_up = current_up
             self.last_down = current_down
@@ -259,8 +264,8 @@ class TGProxyServer:
                 asyncio.set_event_loop(loop)
                 self._stop_event = asyncio.Event()
                 run_proxy(self._host, self._port, self._secret, self._stop_event)
-            except Exception as e:
-                print(f"TGProxy error: {e}")
+            except Exception:
+                pass
 
         self._thread = threading.Thread(target=run_tg_proxy, daemon=True)
         self._thread.start()
@@ -279,8 +284,8 @@ class TGProxyServer:
         if self._stop_event:
             try:
                 self._stop_event.set()
-            except Exception as e:
-                print(f"Error setting stop event: {e}")
+            except Exception:
+                pass
             self._stop_event = None
         
         try:
@@ -304,7 +309,6 @@ class TGProxyServer:
                 self._thread.join(timeout=1)
         
         self._thread = None
-        print("Telegram Proxy stopped")
 
     @property
     def is_running(self):
@@ -338,49 +342,65 @@ class ZapretCore:
             return Path(__file__).parent / relative_path
         
     def ensure_resources(self):
-        if self.zapret_dir.exists() and (self.zapret_dir / "version.txt").exists():
-            print(f"Resources already exist at {self.zapret_dir}")
-            return
-            
-        print(f"Copying zapret_core to {self.zapret_dir}...")
-        source_dir = self.get_resource_path("zapret_core")
+        required_version = self.get_resource_core_version()
         
-        if not source_dir.exists():
+        if required_version == "0.0":
             messagebox.showerror(
-                tr('error_zapret_folder'), 
-                f"Zapret core folder not found in executable!\n"
-                f"Expected location: {source_dir}\n\n"
-                f"Please reinstall the application."
+                "Error",
+                "File version.txt was not found in the launcher resources\n"
+                "Reinstall the launcher"
             )
             sys.exit(1)
         
+        version_file = self.zapret_dir / "version.txt"
+        
+        if version_file.exists():
+            current_version = version_file.read_text(encoding='utf-8').strip()
+            
+            if current_version == required_version and self.bin_dir.exists():
+                return
+        
+        self._copy_zapret_core_from_resources()
+
+    def _copy_zapret_core_from_resources(self):
         try:
+            source_dir = self.get_resource_path("zapret_core")
+            
+            if not source_dir.exists():
+                raise Exception(f"Source directory not found: {source_dir}")
+            
+            if self.zapret_dir.exists():
+                shutil.rmtree(self.zapret_dir)
+            
             self.zapret_dir.mkdir(parents=True, exist_ok=True)
             
             for item in source_dir.iterdir():
                 dest_item = self.zapret_dir / item.name
                 if item.is_dir():
-                    if dest_item.exists():
-                        shutil.rmtree(dest_item)
                     shutil.copytree(item, dest_item)
                 else:
                     shutil.copy2(item, dest_item)
-                    
-            print(f"Successfully copied zapret_core to {self.zapret_dir}")
             
             version_file = self.zapret_dir / "version.txt"
             if not version_file.exists():
-                with open(version_file, 'w') as f:
-                    f.write("1.0")
-                    
+                required_version = self.get_resource_core_version()
+                version_file.write_text(required_version, encoding='utf-8')
+            
         except Exception as e:
             messagebox.showerror(
-                tr('error_zapret_folder'), 
-                f"Failed to copy zapret_core: {e}\n\n"
-                f"Source: {source_dir}\n"
-                f"Destination: {self.zapret_dir}"
+                "Error",
+                f"Failed to install zapret_core:\n{str(e)}"
             )
             sys.exit(1)
+
+    def get_resource_core_version(self):
+        resource_version_file = self.get_resource_path("zapret_core/version.txt")
+        if resource_version_file.exists():
+            try:
+                return resource_version_file.read_text(encoding='utf-8').strip()
+            except Exception:
+                pass
+        return "0.0"
             
     def load_strategies(self):
         if not self.zapret_dir.exists():
@@ -654,8 +674,8 @@ class ZapretLauncher:
         if hasattr(self, 'tray_icon') and self.tray_icon:
             try:
                 self.tray_icon.update_icon_state()
-            except Exception as e:
-                print(f"Error updating tray icon: {e}")
+            except Exception:
+                pass
 
     def apply_rounded_corners(self, radius=20):
         try:
@@ -695,8 +715,8 @@ class ZapretLauncher:
     def on_closing(self):
         try:
             self.root.withdraw()
-        except Exception as e:
-            print(f"Error hiding window: {e}")
+        except Exception:
+            pass
 
     def _force_exit(self):
         try:
@@ -810,10 +830,8 @@ class ZapretLauncher:
         self.content_panel = tk.Frame(self.main_container, bg=self.colors['bg_dark'])
         self.content_panel.place(x=250, y=0, width=950, height=800)
         self.pages = Pages(self)
-        self.pages.create_all_pages(self.content_panel)
 
     def log_event(self, event_type: str, message: str, mode_name: str = None):
-        
         timestamp = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
         
         if event_type == "connect" and mode_name:
@@ -841,8 +859,8 @@ class ZapretLauncher:
             log_file = APPDATA_DIR / "logs.txt"
             with open(log_file, 'a', encoding='utf-8') as f:
                 f.write(log_entry + "\n")
-        except Exception as e:
-            print(f"Error writing log: {e}")
+        except Exception:
+            pass
         
         if hasattr(self, 'pages') and self.pages.current_page == "logs":
             self.pages.update_logs_display()
@@ -881,21 +899,8 @@ class ZapretLauncher:
                 icon_label.bind("<Leave>", lambda e: icon_label.config(cursor=""))
             else:
                 raise Exception(tr('error_icon_not_found'))
-                
-        except Exception as e:
-            logo_btn = RoundedButton(
-                logo_frame,
-                text="ZAPRET\nLAUNCHER",
-                command=self.show_settings_page,
-                width=120, height=120,
-                bg=self.colors['accent'],
-                fg=self.colors['text_primary'],
-                font=("Segoe UI Variable", 14, "bold"),
-                corner_radius=60
-            )
-            logo_btn.pack(expand=True, pady=10)
-            logo_btn.bind("<Enter>", lambda e: logo_btn.config(cursor="hand2"))
-            logo_btn.bind("<Leave>", lambda e: logo_btn.config(cursor=""))
+        except Exception:
+            pass
 
         nav_buttons = [
             (tr('main_title'), self.show_main_page),
@@ -965,8 +970,8 @@ class ZapretLauncher:
         beta_label = tk.Label(
             version_frame,
             text="beta",
-            font=("Segoe UI Variable", 8, "bold"),
-            fg=self.colors['accent_hover'],
+            font=("Segoe UI Variable", 8),
+            fg=self.colors['accent'],
             bg=self.colors['bg_medium']
         )
         beta_label.pack(side=tk.LEFT)
@@ -1279,7 +1284,6 @@ class ZapretLauncher:
                 else:
                     self.root.after(0, lambda: self._on_tg_proxy_failed_direct(tr('error_tgproxy_start')))
             except Exception as e:
-                print(f"Start thread error: {e}")
                 self.root.after(0, lambda: self._on_tg_proxy_failed_direct(str(e)))
         
         threading.Thread(target=start_thread, daemon=True).start()
@@ -1590,7 +1594,7 @@ class ZapretLauncher:
         elif self.update_interval == 0:
             interval = 500
         elif self.update_interval > 0:
-            interval = int(self.update_interval * 1000)
+            interval = max(500, int(self.update_interval * 1000))
         else:
             interval = 1000
         
@@ -1859,51 +1863,6 @@ class ZapretLauncher:
         else:
             self.log_to_diagnostic(f"{msg}")
             messagebox.showerror(tr('error_occurred'), msg)
-
-    def check_file_integrity(self):
-        self.log_to_diagnostic("="*50)
-        self.log_to_diagnostic(tr('diagnostic_file_integrity'))
-        self.log_to_diagnostic("="*50)
-        
-        errors = []
-        
-        if ZAPRET_CORE_DIR.exists():
-            zapret_files = [
-                "winws.exe",
-                "WinDivert.dll",
-                "WinDivert64.sys",
-                "general.bat"
-            ]
-            
-            bin_dir = ZAPRET_CORE_DIR / "bin"
-            for file in zapret_files:
-                if file == "general.bat":
-                    file_path = ZAPRET_CORE_DIR / file
-                else:
-                    file_path = bin_dir / file
-                
-                if file_path.exists():
-                    size = file_path.stat().st_size
-                    self.log_to_diagnostic(f"  {file} - {size} {tr('diagnostic_bytes')}")
-                else:
-                    self.log_to_diagnostic(f"  {file} - {tr('not_found')}")
-                    errors.append(f"{file} {tr('not_found')}")
-            
-            strategies = list(ZAPRET_CORE_DIR.glob("general*.bat"))
-            self.log_to_diagnostic(f"  {tr('strategies_count')}: {len(strategies)} {tr('files')}")
-        else:
-            self.log_to_diagnostic(f"  {tr('diagnostic_zapret_missing')}")
-            errors.append(tr('diagnostic_zapret_missing'))
-        
-        self.log_to_diagnostic("")
-        if errors:
-            self.log_to_diagnostic(f"{tr('diagnostic_problems_found')} {len(errors)}")
-            for err in errors:
-                self.log_to_diagnostic(f"  - {err}")
-        else:
-            self.log_to_diagnostic(tr('diagnostic_all_ok'))
-        
-        self.log_to_diagnostic("="*50)
     
     def check_custom_site(self):
         dialog = tk.Toplevel(self.root)
@@ -2375,14 +2334,14 @@ class ZapretLauncher:
                 if hasattr(self, 'tg_proxy') and self.tg_proxy:
                     try:
                         self.tg_proxy.stop()
-                    except Exception as e:
-                        print(f"TGProxy stop error: {e}")
+                    except Exception:
+                        pass
                     time.sleep(1.5)
                 
                 try:
                     self.zapret.stop_current_strategy()
-                except Exception as e:
-                    print(f"Zapret stop error: {e}")
+                except Exception:
+                    pass
                 
                 time.sleep(0.5)
                 
@@ -2405,8 +2364,7 @@ class ZapretLauncher:
                 self.current_strategy = None
                 self.root.after(0, self.finish_disconnect)
                 
-            except Exception as e:
-                print(f"Error in disconnect stop_all: {e}")
+            except Exception:
                 self.is_connected = False
                 self.root.after(0, self.finish_disconnect)
         
@@ -2463,8 +2421,8 @@ class ZapretLauncher:
             self.hostname_cache = {}
             self.hostname_cache_time = {}
             self.root.after(500, self.update_tray_icon_state)
-        except Exception as e:
-            print(f"Error in finish_disconnect: {e}")
+        except Exception:
+            pass
 
     def run_service_command(self, command):
         if not check_zapret_folder():
@@ -2541,8 +2499,7 @@ class ZapretLauncher:
                         self._tg_secret = os.urandom(16).hex()
                         self.save_settings()
                         
-        except Exception as e:
-            print(f"Error loading settings: {e}")
+        except Exception:
             self.log_event("info", "New secret key has been generated (first run)")
             self._tg_secret = os.urandom(16).hex()
 
@@ -3771,8 +3728,8 @@ class ZapretLauncher:
             if log_file.exists():
                 with open(log_file, 'r', encoding='utf-8') as f:
                     logs = f.readlines()
-        except Exception as e:
-            print(f"Error loading logs: {e}")
+        except Exception:
+            pass
         return logs[-1000:]
     
     def clear_logs(self):
@@ -3783,8 +3740,8 @@ class ZapretLauncher:
                     f.write("")
             if hasattr(self, 'pages') and self.pages.current_page == "logs":
                 self.pages.update_logs_display()
-        except Exception as e:
-            print(f"Error clearing logs: {e}")
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     mutex_name = "ZapretLauncher_SingleInstance"
