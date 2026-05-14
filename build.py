@@ -16,7 +16,7 @@ def clean_build():
             shutil.rmtree(pycache_path)
             print(f"Removed: {pycache_path}")
     
-    spec_file = Path('Zapret Launcher.spec')
+    spec_file = Path('updater.spec')
     if spec_file.exists():
         spec_file.unlink()
     print()
