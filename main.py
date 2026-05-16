@@ -1019,13 +1019,11 @@ class ZapretLauncher:
         
         modes = [
             {"name": tr('mode_standard'), "desc": tr('mode_standard_desc'), 
-            "zapret": True, "tgproxy": False, "game": False},
+            "zapret": True, "tgproxy": False},
             {"name": tr('mode_tgproxy'), "desc": tr('mode_tgproxy_desc'), 
-            "zapret": False, "tgproxy": True, "game": False},
+            "zapret": False, "tgproxy": True},
             {"name": tr('mode_zapret_tgproxy'), "desc": tr('mode_zapret_tgproxy_desc'), 
-            "zapret": True, "tgproxy": True, "game": False},
-            {"name": tr('mode_game'), "desc": tr('mode_game_desc'), 
-            "zapret": True, "tgproxy": False, "game": True}
+            "zapret": True, "tgproxy": True},
         ]
         
         selected_mode = [None]
@@ -1251,13 +1249,8 @@ class ZapretLauncher:
         self.root.clipboard_clear()
         self.root.clipboard_append(link)
         self.root.update()
-        
+
         self.show_notification(tr('notification_updated_secret'), 3000)
-        messagebox.showinfo(
-            tr('tg_secret_updated'),
-            f"{tr('notification_copied_secret')}\n"
-            f"{tr('tg_paste_instruction')}"
-        )
         
     def _do_start_tg_proxy(self):
         self._reset_traffic_history()
@@ -3142,6 +3135,149 @@ class ZapretLauncher:
         step_text5 = tk.Label(step5_frame, text=tr('hosts_step5'), font=("Segoe UI Variable", 10),
                             fg=self.colors['text_primary'], bg=self.colors['bg_light'])
         step_text5.pack(side=tk.LEFT, padx=(5, 0))
+        
+        bottom_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
+        bottom_frame.pack(fill=tk.X, padx=30, pady=12)
+        
+        close_btn = RoundedButton(
+            bottom_frame,
+            text=tr('button_close'),
+            command=dialog.destroy,
+            width=100, height=32,
+            bg=self.colors['accent'],
+            fg=self.colors['text_primary'],
+            font=("Segoe UI Variable", 10),
+            corner_radius=8
+        )
+        close_btn.pack(side=tk.RIGHT)
+        
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.focus_force()
+
+    def show_github_instruction(self):
+        dialog = tk.Toplevel(self.root)
+        dialog.title(tr('instruction_title_window'))
+        dialog.geometry("600x400")
+        dialog.resizable(False, False)
+        dialog.configure(bg=self.colors['bg_medium'])
+        
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 300
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 200
+        dialog.geometry(f"+{x}+{y}")
+        
+        title_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
+        title_frame.pack(fill=tk.X, pady=(15, 5))
+        
+        title_label = tk.Label(title_frame, text=tr('ghub_instruction_title'), 
+                            font=("Segoe UI Variable", 18, "bold"),
+                            fg=self.colors['accent'], bg=self.colors['bg_medium'])
+        title_label.pack()
+        
+        subtitle_label = tk.Label(title_frame, text=tr('ghub_instruction_subtitle'),
+                                font=("Segoe UI Variable", 10),
+                                fg=self.colors['text_secondary'], bg=self.colors['bg_medium'])
+        subtitle_label.pack(pady=(3, 0))
+        
+        separator = tk.Frame(dialog, bg=self.colors['separator'], height=1)
+        separator.pack(fill=tk.X, padx=30, pady=8)
+        
+        main_frame = tk.Frame(dialog, bg=self.colors['bg_light'])
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=5)
+        
+        inner = tk.Frame(main_frame, bg=self.colors['bg_light'])
+        inner.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
+        
+        step1_frame = tk.Frame(inner, bg=self.colors['bg_light'])
+        step1_frame.pack(fill=tk.X, pady=(0, 8))
+        
+        step_num1 = tk.Label(step1_frame, text="1.", font=("Segoe UI Variable", 12, "bold"),
+                            fg=self.colors['accent'], bg=self.colors['bg_light'])
+        step_num1.pack(side=tk.LEFT)
+        
+        step_text1 = tk.Label(step1_frame, text=tr('ghub_step1'), font=("Segoe UI Variable", 10),
+                            fg=self.colors['text_primary'], bg=self.colors['bg_light'])
+        step_text1.pack(side=tk.LEFT, padx=(5, 0))
+        
+        step2_frame = tk.Frame(inner, bg=self.colors['bg_light'])
+        step2_frame.pack(fill=tk.X, pady=(0, 8))
+        
+        step_num2 = tk.Label(step2_frame, text="2.", font=("Segoe UI Variable", 12, "bold"),
+                            fg=self.colors['accent'], bg=self.colors['bg_light'])
+        step_num2.pack(side=tk.LEFT)
+        
+        step_text2 = tk.Label(step2_frame, text=tr('ghub_step2'), font=("Segoe UI Variable", 10),
+                            fg=self.colors['text_primary'], bg=self.colors['bg_light'])
+        step_text2.pack(side=tk.LEFT, padx=(5, 0))
+        
+        step3_frame = tk.Frame(inner, bg=self.colors['bg_light'])
+        step3_frame.pack(fill=tk.X, pady=(0, 8))
+        
+        step_num3 = tk.Label(step3_frame, text="3.", font=("Segoe UI Variable", 12, "bold"),
+                            fg=self.colors['accent'], bg=self.colors['bg_light'])
+        step_num3.pack(side=tk.LEFT)
+        
+        step_text3 = tk.Label(step3_frame, text=tr('ghub_step3'), font=("Segoe UI Variable", 10),
+                            fg=self.colors['text_primary'], bg=self.colors['bg_light'])
+        step_text3.pack(side=tk.LEFT, padx=(5, 0))
+        
+        step4_frame = tk.Frame(inner, bg=self.colors['bg_light'])
+        step4_frame.pack(fill=tk.X, pady=(0, 8))
+        
+        step_num4 = tk.Label(step4_frame, text="4.", font=("Segoe UI Variable", 12, "bold"),
+                            fg=self.colors['accent'], bg=self.colors['bg_light'])
+        step_num4.pack(side=tk.LEFT)
+        
+        step_text4 = tk.Label(step4_frame, text=tr('ghub_step4'), font=("Segoe UI Variable", 10),
+                            fg=self.colors['text_primary'], bg=self.colors['bg_light'])
+        step_text4.pack(side=tk.LEFT, padx=(5, 0))
+
+        copy_frame_block = tk.Frame(inner, bg=self.colors['bg_light'])
+        copy_frame_block.pack(fill=tk.X, pady=(10, 5))
+        
+        spacer = tk.Label(copy_frame_block, text="   ", font=("Segoe UI Variable", 10),
+                        fg=self.colors['text_primary'], bg=self.colors['bg_light'])
+        spacer.pack(side=tk.LEFT)
+        
+        bullet = tk.Label(copy_frame_block, text="▸", font=("Segoe UI Variable", 9),
+                        fg=self.colors['accent'], bg=self.colors['bg_light'])
+        bullet.pack(side=tk.LEFT, padx=(10, 3))
+        
+        copy_label = tk.Label(copy_frame_block, text=tr('ghub_copy_lines'), font=("Segoe UI Variable", 9),
+                            fg=self.colors['accent'], bg=self.colors['bg_light'], cursor="hand2")
+        copy_label.pack(side=tk.LEFT)
+        
+        lists_lines = """githubapp.com
+dependabot.com
+github.com
+githubassets.com
+githubusercontent.com
+gh.io
+ghcr.io
+github.io
+github.new
+github.dev
+github.blog
+github.community"""
+
+        def copy_lists_lines(event=None):
+            self.root.clipboard_clear()
+            self.root.clipboard_append(lists_lines)
+            self.root.update()
+            copy_label.config(text=tr('tg_copied'), fg=self.colors['accent_green'])
+            self.show_notification(tr('ghub_copied_notification'), 2000)
+            self.root.after(2000, lambda: copy_label.config(text=tr('ghub_copy_lines'), fg=self.colors['accent']))
+        
+        copy_label.bind("<Button-1>", copy_lists_lines)
+        
+        def on_enter_copy(event):
+            copy_label.config(fg=self.colors['accent_hover'], font=("Segoe UI Variable", 9, "underline"))
+        
+        def on_leave_copy(event):
+            copy_label.config(fg=self.colors['accent'], font=("Segoe UI Variable", 9))
+        
+        copy_label.bind("<Enter>", on_enter_copy)
+        copy_label.bind("<Leave>", on_leave_copy)
         
         bottom_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
         bottom_frame.pack(fill=tk.X, padx=30, pady=12)
