@@ -1,7 +1,6 @@
 from .main_page import MainPage
 from .service_page import ServicePage
 from .lists_page import ListsPage
-from .diagnostic_page import DiagnosticPage
 from .traffic_page import TrafficPage
 from .logs_page import LogsPage
 from .settings_page import SettingsPage
@@ -11,7 +10,6 @@ __all__ = [
     'MainPage',
     'ServicePage', 
     'ListsPage',
-    'DiagnosticPage',
     'TrafficPage',
     'LogsPage',
     'SettingsPage',
