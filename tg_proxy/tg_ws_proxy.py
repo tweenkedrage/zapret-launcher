@@ -141,9 +141,21 @@ def _generate_relay_init(proto_tag: bytes, dc_idx: int) -> bytes:
 def _ws_domains(dc: int, is_media) -> List[str]:
     if dc == 203:
         dc = 2
+    domains = []
     if is_media is None or is_media:
-        return [f'kws{dc}-1.web.telegram.org', f'kws{dc}.web.telegram.org']
-    return [f'kws{dc}.web.telegram.org', f'kws{dc}-1.web.telegram.org']
+        domains = [f'kws{dc}-{i}.web.telegram.org' for i in range(1, 6)]
+        domains += [f'kws{dc}.web.telegram.org']
+    else:
+        domains = [f'kws{dc}.web.telegram.org'] + [f'kws{dc}-{i}.web.telegram.org' for i in range(1, 6)]
+    
+    backup_domains = [
+        f'plink{dc}.web.telegram.org',
+        f'plink{dc}-1.web.telegram.org',
+        f'web{dc}.telegram.org'
+    ]
+    domains.extend(backup_domains)
+    
+    return list(dict.fromkeys(domains))
 
 class _WsPool:
     WS_POOL_MAX_AGE = 120.0
