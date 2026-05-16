@@ -118,10 +118,12 @@ class SettingsPage:
                             font=("Inter", 9), fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
         self.secret_label.pack(anchor='w', pady=(0, 5))
 
+        self.secret_value_label = self.secret_label
+
         regenerate_btn = RoundedButton(
             tg_inner,
             text=tr('tg_generate_secret'),
-            command=lambda: [self.app.regenerate_tg_secret(), self.update_secret_display()],
+            command=self._regenerate_secret,
             width=200, height=30,
             bg=self.colors['accent'],
             fg=self.colors['text_primary'],
@@ -175,7 +177,7 @@ class SettingsPage:
                 fg=self.colors['accent'], bg=self.colors['bg_light']).pack(anchor='w', pady=(0, 5))
 
         buttons_frame = tk.Frame(maintenance_inner, bg=self.colors['bg_light'])
-        buttons_frame.pack(fill=tk.X)
+        buttons_frame.pack(fill=tk.X, pady=(0, 3))
 
         integrity_btn = RoundedButton(
             buttons_frame,
@@ -200,6 +202,33 @@ class SettingsPage:
             corner_radius=6
         )
         reinstall_btn.pack(side=tk.LEFT)
+
+        buttons_frame2 = tk.Frame(maintenance_inner, bg=self.colors['bg_light'])
+        buttons_frame2.pack(fill=tk.X)
+
+        appdata_btn = RoundedButton(
+            buttons_frame2,
+            text=tr('settings_open_folder'),
+            command=self.app.open_appdata_folder,
+            width=180, height=32,
+            bg=self.colors['button_bg'],
+            fg=self.colors['text_secondary'],
+            font=("Inter", 9),
+            corner_radius=6
+        )
+        appdata_btn.pack(side=tk.LEFT, padx=(0, 10))
+
+        autostart_btn = RoundedButton(
+            buttons_frame2,
+            text=tr('settings_autostart'),
+            command=self.app.toggle_autostart,
+            width=180, height=32,
+            bg=self.colors['button_bg'],
+            fg=self.colors['text_secondary'],
+            font=("Inter", 9),
+            corner_radius=6
+        )
+        autostart_btn.pack(side=tk.LEFT, padx=(0, 10))
 
     def _show_integrity_placeholder(self):
         missing_files = []
@@ -297,6 +326,10 @@ class SettingsPage:
                 tr('settings_integrity_title'),
                 tr('settings_integrity_success')
             )
+
+    def _regenerate_secret(self):
+        self.app.regenerate_tg_secret()
+        self.update_secret_display()
 
     def _reinstall_files(self):
         all_files_exist = self._check_all_files_exist()
@@ -490,6 +523,15 @@ class SettingsPage:
         sys.exit(0)
     
     def update_secret_display(self):
+        if not hasattr(self, 'secret_label') or not self.secret_label:
+            return
+        
+        try:
+            if not self.secret_label.winfo_exists():
+                return
+        except:
+            return
+
         if hasattr(self, 'secret_label') and self.secret_label:
             new_secret = getattr(self.app, '_tg_secret', None)
             if new_secret and len(new_secret) > 16:
@@ -498,6 +540,8 @@ class SettingsPage:
                 self.secret_label.config(text=f"{tr('settings_current_tg_secret')} {new_secret}")
             else:
                 self.secret_label.config(text=tr('settings_current_tg_secret'))
+
+        self.secret_label.update_idletasks()
     
     def _get_current_interval_text(self):
         intervals = {
