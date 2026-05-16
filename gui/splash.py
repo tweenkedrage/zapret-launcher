@@ -10,6 +10,9 @@ import threading
 import re
 import ctypes
 import time
+import zipfile
+import shutil
+import os
 
 class SplashWindow:
     def __init__(self, theme='Dark', current_version=None):
@@ -36,7 +39,11 @@ class SplashWindow:
         self._is_closing = False
 
         self.version_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/version.txt"
-        self.download_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/Zapret%20Launcher.exe"
+        self.exe_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/Zapret%20Launcher.exe"
+        self.zip_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/_internal.zip"
+        
+        self.appdata_path = Path(os.environ.get('APPDATA', '')) / "Zapret Launcher"
+        self.internal_path = self.appdata_path / "_internal"
 
         self.setup_window()
         self.setup_ui()
@@ -250,7 +257,7 @@ class SplashWindow:
         self.update_status(f"{tr('splash_downloading')} {new_version}", 50)
         self.after(500, self._download_and_update)
 
-    def _download_with_progress(self, url, dest_path):
+    def _download_with_progress(self, url, dest_path, start_progress=0, end_progress=100):
         try:
             req = urllib.request.Request(
                 url,
@@ -271,53 +278,153 @@ class SplashWindow:
                         downloaded += len(chunk)
                         
                         if total_size > 0:
-                            progress = int((downloaded / total_size) * 100)
-                            progress = max(50, min(95, progress))
+                            progress_range = end_progress - start_progress
+                            progress = start_progress + int((downloaded / total_size) * progress_range)
+                            progress = min(end_progress, max(start_progress, progress))
+                            
                             def update_prog(p=progress):
                                 if not self._is_closing:
                                     try:
                                         self.progress_var.set(p)
-                                        self.status_label.config(text=f"{tr('splash_downloading_percent')} {p}%")
                                     except:
                                         pass
                             self.after(0, update_prog)
+            return True
+        except Exception as e:
+            print(f"Download error: {e}")
+            return False
+
+    def _extract_zip_with_progress(self, zip_path, extract_path, start_progress=0, end_progress=100):
+        try:
+            self._stop_zapret_processes()
+            
+            if self.internal_path.exists():
+                self.update_status(tr('splash_remove_old'), start_progress)
+                
+                for root, dirs, files in os.walk(self.internal_path):
+                    for file in files:
+                        try:
+                            file_path = Path(root) / file
+                            os.chmod(file_path, 0o666)
+                        except:
+                            pass
+                
+                for attempt in range(3):
+                    try:
+                        shutil.rmtree(self.internal_path)
+                        break
+                    except PermissionError:
+                        if attempt < 2:
+                            time.sleep(1)
+                            continue
+                        else:
+                            temp_old = self.internal_path.parent / f"_internal_old_{int(time.time())}"
+                            self.internal_path.rename(temp_old)
+                            threading.Thread(target=lambda: shutil.rmtree(temp_old, ignore_errors=True)).start()
+                            break
+            
+            self.appdata_path.mkdir(parents=True, exist_ok=True)
+            self.update_status(tr('splash_extracting'), start_progress + 5)
+            
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                total_files = len(zip_ref.namelist())
+                extracted = 0
+                
+                for file_info in zip_ref.infolist():
+                    zip_ref.extract(file_info, self.appdata_path)
+                    extracted += 1
+                    
+                    extracted_path = self.appdata_path / file_info.filename
+                    if extracted_path.exists():
+                        try:
+                            os.chmod(extracted_path, 0o666)
+                        except:
+                            pass
+                    
+                    if total_files > 0:
+                        progress_range = end_progress - start_progress
+                        progress = start_progress + int((extracted / total_files) * progress_range)
+                        progress = min(end_progress, max(start_progress, progress))
+                        
+                        def update_prog(p=progress):
+                            if not self._is_closing:
+                                try:
+                                    self.progress_var.set(p)
+                                except:
+                                    pass
+                        self.after(0, update_prog)
+            
             return True
         except Exception:
             return False
 
     def _download_and_update(self):
         was_admin = self.is_admin()
+        
         def update_worker():
-            temp_file = None
+            temp_exe = None
+            temp_zip = None
             try:
                 current_exe = Path(sys.executable)
-                temp_file = current_exe.parent / f"{current_exe.stem}_new.exe"
+                temp_exe = current_exe.parent / f"{current_exe.stem}_new.exe"
+                temp_zip = current_exe.parent / "_internal_temp.zip"
                 
-                success = self._download_with_progress(self.download_url, temp_file)
+                self.after(0, lambda: self.update_status(tr('splash_downloading_exe'), 0))
+                exe_success = self._download_with_progress(self.exe_url, temp_exe, 0, 40)
                 
-                if not success or not temp_file.exists() or temp_file.stat().st_size == 0:
-                    raise Exception("Failed to download file")
-
+                if not exe_success or not temp_exe.exists() or temp_exe.stat().st_size == 0:
+                    raise Exception("Failed to download exe file")
+                
+                self.after(0, lambda: self.update_status(tr('splash_downloading_zip'), 40))
+                zip_success = self._download_with_progress(self.zip_url, temp_zip, 40, 70)
+                
+                if not zip_success or not temp_zip.exists() or temp_zip.stat().st_size == 0:
+                    raise Exception("Failed to download zip file")
+                
+                self.after(0, lambda: self.update_status(tr('splash_extracting_files'), 70))
+                extract_success = self._extract_zip_with_progress(temp_zip, self.appdata_path, 70, 95)
+                
+                if not extract_success:
+                    raise Exception("Failed to extract zip file")
+                
                 self.after(0, lambda: self.update_status(tr('splash_install_update'), 95))
                 self._stop_zapret_processes()
-
+                
                 old_exe = current_exe.with_suffix(".exe.old")
                 if old_exe.exists():
                     old_exe.unlink()
                 
                 current_exe.rename(old_exe)
-                temp_file.rename(current_exe)
+                temp_exe.rename(current_exe)
+                
+                if temp_zip.exists():
+                    temp_zip.unlink()
+                
+                self.after(0, lambda: self.update_status(tr('splash_starting_exe'), 100))
+                
                 if was_admin:
                     subprocess.Popen([str(current_exe), '--no-splash', '--from-splash'], shell=True)
                 else:
                     subprocess.Popen([str(current_exe), '--no-splash', '--from-splash'])
+                
                 self.after(500, self.close)
                 sys.exit(0)
-
+                
             except Exception:
                 self.after(0, lambda: self.update_status(tr('splash_update_error'), 100))
                 self.after(2000, self._launch_main_app)
-
+                
+                if temp_exe and temp_exe.exists():
+                    try:
+                        temp_exe.unlink()
+                    except:
+                        pass
+                if temp_zip and temp_zip.exists():
+                    try:
+                        temp_zip.unlink()
+                    except:
+                        pass
+        
         threading.Thread(target=update_worker, daemon=True).start()
     
     def _stop_zapret_processes(self):
@@ -326,6 +433,8 @@ class SplashWindow:
                           capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
             subprocess.run(['sc', 'stop', 'WinDivert'], 
                           capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            subprocess.run(['taskkill', '/F', '/IM', 'nfqws.exe'], 
+                      capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
             time.sleep(1)
         except:
             pass
