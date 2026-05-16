@@ -8,17 +8,7 @@ from typing import List, Optional
 from gui.theme import get_theme
 from datetime import datetime
 from gui.splash import SplashWindow
-from utils.network_set import set_logger
 from tg_proxy import run_proxy, run
-from utils.network_set import (
-    optimize_network_latency,
-    find_best_dns,
-    set_dns_windows,
-    flush_dns_cache,
-    restore_network_defaults,
-    list_network_adapters,
-    set_dns_manual
-)
 from gui.widgets import RoundedButton
 try:
     TG_PROXY_AVAILABLE = True
@@ -529,7 +519,6 @@ class ZapretLauncher:
         self.mode_label = None
         self.connect_btn = None
         self.main_status = None
-        self.diagnostic_text = None
         self.stats_frame = None
         self.stats_time_label = None
         self.stats_traffic_label = None
@@ -654,8 +643,6 @@ class ZapretLauncher:
         self.current_theme = 'Dark'
         self.load_settings()
         self.apply_theme()
-
-        set_logger(self)
 
         if not self._tg_secret:
             self._tg_secret = os.urandom(16).hex()
@@ -782,7 +769,7 @@ class ZapretLauncher:
         if hasattr(self, 'pages') and self.pages:
             self.pages.colors = self.colors
             
-            for page_name in ['main_page', 'service_page', 'lists_page', 'diagnostic_page', 
+            for page_name in ['main_page', 'service_page', 'lists_page', 
                             'traffic_page', 'settings_page']:
                 if hasattr(self.pages, page_name):
                     page = getattr(self.pages, page_name)
@@ -832,28 +819,30 @@ class ZapretLauncher:
         self.pages = Pages(self)
 
     def log_event(self, event_type: str, message: str, mode_name: str = None):
-        timestamp = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+        now = datetime.now()
+        timestamp = now.strftime("%H:%M:%S")
+        date_str = now.strftime("%d.%m.%Y")
         
         if event_type == "connect" and mode_name:
-            log_entry = f"[{timestamp}] Mode {mode_name} is connected"
+            log_entry = f"[{date_str} {timestamp}] Mode {mode_name} is connected"
         
         elif event_type == "disconnect" and mode_name:
-            log_entry = f"[{timestamp}] Disconnected from mode {mode_name}"
+            log_entry = f"[{date_str} {timestamp}] Disconnected from mode {mode_name}"
         
         elif event_type == "error":
-            log_entry = f"[{timestamp}] Error: {message}"
+            log_entry = f"[{date_str} {timestamp}] Error: {message}"
         
         elif event_type == "winws":
-            log_entry = f"[{timestamp}] {message}"
+            log_entry = f"[{date_str} {timestamp}] {message}"
         
         elif event_type == "info":
-            log_entry = f"[{timestamp}] {message}"
+            log_entry = f"[{date_str} {timestamp}] {message}"
 
         elif event_type == "success":
-            log_entry = f"[{timestamp}] {message}"
+            log_entry = f"[{date_str} {timestamp}] {message}"
 
         else:
-            log_entry = f"[{timestamp}] {message}"
+            log_entry = f"[{date_str} {timestamp}] {message}"
         
         try:
             log_file = APPDATA_DIR / "logs.txt"
@@ -862,8 +851,16 @@ class ZapretLauncher:
         except Exception:
             pass
         
-        if hasattr(self, 'pages') and self.pages.current_page == "logs":
-            self.pages.update_logs_display()
+        if hasattr(self, 'pages') and hasattr(self.pages, 'logs_page_obj'):
+            if hasattr(self.pages, 'current_page') and self.pages.current_page == "logs":
+                if not hasattr(self, '_log_update_scheduled') or not self._log_update_scheduled:
+                    self._log_update_scheduled = True
+                    self.root.after(300, self._scheduled_log_update)
+
+    def _scheduled_log_update(self):
+        self._log_update_scheduled = False
+        if hasattr(self, 'pages') and hasattr(self.pages, 'logs_page_obj'):
+            self.pages.logs_page_obj.update_logs_display()
 
     def create_left_panel(self):
         left_panel = tk.Frame(self.main_container, bg=self.colors['bg_medium'], width=250)
@@ -906,7 +903,6 @@ class ZapretLauncher:
             (tr('main_title'), self.show_main_page),
             (tr('service_title'), self.show_service_page),
             (tr('lists_title'), self.show_lists_page),
-            (tr('diagnostic_title'), self.show_diagnostic_page),
             (tr('additionally_title'), self.show_additionally_page),
             (tr('traffic_title'), self.show_traffic_page),
             (tr('logs_title'), self.show_logs_page),
@@ -1248,8 +1244,8 @@ class ZapretLauncher:
         self.log_event("info", f"New secret-key has been generated: {self._tg_secret[:8]}...")
         self.tg_proxy.set_secret(self._tg_secret)
 
-        if hasattr(self, 'pages') and hasattr(self.pages, 'settings_page'):
-            self.pages.update_secret_display()
+        if hasattr(self, 'pages') and hasattr(self.pages, 'settings_page_obj'):
+            self.pages.settings_page_obj.update_secret_display()
         
         link = f"{self._tg_secret}"
         self.root.clipboard_clear()
@@ -1615,33 +1611,75 @@ class ZapretLauncher:
             except:
                 pass
             
-            def on_iconify():
+            def update_notification_position():
                 if notification and notification.winfo_exists() and notification._is_alive:
+                    try:
+                        x = self.root.winfo_x() + self.root.winfo_width() - 310
+                        y = self.root.winfo_y() + 50
+                        notification.geometry(f"280x40+{x}+{y}")
+                    except:
+                        pass
+            
+            def on_root_configure(event=None):
+                update_notification_position()
+            
+            self.root.bind('<Configure>', on_root_configure)
+            
+            def cleanup():
+                try:
+                    if notification and notification.winfo_exists():
+                        notification._is_alive = False
+                        notification.destroy()
+                except:
+                    pass
+                try:
+                    self.root.unbind('<Configure>', on_root_configure)
+                except:
+                    pass
+            
+            def on_iconify():
+                if notification and notification.winfo_exists():
                     try:
                         notification.withdraw()
                     except:
                         pass
-            
+
             def on_deiconify():
-                if notification and notification.winfo_exists() and notification._is_alive and self.root.winfo_viewable():
+                if notification and notification.winfo_exists() and notification._is_alive:
                     try:
                         notification.deiconify()
+                        update_notification_position()
                     except:
                         pass
             
-            for binding in self.root.bindtags():
-                if '<Map>' in binding or '<Unmap>' in binding:
-                    pass
+            self.root.bind('<Unmap>', lambda e: on_iconify())
+            self.root.bind('<Map>', lambda e: on_deiconify())
             
-            self.root.bind('<Map>', lambda e: on_deiconify(), add=True)
-            self.root.bind('<Unmap>', lambda e: on_iconify(), add=True)
+            def check_window_state():
+                if notification and notification.winfo_exists() and notification._is_alive:
+                    try:
+                        is_active = self.root.focus_displayof() is not None
+                        is_visible = self.root.winfo_viewable()
+                        is_iconic = self.root.state() == 'iconic'
+                        
+                        if not is_visible or is_iconic or (not is_active and is_visible):
+                            if notification.winfo_viewable():
+                                notification.withdraw()
+                        else:
+                            if not notification.winfo_viewable():
+                                notification.deiconify()
+                                update_notification_position()
+                                notification.lift()
+                    except:
+                        pass
+                    notification.after(10, check_window_state)
             
             try:
                 notification.attributes('-alpha', 0.95)
             except:
                 pass
             
-            x = self.root.winfo_x() + self.root.winfo_width() - 300
+            x = self.root.winfo_x() + self.root.winfo_width() - 310
             y = self.root.winfo_y() + 50
             notification.geometry(f"280x40+{x}+{y}")
             
@@ -1657,15 +1695,15 @@ class ZapretLauncher:
                             bg=self.colors['bg_medium'],
                             padx=12, pady=8)
             label.pack()
+            
             notification.lift()
             notification.attributes('-alpha', 0.0)
             
+            check_window_state()
+            
             def fade_in(alpha=0.0):
                 if not self.root.winfo_viewable():
-                    try:
-                        notification.destroy()
-                    except:
-                        pass
+                    cleanup()
                     return
                 if alpha < 0.95:
                     alpha += 0.1
@@ -1674,7 +1712,7 @@ class ZapretLauncher:
                             notification.attributes('-alpha', alpha)
                             notification.after(30, lambda: fade_in(alpha))
                     except:
-                        pass
+                        cleanup()
                 else:
                     notification.after(duration, fade_out)
             
@@ -1686,18 +1724,19 @@ class ZapretLauncher:
                             notification.attributes('-alpha', alpha)
                             notification.after(30, lambda: fade_out(alpha))
                     except:
-                        pass
+                        cleanup()
                 else:
-                    try:
-                        if notification and notification.winfo_exists():
-                            notification._is_alive = False
-                            notification.destroy()
-                    except:
-                        pass
+                    cleanup()
             
             fade_in()
+            
+            def on_notification_click(event=None):
+                cleanup()
+            
+            notification.bind("<Button-1>", on_notification_click)
+            
         except Exception:
-                    pass
+            pass
 
     def save_interval_setting(self):
         try:
@@ -1717,243 +1756,6 @@ class ZapretLauncher:
             pass
         return {}
 
-    def optimize_network_latency(self):
-        self.log_to_diagnostic("="*50)
-        self.log_to_diagnostic(tr('dns_optimize_network'))
-        self.log_to_diagnostic("="*50)
-        
-        if not is_admin():
-            self.log_to_diagnostic(tr('error_admin_required'))
-            messagebox.showerror(tr('error_admin_required'), tr('error_admin_required'))
-            return
-        
-        self.log_to_diagnostic(tr('dns_configuring_tcp'))
-        success, msg = optimize_network_latency()
-        
-        if success:
-            self.log_to_diagnostic(msg)
-            self.log_to_diagnostic(tr('dns_optimize_complete'))
-            messagebox.showinfo(tr('dns_optimize_success'), tr('dns_optimize'))
-        else:
-            self.log_to_diagnostic(f"{tr('error_occurred')} {msg}")
-            messagebox.showerror(tr('error_occurred'), msg)
-        
-        self.log_to_diagnostic("="*50)
-
-    def find_and_set_best_dns(self):
-        self.log_to_diagnostic("="*50)
-        self.log_to_diagnostic(tr('dns_searching_best'))
-        self.log_to_diagnostic("="*50)
-        
-        self.log_to_diagnostic(tr('dns_testing_servers'))
-        self.update_status(tr('status_searching_dns'), self.colors['accent'])
-        self.root.update()
-        
-        def find_dns_thread():
-            try:
-                primary, secondary, latency, name = find_best_dns()
-                
-                self.log_to_diagnostic(f"{tr('dns_best_set')} {name}")
-                self.log_to_diagnostic(f"{tr('dns_primary')} {primary} ({tr('dns_latency')} {latency:.1f} ms)")
-                self.log_to_diagnostic(f"{tr('dns_secondary')} {secondary}")
-                
-                if not is_admin():
-                    self.log_to_diagnostic(tr('error_admin_required'))
-                    self.root.after(0, lambda: messagebox.showerror(tr('error_admin_required'), tr('error_admin_required')))
-                    self.root.after(0, lambda: self.update_status(tr('status_ready')))
-                    return
-                
-                success, msg = set_dns_windows(primary, secondary)
-                
-                if not success:
-                    adapters = list_network_adapters()
-                    if adapters:
-                        self.root.after(0, lambda: self.show_adapter_selector(primary, secondary, name, adapters))
-                    else:
-                        self.log_to_diagnostic(f"{msg}")
-                        self.root.after(0, lambda: messagebox.showerror(tr('error_occurred'), msg))
-                else:
-                    self.log_to_diagnostic(f"{msg}")
-                    self.root.after(0, lambda: messagebox.showinfo(tr('dns_set_success'), 
-                        f"{tr('dns_set')} {name}\n\n"
-                        f"{tr('dns_primary')}: {primary}\n"
-                        f"{tr('dns_secondary')}: {secondary}\n"
-                        f"{tr('dns_latency')}: {latency:.1f} ms"))
-                
-                self.root.after(0, lambda: self.update_status(tr('status_ready')))
-                self.log_to_diagnostic("="*50)
-                
-            except Exception as e:
-                self.log_to_diagnostic(f"{tr('error_occurred')}: {str(e)}")
-                self.root.after(0, lambda: self.update_status(tr('status_ready')))
-        
-        threading.Thread(target=find_dns_thread, daemon=True).start()
-
-    def show_adapter_selector(self, primary, secondary, dns_name, adapters):
-        dialog = tk.Toplevel(self.root)
-        dialog.title(tr('dns_select_adapter'))
-        dialog.geometry("400x300")
-        dialog.resizable(False, False)
-        dialog.configure(bg=self.colors['bg_medium'])
-        
-        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 200
-        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 150
-        dialog.geometry(f"+{x}+{y}")
-        
-        tk.Label(dialog, text=tr('dns_select_adapter'), font=("Segoe UI Variable", 12),
-                fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(pady=(15, 10))
-        
-        listbox = tk.Listbox(dialog, height=8, font=("Segoe UI Variable", 10),
-                            bg=self.colors['bg_light'], fg=self.colors['text_primary'],
-                            selectbackground=self.colors['accent'])
-        listbox.pack(padx=20, pady=5, fill=tk.BOTH, expand=True)
-        
-        for adapter in adapters:
-            listbox.insert(tk.END, adapter)
-        
-        def apply():
-            selection = listbox.curselection()
-            if not selection:
-                return
-            adapter = adapters[selection[0]]
-            
-            success, msg = set_dns_manual(primary, secondary, adapter)
-            if success:
-                messagebox.showinfo(tr('dns_set_success'), f"{tr('dns_set')} {tr('dns_for_adapter')} {adapter}")
-                self.log_to_diagnostic(f"{tr('dns_set')} {tr('dns_for_adapter')} {adapter}")
-            else:
-                messagebox.showerror(tr('error_occurred'), msg)
-                self.log_to_diagnostic(f"{msg}")
-            
-            dialog.destroy()
-        
-        button_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
-        button_frame.pack(pady=15)
-        
-        apply_btn = RoundedButton(button_frame, text=tr('button_apply'), command=apply,
-                                width=120, height=35, bg=self.colors['accent'],
-                                font=("Segoe UI Variable", 10))
-        apply_btn.pack(side=tk.LEFT, padx=5)
-        
-        cancel_btn = RoundedButton(button_frame, text=tr('mode_cancel'), command=dialog.destroy,
-                                width=80, height=35, bg=self.colors['button_bg'],
-                                font=("Segoe UI Variable", 10))
-        cancel_btn.pack(side=tk.LEFT, padx=5)
-
-    def flush_dns_cache_command(self):
-        self.log_to_diagnostic(tr('dns_flushing'))
-        success, msg = flush_dns_cache()
-        if success:
-            self.log_to_diagnostic(f"{msg}")
-            messagebox.showinfo(tr('dns_flush_success'), msg)
-        else:
-            self.log_to_diagnostic(f"{msg}")
-            messagebox.showerror(tr('error_occurred'), msg)
-
-    def restore_network_defaults_command(self):
-        self.log_to_diagnostic(tr('dns_restoring_defaults'))
-        if not is_admin():
-            messagebox.showerror(tr('error_admin_required'), tr('error_admin_required'))
-            return
-        
-        success, msg = restore_network_defaults()
-        if success:
-            self.log_to_diagnostic(f"{msg}")
-            messagebox.showinfo(tr('dns_restore_success'), msg)
-        else:
-            self.log_to_diagnostic(f"{msg}")
-            messagebox.showerror(tr('error_occurred'), msg)
-    
-    def check_custom_site(self):
-        dialog = tk.Toplevel(self.root)
-        dialog.title(tr('diagnostic_check_site'))
-        dialog.geometry("450x200")
-        dialog.resizable(False, False)
-        dialog.configure(bg=self.colors['bg_medium'])
-        
-        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 225
-        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 100
-        dialog.geometry(f"+{x}+{y}")
-        
-        tk.Label(dialog, text=tr('diagnostic_enter_url'), font=("Segoe UI Variable", 11),
-                fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(pady=(20, 5))
-        
-        url_entry = tk.Entry(dialog, width=50, font=("Segoe UI Variable", 10),
-                            bg=self.colors['bg_light'], fg=self.colors['text_primary'],
-                            insertbackground=self.colors['text_primary'])
-        url_entry.pack(pady=5, padx=20, fill=tk.X)
-        url_entry.insert(0, "youtube.com")
-        
-        result_label = tk.Label(dialog, text="", font=("Segoe UI Variable", 10),
-                                fg=self.colors['text_secondary'], bg=self.colors['bg_medium'])
-        result_label.pack(pady=5)
-        
-        def check():
-            url = url_entry.get().strip()
-            if not url:
-                result_label.config(text=tr('diagnostic_enter_url'), fg=self.colors['accent_red'])
-                return
-            
-            result_label.config(text=tr('diagnostic_checking'), fg=self.colors['accent'])
-            dialog.update()
-            
-            def check_thread():
-                try:
-                    clean_url = url.replace("http://", "").replace("https://", "").replace("www.", "").split("/")[0]
-                    
-                    try:
-                        ip = socket.gethostbyname(clean_url)
-                        dns_ok = True
-                    except:
-                        ip = tr('diagnostic_not_determined')
-                        dns_ok = False
-                    
-                    if dns_ok:
-                        result = subprocess.run(['ping', '-n', '2', clean_url], 
-                                            capture_output=True, timeout=5)
-                        if result.returncode == 0:
-                            for line in result.stdout.decode('cp866', errors='ignore').split('\n'):
-                                if "среднее" in line or "Average" in line:
-                                    result_text = f"{tr('diagnostic_available')} - {line.strip()}"
-                                    break
-                            else:
-                                result_text = f"{tr('diagnostic_available')} (IP: {ip})"
-                            color = self.colors['accent_green']
-                        else:
-                            result_text = f"{tr('diagnostic_not_available')} (IP: {ip})"
-                            color = self.colors['accent_red']
-                    else:
-                        result_text = f"{tr('diagnostic_dns_error')}"
-                        color = self.colors['accent_red']
-                        
-                except subprocess.TimeoutExpired:
-                    result_text = tr('diagnostic_timeout')
-                    color = self.colors['accent_red']
-                except Exception as e:
-                    result_text = f"{tr('error_occurred')}: {str(e)}"
-                    color = self.colors['accent_red']
-                
-                dialog.after(0, lambda: result_label.config(text=result_text, fg=color))
-                dialog.after(0, lambda: check_btn.config(state="normal"))
-            
-            check_btn.config(state="disabled")
-            threading.Thread(target=check_thread, daemon=True).start()
-        
-        button_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
-        button_frame.pack(pady=15)
-        
-        check_btn = RoundedButton(button_frame, text=tr('diagnostic_check'), command=check,
-                                width=120, height=32, bg=self.colors['accent'],
-                                font=("Segoe UI Variable", 10))
-        check_btn.pack(side=tk.LEFT, padx=5)
-        
-        close_btn = RoundedButton(button_frame, text=tr('button_close'), command=dialog.destroy,
-                                width=80, height=32, bg=self.colors['button_bg'],
-                                font=("Segoe UI Variable", 10))
-        close_btn.pack(side=tk.LEFT, padx=5)
-        
-        url_entry.bind("<Return>", lambda e: check())
-
     def set_autostart(self, enabled):
         try:
             exe_path = sys.executable if getattr(sys, 'frozen', False) else sys.argv[0]
@@ -1969,8 +1771,7 @@ class ZapretLauncher:
                     except:
                         pass
             return True
-        except Exception as e:
-            self.log_to_diagnostic(f"{tr('error_autostart')}: {e}")
+        except Exception:
             return False
 
     def check_autostart_status(self):
@@ -1986,171 +1787,14 @@ class ZapretLauncher:
     def safe_command(self, command):
         try:
             command()
-        except Exception as e:
-            self.log_to_diagnostic(f"{tr('error_occurred')} {str(e)}")
-
-    def log_to_diagnostic(self, message):
-        self.diagnostic_text.insert(tk.END, message + "\n")
-        self.diagnostic_text.see(tk.END)
-        self.diagnostic_text.update()
-
-    def auto_select_strategy(self):
-        self.log_to_diagnostic("="*50)
-        self.log_to_diagnostic(tr('diagnostic_auto_strategy'))
-        self.log_to_diagnostic("="*50)
-        
-        strategies = self.zapret.available_strategies
-        if not strategies:
-            self.log_to_diagnostic(tr('error_no_strategies'))
-            return None
-        
-        test_sites = [
-            ("youtube.com", "YouTube"),
-            ("google.com", "Google"),
-            ("discord.com", "Discord"),
-        ]
-        
-        was_connected = self.is_connected
-        
-        best_strategy = None
-        best_score = -1
-        best_success_count = 0
-        
-        for strategy in strategies:
-            self.log_to_diagnostic(f"\n{tr('diagnostic_testing')} {strategy}")
-            
-            if was_connected:
-                self.disconnect()
-                time.sleep(1)
-            
-            success, msg = self.zapret.run_strategy(strategy)
-            
-            if not success:
-                self.log_to_diagnostic(f"  {tr('diagnostic_failed_to_start')}: {msg}")
-                continue
-            
-            self.log_to_diagnostic(f"  {tr('diagnostic_started')}")
-            time.sleep(2)
-            
-            success_count = 0
-            for site, name in test_sites:
-                try:
-                    result = subprocess.run(['ping', '-n', '2', site], 
-                                          capture_output=True, timeout=5)
-                    if result.returncode == 0:
-                        self.log_to_diagnostic(f"    {name} {tr('diagnostic_available')}")
-                        success_count += 1
-                    else:
-                        self.log_to_diagnostic(f"    {name} {tr('diagnostic_not_available')}")
-                except:
-                    self.log_to_diagnostic(f"    {name} {tr('diagnostic_check_error')}")
-            
-            self.zapret.stop_current_strategy()
-            
-            score = success_count
-            self.log_to_diagnostic(f"  {tr('diagnostic_result')} {success_count}/{len(test_sites)}")
-            
-            if score > best_score:
-                best_score = score
-                best_strategy = strategy
-                best_success_count = success_count
-        
-        if best_strategy:
-            self.log_to_diagnostic(f"\n{tr('diagnostic_best_strategy')} {best_strategy}")
-            self.log_to_diagnostic(f"{tr('diagnostic_result')} {best_success_count}/{len(test_sites)}")
-            
-            self.strategy_var.set(best_strategy)
-            self.current_strategy = best_strategy
-            self.save_settings()
-            
-            if was_connected:
-                self.log_to_diagnostic(tr('diagnostic_restoring_connection'))
-                self.connect()
-        else:
-            self.log_to_diagnostic(f"\n{tr('diagnostic_no_working_strategy')}")
-        
-        self.log_to_diagnostic("="*50)
-        return best_strategy
-
-    def check_zapret_logs(self):
-        self.log_to_diagnostic(tr('diagnostic_searching_winws'))
-        found = False
-        for proc in psutil.process_iter(['pid', 'name', 'create_time']):
-            try:
-                if proc.info['name'] and proc.info['name'].lower() == 'winws.exe':
-                    create_time = time.strftime('%Y-%m-%d %H:%M:%S', 
-                                            time.localtime(proc.info['create_time']))
-                    self.log_to_diagnostic(f"  • PID: {proc.info['pid']}, {tr('diagnostic_started_at')}: {create_time}")
-                    found = True
-            except:
-                pass
-        if not found:
-            self.log_to_diagnostic(tr('diagnostic_winws_not_found'))
+        except Exception:
+            pass
 
     def open_appdata_folder(self):
-        self.log_to_diagnostic(f"{tr('diagnostic_opening_folder')} AppData/Roaming/Zapret Launcher")
         try:
             os.startfile(APPDATA_DIR)
-        except Exception as e:
-            self.log_to_diagnostic(f"{tr('error_occurred')}: {str(e)}")
-
-    def get_current_dns_info(self):
-        result = []
-        try:
-            result_nslookup = subprocess.run(
-                ['nslookup', 'google.com'],
-                capture_output=True, text=True, encoding='cp866',
-                creationflags=subprocess.CREATE_NO_WINDOW,
-                timeout=5
-            )
-            
-            for line in result_nslookup.stdout.split('\n'):
-                if 'Server:' in line or 'Сервер:' in line:
-                    server = line.split(':')[1].strip()
-                    if server:
-                        result.append(f"  DNS server: {server}")
-                        break
-            
-            if not result:
-                result_ipconfig = subprocess.run(
-                    ['ipconfig', '/all'],
-                    capture_output=True, text=True, encoding='cp866',
-                    creationflags=subprocess.CREATE_NO_WINDOW,
-                    timeout=10
-                )
-                
-                for line in result_ipconfig.stdout.split('\n'):
-                    if 'DNS-серверы' in line or 'DNS Servers' in line:
-                        ips = re.findall(r'\d+\.\d+\.\d+\.\d+', line)
-                        for ip in ips:
-                            if ip not in ['0.0.0.0', '127.0.0.1']:
-                                result.append(f"  DNS server: {ip}")
-                                break
-                        if result:
-                            break
-            
-            if not result:
-                result.append("  DNS server not determined (using automatic)")
-                
-        except Exception as e:
-            result.append(f"  Error: {e}")
-        return result
-
-    def clear_cache(self):
-        self.log_to_diagnostic(tr('diagnostic_clearing_cache'))
-        try:
-            self.diagnostic_text.delete(1.0, tk.END)
-        except Exception as e:
-            self.log_to_diagnostic(f"{tr('error_occurred')}: {str(e)}")
-
-    def save_diagnostic_report(self):
-        try:
-            report_path = APPDATA_DIR / f"diagnostic_{time.strftime('%Y%m%d_%H%M%S')}.txt"
-            with open(report_path, 'w', encoding='utf-8') as f:
-                f.write(self.diagnostic_text.get(1.0, tk.END))
-            self.log_to_diagnostic(f"{tr('diagnostic_report_saved')}: {report_path}")
-        except Exception as e:
-            self.log_to_diagnostic(f"{tr('error_occurred')}: {str(e)}")
+        except Exception:
+            pass
 
     def refresh_page(self, page_name):
         page = getattr(self, f"{page_name}_page")
@@ -2158,9 +1802,6 @@ class ZapretLauncher:
         
         for widget in page.winfo_children():
             self.update_widget_colors(widget)
-        
-        if page_name == 'diagnostic' and hasattr(self, 'diagnostic_text'):
-            self.diagnostic_text.configure(bg=self.colors['bg_dark'], fg=self.colors['text_primary'])
 
     def update_widget_colors(self, widget):
         try:
@@ -2200,9 +1841,9 @@ class ZapretLauncher:
         
         if self.set_autostart(new_state):
             if new_state:
-                messagebox.showinfo(tr('autostart_enabled'), tr('autostart_enabled'))
+                messagebox.showinfo(tr('success'), tr('autostart_enabled'))
             else:
-                messagebox.showinfo(tr('autostart_disabled'), tr('autostart_disabled'))
+                messagebox.showinfo(tr('success'), tr('autostart_disabled'))
         else:
             messagebox.showerror(tr('error_occurred'), tr('autostart_error'))
 
@@ -2527,9 +2168,6 @@ class ZapretLauncher:
     def show_lists_page(self):
         self.pages.show_page_with_animation("lists")
 
-    def show_diagnostic_page(self):
-        self.pages.show_page_with_animation("diagnostic")
-
     def show_settings_page(self):
         self.pages.show_page_with_animation("settings")
 
@@ -2543,7 +2181,7 @@ class ZapretLauncher:
                 self.root.after_cancel(self._traffic_update_timer)
             except:
                 pass
-        self.update_traffic_table()
+        self.root.after(100, self.update_traffic_table)
 
     def show_logs_page(self):
         self.pages.show_page_with_animation("logs")
@@ -2751,7 +2389,6 @@ class ZapretLauncher:
                 "fbcdn-profile-a.akamaihd.net",
                 "fbstatic-a.akamaihd.net",
                 "fbexternal-a.akamaihd.net",
-
                 "instagram.com",
                 "www.instagram.com",
                 "cdninstagram.com",
@@ -2760,9 +2397,6 @@ class ZapretLauncher:
                 "graph.instagram.com",
                 "api.instagram.com",
                 "i.instagram.com",
-                "instagr.am",
-                "www.instagr.am",
-
                 "meta.com",
                 "www.meta.com",
                 "cdn.meta.com",
@@ -2818,8 +2452,7 @@ class ZapretLauncher:
             self.log_event("info", f"Meta rules added to list-general.txt and ipset-all.txt")
             return True
             
-        except Exception as e:
-            self.log_to_diagnostic(f"Error adding Meta rules: {e}")
+        except Exception:
             return False
 
     def remove_facebook_instagram_unblock(self):
@@ -2835,8 +2468,8 @@ class ZapretLauncher:
                 "fbcdn-profile-a.akamaihd.net", "fbstatic-a.akamaihd.net", "fbexternal-a.akamaihd.net",
                 "instagram.com", "www.instagram.com", "cdninstagram.com", "www.cdninstagram.com",
                 "scontent.cdninstagram.com", "graph.instagram.com", "api.instagram.com", "i.instagram.com",
-                "instagr.am", "www.instagr.am", "meta.com", "www.meta.com", "cdn.meta.com",
-                "metacdn.com", "whatsapp.com", "www.whatsapp.com"
+                "meta.com", "www.meta.com", "cdn.meta.com", "metacdn.com",
+                "whatsapp.com", "www.whatsapp.com"
             ]
             
             meta_ips = [
@@ -3212,8 +2845,12 @@ class ZapretLauncher:
     def update_traffic_table(self):
         if self.update_interval is None:
             return
-    
-        if self.pages.current_page != "traffic":
+        
+        current_page = None
+        if hasattr(self, 'pages'):
+            current_page = getattr(self.pages, 'current_page', None)
+        
+        if current_page != "traffic":
             self._schedule_next_traffic_update()
             return
         
@@ -3232,6 +2869,8 @@ class ZapretLauncher:
             try:
                 processes = self.get_process_traffic()
                 self.root.after(0, lambda: self._update_traffic_table_ui(processes))
+            except Exception as e:
+                self.log_event("error", f"Error collecting traffic data: {str(e)}")
             finally:
                 self._traffic_collecting = False
                 self.root.after(0, self._schedule_next_traffic_update)
@@ -3259,21 +2898,27 @@ class ZapretLauncher:
         self._schedule_next_traffic_update()
 
     def _update_traffic_table_ui(self, processes):
-        for item in self.pages.traffic_tree.get_children():
-            self.pages.traffic_tree.delete(item)
-        
-        for proc in processes:
-            speed_display = proc['speed'] if proc['speed'] != '-' else '-'
-            
-            self.pages.traffic_tree.insert("", "end", values=(
-                proc['name'],
-                speed_display,
-                proc['vpn'],
-                proc['direct'],
-                str(proc['connections']) if proc['connections'] > 0 else '-',
-                proc['host'],
-                proc['total']
-            ))
+        try:
+            if hasattr(self, 'pages') and hasattr(self.pages, 'traffic_page_obj'):
+                tree = self.pages.traffic_page_obj.traffic_tree
+                if tree and tree.winfo_exists():
+                    for item in tree.get_children():
+                        tree.delete(item)
+                    
+                    for proc in processes:
+                        speed_display = proc['speed'] if proc['speed'] != '-' else '-'
+                        
+                        tree.insert("", "end", values=(
+                            proc['name'],
+                            speed_display,
+                            proc['vpn'],
+                            proc['direct'],
+                            str(proc['connections']) if proc['connections'] > 0 else '-',
+                            proc['host'],
+                            proc['total']
+                        ))
+        except Exception as e:
+            self.log_event("error", f"Error updating traffic table: {str(e)}")
 
     def is_any_connection_active(self):
         return self.is_connected or self.zapret.is_winws_running() or (hasattr(self, 'tg_proxy') and self.tg_proxy.is_running)
@@ -3728,9 +3373,11 @@ class ZapretLauncher:
             if log_file.exists():
                 with open(log_file, 'r', encoding='utf-8') as f:
                     logs = f.readlines()
+                    if len(logs) > 1000:
+                        logs = logs[-1000:]
         except Exception:
             pass
-        return logs[-1000:]
+        return logs
     
     def clear_logs(self):
         log_file = APPDATA_DIR / "logs.txt"
