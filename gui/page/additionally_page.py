@@ -30,6 +30,37 @@ class AdditionallyPage:
             bg=self.colors['bg_dark']
         )
         desc_label.pack(anchor='w', pady=(0, 20), padx=30)
+
+        hosts_card = tk.Frame(self.frame, bg=self.colors['bg_medium'], relief=tk.FLAT, bd=0)
+        hosts_card.pack(fill=tk.X, padx=30, pady=5)
+        hosts_inner = tk.Frame(hosts_card, bg=self.colors['bg_medium'])
+        hosts_inner.pack(fill=tk.X, padx=20, pady=10)
+        
+        hosts_title = tk.Label(hosts_inner, text="Telegram Web", font=("Inter", 16, "bold"),
+                               fg=self.colors['accent'], bg=self.colors['bg_medium'], cursor="hand2")
+        hosts_title.pack(anchor='w')
+        
+        def on_enter_tgweb(event):
+            hosts_title.config(fg=self.colors['accent_hover'])
+        def on_leave_tgweb(event):
+            hosts_title.config(fg=self.colors['accent'])
+        def on_click_tgweb(event):
+            webbrowser.open("https://web.telegram.org")
+        
+        hosts_title.bind("<Enter>", on_enter_tgweb)
+        hosts_title.bind("<Leave>", on_leave_tgweb)
+        hosts_title.bind("<Button-1>", on_click_tgweb)
+        
+        hosts_desc = tk.Label(hosts_inner, text=tr('hosts_desc_on_page'), font=("Inter", 10),
+                              fg=self.colors['text_secondary'], bg=self.colors['bg_medium'],
+                              wraplength=800, justify=tk.LEFT)
+        hosts_desc.pack(anchor='w', pady=(5, 10))
+        
+        hosts_btn = RoundedButton(hosts_inner, text=tr('hosts_button_unblock'),
+                                  command=self.app.show_hosts_instruction,
+                                  width=120, height=35, bg=self.colors['accent'],
+                                  fg=self.colors['text_primary'], font=("Inter", 10), corner_radius=8)
+        hosts_btn.pack(side=tk.LEFT)
         
         soundcloud_card = tk.Frame(self.frame, bg=self.colors['bg_medium'], relief=tk.FLAT, bd=0)
         soundcloud_card.pack(fill=tk.X, padx=30, pady=10)
@@ -82,6 +113,37 @@ class AdditionallyPage:
                     fg=self.colors['text_primary'], font=("Inter", 10), corner_radius=8)
                 enable_btn.pack(side=tk.LEFT)
                 status_label.config(text=tr('disabled_additionally'), fg=self.colors['text_secondary'])
+
+        ghub_card = tk.Frame(self.frame, bg=self.colors['bg_medium'], relief=tk.FLAT, bd=0)
+        ghub_card.pack(fill=tk.X, padx=30, pady=5)
+        ghub_inner = tk.Frame(ghub_card, bg=self.colors['bg_medium'])
+        ghub_inner.pack(fill=tk.X, padx=20, pady=10)
+        
+        ghub_title = tk.Label(ghub_inner, text="GitHub", font=("Inter", 16, "bold"),
+                               fg=self.colors['accent'], bg=self.colors['bg_medium'], cursor="hand2")
+        ghub_title.pack(anchor='w')
+        
+        def on_enter_ghub(event):
+            ghub_title.config(fg=self.colors['accent_hover'])
+        def on_leave_ghub(event):
+            ghub_title.config(fg=self.colors['accent'])
+        def on_click_ghub(event):
+            webbrowser.open("https://github.com")
+        
+        ghub_title.bind("<Enter>", on_enter_ghub)
+        ghub_title.bind("<Leave>", on_leave_ghub)
+        ghub_title.bind("<Button-1>", on_click_ghub)
+        
+        ghub_desc = tk.Label(ghub_inner, text=tr('ghub_desc_on_page'), font=("Inter", 10),
+                              fg=self.colors['text_secondary'], bg=self.colors['bg_medium'],
+                              wraplength=800, justify=tk.LEFT)
+        ghub_desc.pack(anchor='w', pady=(5, 10))
+        
+        ghub_btn = RoundedButton(ghub_inner, text=tr('ghub_button_unblock'),
+                                  command=self.app.show_github_instruction,
+                                  width=120, height=35, bg=self.colors['accent'],
+                                  fg=self.colors['text_primary'], font=("Inter", 10), corner_radius=8)
+        ghub_btn.pack(side=tk.LEFT)
         
         meta_card = tk.Frame(self.frame, bg=self.colors['bg_medium'], relief=tk.FLAT, bd=0)
         meta_card.pack(fill=tk.X, padx=30, pady=5)
@@ -133,37 +195,6 @@ class AdditionallyPage:
                     fg=self.colors['text_primary'], font=("Inter", 10), corner_radius=8)
                 enable_btn.pack(side=tk.LEFT)
                 meta_status_label.config(text=tr('disabled_additionally'), fg=self.colors['text_secondary'])
-        
-        hosts_card = tk.Frame(self.frame, bg=self.colors['bg_medium'], relief=tk.FLAT, bd=0)
-        hosts_card.pack(fill=tk.X, padx=30, pady=5)
-        hosts_inner = tk.Frame(hosts_card, bg=self.colors['bg_medium'])
-        hosts_inner.pack(fill=tk.X, padx=20, pady=10)
-        
-        hosts_title = tk.Label(hosts_inner, text="Telegram Web", font=("Inter", 16, "bold"),
-                               fg=self.colors['accent'], bg=self.colors['bg_medium'], cursor="hand2")
-        hosts_title.pack(anchor='w')
-        
-        def on_enter_tgweb(event):
-            hosts_title.config(fg=self.colors['accent_hover'])
-        def on_leave_tgweb(event):
-            hosts_title.config(fg=self.colors['accent'])
-        def on_click_tgweb(event):
-            webbrowser.open("https://web.telegram.org")
-        
-        hosts_title.bind("<Enter>", on_enter_tgweb)
-        hosts_title.bind("<Leave>", on_leave_tgweb)
-        hosts_title.bind("<Button-1>", on_click_tgweb)
-        
-        hosts_desc = tk.Label(hosts_inner, text=tr('hosts_desc_on_page'), font=("Inter", 10),
-                              fg=self.colors['text_secondary'], bg=self.colors['bg_medium'],
-                              wraplength=800, justify=tk.LEFT)
-        hosts_desc.pack(anchor='w', pady=(5, 10))
-        
-        hosts_btn = RoundedButton(hosts_inner, text=tr('hosts_button_unblock'),
-                                  command=self.app.show_hosts_instruction,
-                                  width=200, height=35, bg=self.colors['accent'],
-                                  fg=self.colors['text_primary'], font=("Inter", 10), corner_radius=8)
-        hosts_btn.pack(side=tk.LEFT)
         
         update_meta_buttons()
         update_buttons()
