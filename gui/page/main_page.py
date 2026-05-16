@@ -1,5 +1,9 @@
 import tkinter as tk
 from gui.widgets import RoundedButton
+import webbrowser
+from pathlib import Path
+from PIL import Image, ImageTk, ImageEnhance
+import sys
 from utils.languages import tr
 
 class MainPage:
@@ -112,6 +116,60 @@ class MainPage:
                                     font=("Inter", 18, "bold"), corner_radius=15)
         self.app.connect_btn.hover_color = '#3D3D45'
         self.app.connect_btn.pack()
+
+        self.icons_frame = tk.Frame(self.frame, bg=self.colors['bg_dark'])
+        self.icons_frame.pack(side=tk.BOTTOM, anchor='se', padx=20, pady=15)
+        self._create_icon_buttons()
+
+    def _get_icon_path(self, filename):
+        base_path = Path("resources") / filename
+        if getattr(sys, 'frozen', False):
+            base_path = Path(sys._MEIPASS) / "resources" / filename
+        return base_path
+
+    def _create_icon_buttons(self):
+        icon_size = (24, 24)
+        
+        icons = [
+            ("tg.png", "https://t.me/zapret_launcher"),
+            ("star.png", "https://github.com/tweenkedrage/zapret-launcher")
+        ]
+        
+        for icon_file, url in icons:
+            icon_path = self._get_icon_path(icon_file)
+            if icon_path.exists():
+                img = Image.open(icon_path)
+                img = img.resize(icon_size, Image.Resampling.LANCZOS)
+                img = img.convert('RGBA')
+                
+                dark_img = img.copy()
+                pixels = dark_img.load()
+                for y in range(dark_img.size[1]):
+                    for x in range(dark_img.size[0]):
+                        r, g, b, a = pixels[x, y]
+                        dark_r = int(r * 61 / 255)
+                        dark_g = int(g * 61 / 255)
+                        dark_b = int(b * 69 / 255)
+                        pixels[x, y] = (dark_r, dark_g, dark_b, a)
+                dark_photo = ImageTk.PhotoImage(dark_img)
+                
+                light_img = self._lighten_image(img)
+                light_photo = ImageTk.PhotoImage(light_img)
+                
+                btn = tk.Label(self.icons_frame, image=dark_photo, bg=self.colors['bg_dark'], cursor="hand2")
+                btn.image = dark_photo
+                btn.light_image = light_photo
+                btn.dark_image = dark_photo
+                btn.url = url
+                
+                btn.bind("<Enter>", lambda e, b=btn: b.config(image=b.light_image))
+                btn.bind("<Leave>", lambda e, b=btn: b.config(image=b.dark_image))
+                btn.bind("<Button-1>", lambda e, u=url: webbrowser.open(u))
+                btn.pack(side=tk.RIGHT, padx=5)
+
+    def _lighten_image(self, img):
+        enhancer = ImageEnhance.Brightness(img)
+        return enhancer.enhance(1.3)
     
     def get_frame(self):
         return self.frame
