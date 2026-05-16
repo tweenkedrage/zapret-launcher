@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 from gui.widgets import RoundedButton
 from utils.languages import tr
+from config import APPDATA_DIR
 
 class LogsPage:
     def __init__(self, parent, app):
@@ -10,7 +11,11 @@ class LogsPage:
         self.font_primary = app.font_primary
         self.font_medium = app.font_medium
         self.font_bold = app.font_bold
-        
+
+        self.was_at_bottom = True
+        self.old_scroll_position = 1.0
+        self.last_log_count = 0
+
         self.frame = tk.Frame(parent, bg=self.colors['bg_dark'])
         
         title_label = tk.Label(
@@ -37,7 +42,7 @@ class LogsPage:
         clear_btn = RoundedButton(
             control_frame,
             text=tr('logs_clear'),
-            command=self.app.clear_logs,
+            command=self.clear_logs,
             width=120, height=32,
             bg=self.colors['button_bg'],
             fg=self.colors['text_secondary'],
@@ -78,32 +83,62 @@ class LogsPage:
             pady=10
         )
         
-        scrollbar = ttk.Scrollbar(
+        self.scrollbar = ttk.Scrollbar(
             logs_container,
             command=self.logs_text.yview,
             style="Custom.Vertical.TScrollbar"
         )
-        self.logs_text.configure(yscrollcommand=scrollbar.set)
+        self.logs_text.configure(yscrollcommand=self.scrollbar.set)
         
         self.logs_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.logs_text.bind("<MouseWheel>", self._on_scroll)
         
         self.update_logs_display()
+
+    def _on_scroll(self, event):
+        if self.logs_text and self.logs_text.winfo_exists():
+            current_view = self.logs_text.yview()
+            self.was_at_bottom = (current_view[1] >= 0.99)
+            self.old_scroll_position = current_view[0]
+
+    def clear_logs(self):
+        log_file = APPDATA_DIR / "logs.txt"
+        try:
+            if log_file.exists():
+                with open(log_file, 'w', encoding='utf-8') as f:
+                    f.write("")
+            self.logs_text.delete(1.0, tk.END)
+            self.last_log_count = 0
+        except Exception:
+            pass
     
     def update_logs_display(self):
         if not hasattr(self, 'logs_text') or not self.logs_text.winfo_exists():
             return
         
-        self.logs_text.delete(1.0, tk.END)
+        current_view = self.logs_text.yview()
+        was_at_bottom = (current_view[1] >= 0.99)
+        current_position = current_view[0]
         
         logs = self.app.load_logs()
+        
+        if len(logs) == self.last_log_count:
+            return
+        
+        self.last_log_count = len(logs)
+        self.logs_text.delete(1.0, tk.END)
         
         for log_line in logs:
             log_line = log_line.strip()
             if log_line:
                 self.logs_text.insert(tk.END, log_line + "\n")
         
-        self.logs_text.see(tk.END)
+        if was_at_bottom:
+            self.logs_text.see(tk.END)
+        else:
+            self.logs_text.yview_moveto(current_position)
     
     def get_frame(self):
         return self.frame
