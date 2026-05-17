@@ -29,6 +29,7 @@ from pathlib import Path
 import sys
 import re
 import ctypes
+import urllib.request
 from ctypes import windll, byref, c_int
 from typing import Optional, List, Tuple
 from config import CURRENT_VERSION, BASE_DIR, APPDATA_DIR, CONFIG_FILE, ZAPRET_CORE_DIR
@@ -651,6 +652,8 @@ class ZapretLauncher:
         self.tg_proxy.set_secret(getattr(self, '_tg_secret', None))
         
         self.setup_ui()
+        self.update_check_timer_id = None
+        self.start_update_checker()
         self.root.after(100, self.check_initial_status)
         self.show_main_page()
                 
@@ -940,11 +943,11 @@ class ZapretLauncher:
         separator = tk.Frame(left_panel, bg=self.colors['separator'], height=1)
         separator.pack(fill=tk.X, padx=15, pady=20)
         
-        credit_frame = tk.Frame(left_panel, bg=self.colors['bg_medium'])
-        credit_frame.pack(side=tk.BOTTOM, pady=(0, 30), fill=tk.X)
+        self.credit_frame = tk.Frame(left_panel, bg=self.colors['bg_medium'])
+        self.credit_frame.pack(side=tk.BOTTOM, pady=(0, 30), fill=tk.X)
 
         self.left_status = tk.Label(
-            credit_frame,
+            self.credit_frame,
             text="●",
             font=("Segoe UI Variable", 12),
             fg=self.colors['text_secondary'],
@@ -952,7 +955,7 @@ class ZapretLauncher:
         )
         self.left_status.pack()
         
-        version_frame = tk.Frame(credit_frame, bg=self.colors['bg_medium'])
+        version_frame = tk.Frame(self.credit_frame, bg=self.colors['bg_medium'])
         version_frame.pack()
 
         tk.Label(
@@ -973,7 +976,7 @@ class ZapretLauncher:
         beta_label.pack(side=tk.LEFT)
         
         self.credit_label = tk.Label(
-            credit_frame,
+            self.credit_frame,
             text="by trimansberg",
             font=("Segoe UI Variable", 8),
             fg=self.colors['text_secondary'],
@@ -985,6 +988,84 @@ class ZapretLauncher:
         self.credit_label.bind("<Enter>", lambda e: self.credit_label.config(fg=self.colors['accent']))
         self.credit_label.bind("<Leave>", lambda e: self.credit_label.config(fg=self.colors['text_secondary']))
         self.credit_label.bind("<Button-1>", lambda e: self.open_github())
+
+    def show_update_label(self):
+        try:
+            if not hasattr(self, 'foundupdates_frame'):
+                if hasattr(self, 'credit_frame'):
+                    self.foundupdates_frame = tk.Frame(self.credit_frame, bg=self.colors['bg_medium'])
+                    
+                    self.foundupdates_label = tk.Label(
+                        self.foundupdates_frame,
+                        text=tr('update_available'),
+                        font=("Segoe UI Variable", 8),
+                        fg=self.colors['accent_green'],
+                        bg=self.colors['bg_medium'],
+                        cursor="hand2"
+                    )
+                    self.foundupdates_label.pack(pady=(2, 0))
+                    
+                    self.foundupdates_label.bind("<Enter>", lambda e: self.foundupdates_label.config(fg=self.colors['accent_darkgreen']))
+                    self.foundupdates_label.bind("<Leave>", lambda e: self.foundupdates_label.config(fg=self.colors['accent_green']))
+                    self.foundupdates_label.bind("<Button-1>", lambda e: self.root.after(500, self.install_update))
+            else:
+                pass
+            
+            if hasattr(self, 'foundupdates_frame'):
+                self.foundupdates_frame.pack(pady=(5, 0))
+        except Exception:
+            pass
+
+    def hide_update_label(self):
+        try:
+            if hasattr(self, 'foundupdates_frame'):
+                self.foundupdates_frame.pack_forget()
+        except Exception:
+            pass
+
+    def check_for_updates(self):
+        try:
+            version_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/version.txt"
+            
+            req = urllib.request.Request(
+                version_url,
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+            )
+            
+            with urllib.request.urlopen(req, timeout=10) as response:
+                latest_version = response.read().decode('utf-8').strip()
+            
+            current_version = CURRENT_VERSION
+            
+            if self._compare_versions(current_version, latest_version):
+                self.root.after(0, self.show_update_label)
+            else:
+                self.root.after(0, self.hide_update_label)
+                
+        except Exception:
+            self.root.after(0, self.hide_update_label)
+
+    def install_update(self):
+        try:
+            self.save_settings()
+            
+            if getattr(sys, 'frozen', False):
+                exe_path = sys.executable
+            else:
+                exe_path = sys.argv[0]
+            
+            args = [exe_path]
+            for arg in sys.argv[1:]:
+                if arg not in ['--no-splash', '--from-splash']:
+                    args.append(arg)
+            
+            subprocess.Popen(args)
+            
+            self.root.quit()
+            self.root.destroy()
+            sys.exit(0)
+        except Exception:
+            pass
 
     def show_mode_selector(self):
         dialog = tk.Toplevel(self.root)
@@ -2011,6 +2092,35 @@ class ZapretLauncher:
             if hasattr(self, 'mode_label') and self.mode_label and self.mode_label.winfo_exists():
                 self.mode_label.config(text=tr('mode_not_selected'), fg=self.colors['text_secondary'])
             self.update_status(tr('status_ready'), self.colors['text_secondary'])
+
+            self.stats = StatsMonitor()
+            self.stats_update_id = None
+
+            if hasattr(self, 'stats_time_label') and self.stats_time_label:
+                self.stats_time_label.config(text="00:00:00")
+            if hasattr(self, 'stats_traffic_label') and self.stats_traffic_label:
+                self.stats_traffic_label.config(text="⬇ 0 B  |  ⬆ 0 B")
+            if hasattr(self, 'stats_total_label') and self.stats_total_label:
+                self.stats_total_label.config(text="0 B")
+            if hasattr(self, 'stats_speed_up_label') and self.stats_speed_up_label:
+                self.stats_speed_up_label.config(text="⬆ 0 B/s")
+            if hasattr(self, 'stats_speed_down_label') and self.stats_speed_down_label:
+                self.stats_speed_down_label.config(text="⬇ 0 B/s")
+            if hasattr(self, 'stats_rtt_label') and self.stats_rtt_label:
+                self.stats_rtt_label.config(text="-- ms", fg=self.colors['text_secondary'])
+
+            self.stop_stats_monitoring()
+            self._cached_processes = []
+            self._last_process_time = 0
+            self._traffic_collecting = False
+            self._traffic_collecting_start = 0
+
+            if hasattr(self, '_traffic_update_timer') and self._traffic_update_timer:
+                try:
+                    self.root.after_cancel(self._traffic_update_timer)
+                except:
+                    pass
+                self._traffic_update_timer = None
             
             def update_button():
                 try:
@@ -2031,21 +2141,7 @@ class ZapretLauncher:
                     self.tray_icon.update_menu()
                 except:
                     pass
-            
-            if hasattr(self, '_traffic_update_timer') and self._traffic_update_timer:
-                try:
-                    self.root.after_cancel(self._traffic_update_timer)
-                except:
-                    pass
-                self._traffic_update_timer = None
-            
-            if hasattr(self, 'rtt_timer_id') and self.rtt_timer_id:
-                try:
-                    self.root.after_cancel(self.rtt_timer_id)
-                except:
-                    pass
-                self.rtt_timer_id = None
-            
+
             self.traffic_history = {}
             self.traffic_history_vpn = {}
             self.traffic_history_direct = {}
@@ -2054,6 +2150,16 @@ class ZapretLauncher:
             self.traffic_speed_direct_history = {}
             self.hostname_cache = {}
             self.hostname_cache_time = {}
+            
+            if hasattr(self, 'pages') and hasattr(self.pages, 'current_page'):
+                if self.pages.current_page == "traffic":
+                    if hasattr(self.pages, 'traffic_page_obj'):
+                        tree = self.pages.traffic_page_obj.traffic_tree
+                        if tree and tree.winfo_exists():
+                            for item in tree.get_children():
+                                tree.delete(item)
+                        self.root.after(500, self.update_traffic_table)
+            
             self.root.after(500, self.update_tray_icon_state)
         except Exception:
             pass
@@ -3500,6 +3606,68 @@ github.community"""
 
         if hasattr(self, 'tg_proxy') and self.tg_proxy:
             self.tg_proxy.stop()
+
+    def _version_to_tuple(self, ver_str):
+        ver_str = str(ver_str).strip().lower()
+        
+        if ver_str.startswith('v'):
+            ver_str = ver_str[1:]
+        
+        match = re.match(r'^(\d+(?:\.\d+)*)([a-z]*)$', ver_str)
+        
+        if not match:
+            numbers = re.findall(r'\d+', ver_str)
+            nums = [int(n) for n in numbers]
+            while len(nums) < 4:
+                nums.append(0)
+            return tuple(nums[:4] + [0])
+        
+        num_part, suffix = match.groups()
+        
+        if '.' in num_part:
+            nums = [int(n) for n in num_part.split('.')]
+        else:
+            nums = [int(num_part)]
+        
+        while len(nums) < 4:
+            nums.append(0)
+        
+        suffix_value = 0
+        if suffix:
+            for i, ch in enumerate(suffix):
+                suffix_value = suffix_value * 27 + (ord(ch) - ord('a') + 1)
+        
+        return tuple(nums[:4] + [suffix_value])
+
+    def _compare_versions(self, current, latest):
+        current_tuple = self._version_to_tuple(current)
+        latest_tuple = self._version_to_tuple(latest)
+        return latest_tuple > current_tuple
+    
+    def start_update_checker(self):
+        self.stop_update_checker()
+        self._schedule_update_check()
+
+    def stop_update_checker(self):
+        if hasattr(self, 'update_check_timer_id') and self.update_check_timer_id:
+            try:
+                self.root.after_cancel(self.update_check_timer_id)
+            except:
+                pass
+            self.update_check_timer_id = None
+
+    def _schedule_update_check(self):
+        if not hasattr(self, '_first_check_done'):
+            interval = 5000
+            self._first_check_done = True
+        else:
+            interval = 30 * 60 * 1000
+        
+        self.update_check_timer_id = self.root.after(interval, self._do_update_check)
+
+    def _do_update_check(self):
+        threading.Thread(target=self.check_for_updates, daemon=True).start()
+        self._schedule_update_check()
 
     def load_logs(self) -> list:
         logs = []
