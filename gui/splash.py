@@ -173,6 +173,8 @@ class SplashWindow:
         if not self.is_admin():
             self.run_as_admin()
             return
+        
+        threading.Thread(target=self.cleanup_old_internal_folders, daemon=True).start()
     
         self._check_internet()
         self.window.mainloop()
@@ -290,8 +292,7 @@ class SplashWindow:
                                         pass
                             self.after(0, update_prog)
             return True
-        except Exception as e:
-            print(f"Download error: {e}")
+        except Exception:
             return False
 
     def _extract_zip_with_progress(self, zip_path, extract_path, start_progress=0, end_progress=100):
@@ -403,9 +404,9 @@ class SplashWindow:
                 self.after(0, lambda: self.update_status(tr('splash_starting_exe'), 100))
                 
                 if was_admin:
-                    subprocess.Popen([str(current_exe), '--no-splash', '--from-splash'], shell=True)
+                    subprocess.Popen([str(current_exe)])
                 else:
-                    subprocess.Popen([str(current_exe), '--no-splash', '--from-splash'])
+                    subprocess.Popen([str(current_exe)])
                 
                 self.after(500, self.close)
                 sys.exit(0)
@@ -437,6 +438,40 @@ class SplashWindow:
                       capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
             time.sleep(1)
         except:
+            pass
+
+    def cleanup_old_internal_folders(self):
+        try:
+            appdata_path = Path(os.environ.get('APPDATA', '')) / "Zapret Launcher"
+            if not appdata_path.exists():
+                return
+            
+            deleted_count = 0
+            
+            for item in appdata_path.iterdir():
+                if item.is_dir() and item.name.startswith('_internal_old_'):
+                    for root, dirs, files in os.walk(item):
+                        for file in files:
+                            try:
+                                file_path = Path(root) / file
+                                os.chmod(file_path, 0o666)
+                            except:
+                                pass
+                    
+                    try:
+                        shutil.rmtree(item)
+                        deleted_count += 1
+                    except PermissionError:
+                        try:
+                            new_name = item.parent / f"_internal_old_del_{int(time.time())}"
+                            item.rename(new_name)
+                            shutil.rmtree(new_name, ignore_errors=True)
+                            deleted_count += 1
+                        except:
+                            pass
+                    except Exception:
+                        pass
+        except Exception:
             pass
     
     def _launch_main_app(self):
