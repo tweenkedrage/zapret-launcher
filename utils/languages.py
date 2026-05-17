@@ -26,6 +26,8 @@ class Languages:
             'stats_rtt_ms': 'ms',
             'button_connect': 'ПОДКЛЮЧИТЬСЯ',
             'button_disconnect': 'ОТКЛЮЧИТЬСЯ',
+
+            'update_available': 'Доступно обновление',
             
             'service_title': 'Сервис',
             'service_desc': 'Дополнительные сервисы и функции',
@@ -57,6 +59,7 @@ class Languages:
             
             'traffic_title': 'Трафик',
             'traffic_desc': 'Мониторинг сетевого трафика по процессам',
+            'traffic_warning': 'Создание таблицы может занимать до 60 секунд',
             'traffic_process': 'Процесс',
             'traffic_speed': 'Скорость',
             'traffic_vpn': 'VPN',
@@ -291,6 +294,8 @@ class Languages:
             'stats_rtt_ms': 'ms',
             'button_connect': 'CONNECT',
             'button_disconnect': 'DISCONNECT',
+
+            'update_available': 'Update available',
             
             'service_title': 'Service',
             'service_desc': 'Additional services and functions',
@@ -322,6 +327,7 @@ class Languages:
             
             'traffic_title': 'Traffic',
             'traffic_desc': 'Network traffic monitoring by process',
+            'traffic_warning': 'Creating a table can take up to 60 seconds',
             'traffic_process': 'Process',
             'traffic_speed': 'Speed',
             'traffic_vpn': 'VPN',
