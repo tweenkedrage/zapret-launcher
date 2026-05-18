@@ -15,7 +15,7 @@ import shutil
 import os
 
 class SplashWindow:
-    def __init__(self, theme='Dark', current_version=None):
+    def __init__(self, theme='Dark', current_version=None, current_build=None):
         self.window = tk.Tk()
         
         self.theme = {
@@ -31,14 +31,20 @@ class SplashWindow:
                 if arg.startswith('--version='):
                     current_version = arg.split('=')[1]
                     break
-        
         self.current_version = current_version if current_version else "0.0"
+        
+        if current_build is None:
+            for arg in sys.argv:
+                if arg.startswith('--build='):
+                    current_build = arg.split('=')[1]
+                    break
+        self.current_build = current_build if current_build else "0"
 
         self.width = 320
         self.height = 260
         self._is_closing = False
 
-        self.version_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/version.txt"
+        self.build_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt"
         self.exe_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/Zapret%20Launcher.exe"
         self.zip_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/_internal.zip"
         
@@ -228,6 +234,14 @@ class SplashWindow:
         latest_tuple = self._version_to_tuple(latest)
         need_update = latest_tuple > current_tuple
         return need_update
+    
+    def _compare_builds(self, current, latest):
+        try:
+            current_int = int(current)
+            latest_int = int(latest)
+            return latest_int > current_int
+        except ValueError:
+            return str(latest) > str(current)
 
     def _check_for_update(self):
         self.update_status(tr('splash_check_updates'), 30)
@@ -235,16 +249,17 @@ class SplashWindow:
         def check():
             try:
                 req = urllib.request.Request(
-                    self.version_url,
+                    self.build_url,
                     headers={'User-Agent': 'Mozilla/5.0'}
                 )
                 with urllib.request.urlopen(req, timeout=10) as response:
-                    latest_version = response.read().decode('utf-8').strip()
+                    latest_build = response.read().decode('utf-8').strip()
                 
-                current_version = self.current_version
-                
-                if self._compare_versions(current_version, latest_version):
-                    self.after(1000, lambda: self._start_update(latest_version))
+                current_build  = self.current_build
+                need_update = self._compare_builds(current_build, latest_build)
+            
+                if need_update:
+                    self.after(1000, lambda: self._start_update(latest_build))
                 else:
                     self.after(0, lambda: self.update_status(tr('splash_starting_exe'), 100))
                     self.after(1500, self._launch_main_app)
@@ -255,8 +270,8 @@ class SplashWindow:
         
         threading.Thread(target=check, daemon=True).start()
 
-    def _start_update(self, new_version):
-        self.update_status(f"{tr('splash_downloading')} {new_version}", 50)
+    def _start_update(self, new_build):
+        self.update_status(f"{tr('splash_downloading')}", 50)
         self.after(500, self._download_and_update)
 
     def _download_with_progress(self, url, dest_path, start_progress=0, end_progress=100):
