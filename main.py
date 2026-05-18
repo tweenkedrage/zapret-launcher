@@ -34,16 +34,6 @@ from ctypes import windll, byref, c_int
 from typing import Optional, List, Tuple
 from config import CURRENT_VERSION, CURRENT_BUILD, BASE_DIR, APPDATA_DIR, CONFIG_FILE, ZAPRET_CORE_DIR
 
-def check_single_instance():
-    mutex_name = "ZapretLauncher_SingleInstance"
-    
-    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
-    last_error = ctypes.windll.kernel32.GetLastError()
-    
-    if last_error == 183:
-        return False, None
-    return True, mutex
-
 def is_admin():
     try:
         return ctypes.windll.shell32.IsUserAnAdmin()
@@ -964,7 +954,7 @@ class ZapretLauncher:
 
         tk.Label(
             version_frame,
-            text=f"v{CURRENT_VERSION}",
+            text=f"v{CURRENT_VERSION} ({CURRENT_BUILD})",
             font=("Segoe UI Variable", 8),
             fg=self.colors['text_secondary'],
             bg=self.colors['bg_medium']
@@ -2309,76 +2299,89 @@ class ZapretLauncher:
             ipset_all_path = ZAPRET_CORE_DIR / "lists" / "ipset-all.txt"
             
             soundcloud_domains = [
-                "soundcloud.com",
-                "www.soundcloud.com",
-                "style.sndcdn.com",
-                "a-v2.sndcdn.com",
-                "api-v2.soundcloud.com",
-                "sb.scorecardresearch.com",
-                "secure.quantserve.com",
-                "eventlogger.soundcloud.com",
-                "api.soundcloud.com",
-                "ssl.google-analytics.com",
-                "sdk-04.moengage.com",
-                "al.sndcdn.com",
-                "i1.sndcdn.com",
-                "i2.sndcdn.com",
-                "i3.sndcdn.com",
-                "i4.sndcdn.com",
-                "wis.sndcdn.com",
-                "va.sndcdn.com",
-                "pixel.quantserve.com",
-                "assets.web.soundcloud.cloud",
-                "*.cloudfront.net",
-                ".soundcloud.",
-                "playback.media-streaming.soundcloud.cloud",
-                "id5-sync.com",
-                "cdn.moengage.com",
-                "htlbid.com",
-                "securepubads.g.doubleclick.net",
+                "soundcloud.com", "www.soundcloud.com", "style.sndcdn.com",
+                "a-v2.sndcdn.com", "api-v2.soundcloud.com", "sb.scorecardresearch.com",
+                "secure.quantserve.com", "eventlogger.soundcloud.com", "api.soundcloud.com",
+                "ssl.google-analytics.com", "sdk-04.moengage.com", "al.sndcdn.com",
+                "i1.sndcdn.com", "i2.sndcdn.com", "i3.sndcdn.com", "i4.sndcdn.com",
+                "wis.sndcdn.com", "va.sndcdn.com", "pixel.quantserve.com",
+                "assets.web.soundcloud.cloud", "*.cloudfront.net", ".soundcloud.",
+                "playback.media-streaming.soundcloud.cloud", "id5-sync.com",
+                "cdn.moengage.com", "htlbid.com", "securepubads.g.doubleclick.net",
                 "cdn.cookielaw.org"
             ]
             
             soundcloud_ips = [
-                "18.165.122.4/32",
-                "18.165.122.6/32",
-                "18.165.122.82/32",
-                "18.165.122.86/32"
+                "18.165.122.4/32", "18.165.122.6/32",
+                "18.165.122.82/32", "18.165.122.86/32"
             ]
             
             if list_general_path.exists():
                 with open(list_general_path, 'r', encoding='utf-8') as f:
-                    existing = f.read()
+                    lines = f.readlines()
                 
-                added = []
-                with open(list_general_path, 'a', encoding='utf-8') as f:
-                    for domain in soundcloud_domains:
-                        if domain not in existing:
-                            f.write(f"{domain}\n")
-                            added.append(domain)
+                clean_domains = set()
+                for line in lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    
+                    if '.' in line and len(line) > 3:
+                        for domain in soundcloud_domains:
+                            if domain in line and line != domain:
+                                parts = line.split(domain)
+                                for part in parts:
+                                    part = part.strip()
+                                    if part and '.' in part and len(part) > 3:
+                                        clean_domains.add(part)
+                                clean_domains.add(domain)
+                                break
+                        else:
+                            clean_domains.add(line)
                 
-            else:
-                return False
+                for domain in soundcloud_domains:
+                    clean_domains.add(domain)
+                
+                filtered_domains = set()
+                for domain in clean_domains:
+                    if domain in ['cloud', 'www.', 'www', '.com', 'com', 'http', 'https']:
+                        continue
+                    if domain.startswith('/') or domain.endswith('/'):
+                        continue
+                    if len(domain) < 4:
+                        continue
+                    filtered_domains.add(domain)
+                
+                with open(list_general_path, 'w', encoding='utf-8') as f:
+                    for domain in sorted(filtered_domains):
+                        f.write(f"{domain}\n")
             
             if ipset_all_path.exists():
                 with open(ipset_all_path, 'r', encoding='utf-8') as f:
-                    existing = f.read()
+                    lines = f.readlines()
                 
-                added = []
-                with open(ipset_all_path, 'a', encoding='utf-8') as f:
-                    for ip in soundcloud_ips:
-                        if ip not in existing:
-                            f.write(f"{ip}\n")
-                            added.append(ip)
+                clean_ips = set()
+                for line in lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    
+                    if '/' in line or ('.' in line and any(c.isdigit() for c in line)):
+                        if len(line) > 5 and line[0].isdigit():
+                            clean_ips.add(line)
                 
-            else:
-                return False
+                for ip in soundcloud_ips:
+                    clean_ips.add(ip)
+                
+                with open(ipset_all_path, 'w', encoding='utf-8') as f:
+                    for ip in sorted(clean_ips):
+                        f.write(f"{ip}\n")
             
             self.show_notification(tr('soundcloud_unblocked'), 3000)
-            self.log_event("info", f"SoundCloud rules added to list-general.txt and ipset-all.txt")
+            self.log_event("info", "SoundCloud rules added to list-general.txt and ipset-all.txt")
             return True
-            
-        except Exception:
+        except Exception as e:
+            self.log_event("error", f"Error adding SoundCloud rules: {str(e)}")
             return False
 
     def remove_soundcloud_unblock(self):
@@ -2387,80 +2390,79 @@ class ZapretLauncher:
             ipset_all_path = ZAPRET_CORE_DIR / "lists" / "ipset-all.txt"
             
             soundcloud_domains = [
-                "soundcloud.com",
-                "www.soundcloud.com",
-                "style.sndcdn.com",
-                "a-v2.sndcdn.com",
-                "api-v2.soundcloud.com",
-                "sb.scorecardresearch.com",
-                "secure.quantserve.com",
-                "eventlogger.soundcloud.com",
-                "api.soundcloud.com",
-                "ssl.google-analytics.com",
-                "sdk-04.moengage.com",
-                "al.sndcdn.com",
-                "i1.sndcdn.com",
-                "i2.sndcdn.com",
-                "i3.sndcdn.com",
-                "i4.sndcdn.com",
-                "wis.sndcdn.com",
-                "va.sndcdn.com",
-                "pixel.quantserve.com",
-                "assets.web.soundcloud.cloud",
-                "*.cloudfront.net",
-                ".soundcloud.",
-                "playback.media-streaming.soundcloud.cloud",
-                "id5-sync.com",
-                "cdn.moengage.com",
-                "htlbid.com",
-                "securepubads.g.doubleclick.net",
+                "soundcloud.com", "www.soundcloud.com", "style.sndcdn.com",
+                "a-v2.sndcdn.com", "api-v2.soundcloud.com", "sb.scorecardresearch.com",
+                "secure.quantserve.com", "eventlogger.soundcloud.com", "api.soundcloud.com",
+                "ssl.google-analytics.com", "sdk-04.moengage.com", "al.sndcdn.com",
+                "i1.sndcdn.com", "i2.sndcdn.com", "i3.sndcdn.com", "i4.sndcdn.com",
+                "wis.sndcdn.com", "va.sndcdn.com", "pixel.quantserve.com",
+                "assets.web.soundcloud.cloud", "*.cloudfront.net", ".soundcloud.",
+                "playback.media-streaming.soundcloud.cloud", "id5-sync.com",
+                "cdn.moengage.com", "htlbid.com", "securepubads.g.doubleclick.net",
                 "cdn.cookielaw.org"
             ]
             
             soundcloud_ips = [
-                "18.165.122.4/32",
-                "18.165.122.6/32",
-                "18.165.122.82/32",
-                "18.165.122.86/32"
+                "18.165.122.4/32", "18.165.122.6/32",
+                "18.165.122.82/32", "18.165.122.86/32"
             ]
             
             if list_general_path.exists():
                 with open(list_general_path, 'r', encoding='utf-8') as f:
                     lines = f.readlines()
                 
-                new_lines = []
-                removed = []
+                clean_domains = set()
                 for line in lines:
-                    line_stripped = line.strip()
-                    if line_stripped not in soundcloud_domains:
-                        new_lines.append(line)
-                    else:
-                        removed.append(line_stripped)
+                    line = line.strip()
+                    if not line:
+                        continue
+                    
+                    if line in ['cloud', 'www.', 'www', '.com', 'com', 'http', 'https']:
+                        continue
+                    if line.startswith('/') or line.endswith('/'):
+                        continue
+                    if len(line) < 4:
+                        continue
+                    
+                    is_soundcloud = False
+                    for domain in soundcloud_domains:
+                        if domain in line:
+                            is_soundcloud = True
+                            break
+                    
+                    if not is_soundcloud:
+                        clean_domains.add(line)
                 
                 with open(list_general_path, 'w', encoding='utf-8') as f:
-                    f.writelines(new_lines)
+                    for domain in sorted(clean_domains):
+                        f.write(f"{domain}\n")
             
             if ipset_all_path.exists():
                 with open(ipset_all_path, 'r', encoding='utf-8') as f:
                     lines = f.readlines()
                 
-                new_lines = []
-                removed = []
+                clean_ips = set()
                 for line in lines:
-                    line_stripped = line.strip()
-                    if line_stripped not in soundcloud_ips:
-                        new_lines.append(line)
-                    else:
-                        removed.append(line_stripped)
+                    line = line.strip()
+                    if not line:
+                        continue
+                    
+                    if line in soundcloud_ips:
+                        continue
+                    if '/' in line and len(line) > 5:
+                        clean_ips.add(line)
+                    elif '.' in line and len(line) > 5 and line[0].isdigit():
+                        clean_ips.add(line)
                 
                 with open(ipset_all_path, 'w', encoding='utf-8') as f:
-                    f.writelines(new_lines)
+                    for ip in sorted(clean_ips):
+                        f.write(f"{ip}\n")
             
             self.show_notification(tr('soundcloud_removed'), 3000)
-            self.log_event("info", f"SoundCloud rules have been removed from list-general.txt and ipset-all.txt")
+            self.log_event("info", "SoundCloud rules have been removed from list-general.txt and ipset-all.txt")
             return True
-            
-        except Exception:
+        except Exception as e:
+            self.log_event("error", f"Error removing SoundCloud rules: {str(e)}")
             return False
 
     def check_soundcloud_enabled(self):
@@ -2484,88 +2486,103 @@ class ZapretLauncher:
             ipset_all_path = ZAPRET_CORE_DIR / "lists" / "ipset-all.txt"
             
             meta_domains = [
-                "facebook.com",
-                "www.facebook.com",
-                "fb.com",
-                "www.fb.com",
-                "fbcdn.net",
-                "www.fbcdn.net",
-                "static.xx.fbcdn.net",
-                "scontent.xx.fbcdn.net",
-                "graph.facebook.com",
-                "api.facebook.com",
-                "m.facebook.com",
-                "business.facebook.com",
-                "developers.facebook.com",
-                "connect.facebook.net",
-                "facebook.net",
-                "fbcdn-profile-a.akamaihd.net",
-                "fbstatic-a.akamaihd.net",
-                "fbexternal-a.akamaihd.net",
-                "instagram.com",
-                "www.instagram.com",
-                "cdninstagram.com",
-                "www.cdninstagram.com",
-                "scontent.cdninstagram.com",
-                "graph.instagram.com",
-                "api.instagram.com",
-                "i.instagram.com",
-                "meta.com",
-                "www.meta.com",
-                "cdn.meta.com",
-                "metacdn.com",
-                "whatsapp.com",
-                "www.whatsapp.com",
+                "facebook.com", "www.facebook.com", "fb.com", "www.fb.com",
+                "fbcdn.net", "www.fbcdn.net", "static.xx.fbcdn.net", "scontent.xx.fbcdn.net",
+                "graph.facebook.com", "api.facebook.com", "m.facebook.com", "business.facebook.com",
+                "developers.facebook.com", "connect.facebook.net", "facebook.net",
+                "fbcdn-profile-a.akamaihd.net", "fbstatic-a.akamaihd.net", "fbexternal-a.akamaihd.net",
+                "instagram.com", "www.instagram.com", "cdninstagram.com", "www.cdninstagram.com",
+                "scontent.cdninstagram.com", "graph.instagram.com", "api.instagram.com", "i.instagram.com",
+                "meta.com", "www.meta.com", "cdn.meta.com", "metacdn.com",
+                "whatsapp.com", "www.whatsapp.com"
             ]
             
             meta_ips = [
-                "31.13.24.0/21",
-                "31.13.64.0/18",
-                "66.220.144.0/20",
-                "69.63.176.0/20",
-                "69.171.224.0/19",
-                "74.119.76.0/22",
-                "103.4.96.0/22",
-                "129.134.0.0/16",
-                "147.75.208.0/20",
-                "157.240.0.0/16",
-                "173.252.64.0/18",
-                "179.60.192.0/22",
-                "185.60.216.0/22",
-                "185.89.216.0/22",
-                "199.96.56.0/21",
-                "204.15.20.0/22",
+                "31.13.24.0/21", "31.13.64.0/18", "66.220.144.0/20", "69.63.176.0/20",
+                "69.171.224.0/19", "74.119.76.0/22", "103.4.96.0/22", "129.134.0.0/16",
+                "147.75.208.0/20", "157.240.0.0/16", "173.252.64.0/18", "179.60.192.0/22",
+                "185.60.216.0/22", "185.89.216.0/22", "199.96.56.0/21", "204.15.20.0/22"
             ]
             
             if list_general_path.exists():
                 with open(list_general_path, 'r', encoding='utf-8') as f:
-                    existing = f.read()
+                    lines = f.readlines()
                 
-                added = []
-                with open(list_general_path, 'a', encoding='utf-8') as f:
+                clean_domains = set()
+                for line in lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    
+                    if line in ['cloud', 'www.', 'www', '.com', 'com', 'http', 'https']:
+                        continue
+                    if line.startswith('/') or line.endswith('/'):
+                        continue
+                    if len(line) < 4:
+                        continue
+                    
+                    is_merged = False
                     for domain in meta_domains:
-                        if domain not in existing:
-                            f.write(f"{domain}\n")
-                            added.append(domain)
+                        if domain in line and line != domain:
+                            parts = line.split(domain)
+                            for part in parts:
+                                part = part.strip()
+                                if part and '.' in part and len(part) > 3:
+                                    if part not in ['cloud', 'www.', 'www', '.com', 'com']:
+                                        clean_domains.add(part)
+                            clean_domains.add(domain)
+                            is_merged = True
+                            break
+                    
+                    if not is_merged:
+                        clean_domains.add(line)
+                
+                for domain in meta_domains:
+                    clean_domains.add(domain)
+                
+                filtered_domains = set()
+                for domain in clean_domains:
+                    if domain in ['cloud', 'www.', 'www', '.com', 'com', 'http', 'https']:
+                        continue
+                    if domain.startswith('/') or domain.endswith('/'):
+                        continue
+                    if len(domain) < 4:
+                        continue
+                    filtered_domains.add(domain)
+                
+                with open(list_general_path, 'w', encoding='utf-8') as f:
+                    for domain in sorted(filtered_domains):
+                        f.write(f"{domain}\n")
             else:
                 return False
             
             if ipset_all_path.exists():
                 with open(ipset_all_path, 'r', encoding='utf-8') as f:
-                    existing = f.read()
+                    lines = f.readlines()
                 
-                added = []
-                with open(ipset_all_path, 'a', encoding='utf-8') as f:
-                    for ip in meta_ips:
-                        if ip not in existing:
-                            f.write(f"{ip}\n")
-                            added.append(ip)
+                clean_ips = set()
+                for line in lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    
+                    if '/' in line and len(line) > 5:
+                        clean_ips.add(line)
+                    elif '.' in line and line.count('.') == 3 and len(line) > 7:
+                        clean_ips.add(line)
+                
+                for ip in meta_ips:
+                    clean_ips.add(ip)
+                
+                with open(ipset_all_path, 'w', encoding='utf-8') as f:
+                    for ip in sorted(clean_ips):
+                        f.write(f"{ip}\n")
             
             self.show_notification(tr('meta_unblocked'), 3000)
             self.log_event("info", f"Meta rules added to list-general.txt and ipset-all.txt")
             return True
-            
-        except Exception:
+        except Exception as e:
+            self.log_event("error", f"Error adding Meta rules: {str(e)}")
             return False
 
     def remove_facebook_instagram_unblock(self):
@@ -2596,39 +2613,59 @@ class ZapretLauncher:
                 with open(list_general_path, 'r', encoding='utf-8') as f:
                     lines = f.readlines()
                 
-                new_lines = []
-                removed = []
+                clean_domains = set()
                 for line in lines:
-                    line_stripped = line.strip()
-                    if line_stripped not in meta_domains:
-                        new_lines.append(line)
-                    else:
-                        removed.append(line_stripped)
+                    line = line.strip()
+                    if not line:
+                        continue
+                    
+                    if line in ['cloud', 'www.', 'www', '.com', 'com', 'http', 'https']:
+                        continue
+                    if line.startswith('/') or line.endswith('/'):
+                        continue
+                    if len(line) < 4:
+                        continue
+                    
+                    is_meta = False
+                    for domain in meta_domains:
+                        if domain in line:
+                            is_meta = True
+                            break
+                    
+                    if not is_meta:
+                        clean_domains.add(line)
                 
                 with open(list_general_path, 'w', encoding='utf-8') as f:
-                    f.writelines(new_lines)
+                    for domain in sorted(clean_domains):
+                        f.write(f"{domain}\n")
             
             if ipset_all_path.exists():
                 with open(ipset_all_path, 'r', encoding='utf-8') as f:
                     lines = f.readlines()
                 
-                new_lines = []
-                removed = []
+                clean_ips = set()
                 for line in lines:
-                    line_stripped = line.strip()
-                    if line_stripped not in meta_ips:
-                        new_lines.append(line)
-                    else:
-                        removed.append(line_stripped)
+                    line = line.strip()
+                    if not line:
+                        continue
+                    
+                    if line in meta_ips:
+                        continue
+                    
+                    if '/' in line and len(line) > 5:
+                        clean_ips.add(line)
+                    elif '.' in line and line.count('.') == 3 and len(line) > 7:
+                        clean_ips.add(line)
                 
                 with open(ipset_all_path, 'w', encoding='utf-8') as f:
-                    f.writelines(new_lines)
+                    for ip in sorted(clean_ips):
+                        f.write(f"{ip}\n")
             
             self.show_notification(tr('meta_removed'), 3000)
             self.log_event("info", f"Meta rules have been removed from list-general.txt and ipset-all.txt")
             return True
-            
-        except Exception:
+        except Exception as e:
+            self.log_event("error", f"Error removing Meta rules: {str(e)}")
             return False
 
     def check_meta_enabled(self):
@@ -3278,7 +3315,7 @@ class ZapretLauncher:
     def show_github_instruction(self):
         dialog = tk.Toplevel(self.root)
         dialog.title(tr('instruction_title_window'))
-        dialog.geometry("600x400")
+        dialog.geometry("700x500")
         dialog.resizable(False, False)
         dialog.configure(bg=self.colors['bg_medium'])
         
@@ -3315,7 +3352,7 @@ class ZapretLauncher:
                             fg=self.colors['accent'], bg=self.colors['bg_light'])
         step_num1.pack(side=tk.LEFT)
         
-        step_text1 = tk.Label(step1_frame, text=tr('ghub_step1'), font=("Segoe UI Variable", 10),
+        step_text1 = tk.Label(step1_frame, text=tr('ghub_step1'), font=("Segoe UI Variable", 8),
                             fg=self.colors['text_primary'], bg=self.colors['bg_light'])
         step_text1.pack(side=tk.LEFT, padx=(5, 0))
         
@@ -3326,7 +3363,7 @@ class ZapretLauncher:
                             fg=self.colors['accent'], bg=self.colors['bg_light'])
         step_num2.pack(side=tk.LEFT)
         
-        step_text2 = tk.Label(step2_frame, text=tr('ghub_step2'), font=("Segoe UI Variable", 10),
+        step_text2 = tk.Label(step2_frame, text=tr('ghub_step2'), font=("Segoe UI Variable", 8),
                             fg=self.colors['text_primary'], bg=self.colors['bg_light'])
         step_text2.pack(side=tk.LEFT, padx=(5, 0))
         
@@ -3337,7 +3374,7 @@ class ZapretLauncher:
                             fg=self.colors['accent'], bg=self.colors['bg_light'])
         step_num3.pack(side=tk.LEFT)
         
-        step_text3 = tk.Label(step3_frame, text=tr('ghub_step3'), font=("Segoe UI Variable", 10),
+        step_text3 = tk.Label(step3_frame, text=tr('ghub_step3'), font=("Segoe UI Variable", 8),
                             fg=self.colors['text_primary'], bg=self.colors['bg_light'])
         step_text3.pack(side=tk.LEFT, padx=(5, 0))
         
@@ -3348,9 +3385,53 @@ class ZapretLauncher:
                             fg=self.colors['accent'], bg=self.colors['bg_light'])
         step_num4.pack(side=tk.LEFT)
         
-        step_text4 = tk.Label(step4_frame, text=tr('ghub_step4'), font=("Segoe UI Variable", 10),
+        step_text4 = tk.Label(step4_frame, text=tr('ghub_step4'), font=("Segoe UI Variable", 8),
                             fg=self.colors['text_primary'], bg=self.colors['bg_light'])
         step_text4.pack(side=tk.LEFT, padx=(5, 0))
+
+        step5_frame = tk.Frame(inner, bg=self.colors['bg_light'])
+        step5_frame.pack(fill=tk.X, pady=(0, 8))
+        
+        step_num5 = tk.Label(step5_frame, text="5.", font=("Segoe UI Variable", 12, "bold"),
+                            fg=self.colors['accent'], bg=self.colors['bg_light'])
+        step_num5.pack(side=tk.LEFT)
+        
+        step_text5 = tk.Label(step5_frame, text=tr('ghub_step5'), font=("Segoe UI Variable", 8),
+                            fg=self.colors['text_primary'], bg=self.colors['bg_light'])
+        step_text5.pack(side=tk.LEFT, padx=(5, 0))
+
+        step6_frame = tk.Frame(inner, bg=self.colors['bg_light'])
+        step6_frame.pack(fill=tk.X, pady=(0, 8))
+        
+        step_num6 = tk.Label(step6_frame, text="6.", font=("Segoe UI Variable", 12, "bold"),
+                            fg=self.colors['accent'], bg=self.colors['bg_light'])
+        step_num6.pack(side=tk.LEFT)
+        
+        step_text6 = tk.Label(step6_frame, text=tr('ghub_step6'), font=("Segoe UI Variable", 8),
+                            fg=self.colors['text_primary'], bg=self.colors['bg_light'])
+        step_text6.pack(side=tk.LEFT, padx=(5, 0))
+
+        step7_frame = tk.Frame(inner, bg=self.colors['bg_light'])
+        step7_frame.pack(fill=tk.X, pady=(0, 8))
+        
+        step_num7 = tk.Label(step7_frame, text="7.", font=("Segoe UI Variable", 12, "bold"),
+                            fg=self.colors['accent'], bg=self.colors['bg_light'])
+        step_num7.pack(side=tk.LEFT)
+        
+        step_text7 = tk.Label(step7_frame, text=tr('ghub_step7'), font=("Segoe UI Variable", 8),
+                            fg=self.colors['text_primary'], bg=self.colors['bg_light'])
+        step_text7.pack(side=tk.LEFT, padx=(5, 0))
+
+        step8_frame = tk.Frame(inner, bg=self.colors['bg_light'])
+        step8_frame.pack(fill=tk.X, pady=(0, 8))
+        
+        step_num8 = tk.Label(step8_frame, text="8.", font=("Segoe UI Variable", 12, "bold"),
+                            fg=self.colors['accent'], bg=self.colors['bg_light'])
+        step_num8.pack(side=tk.LEFT)
+        
+        step_text8 = tk.Label(step8_frame, text=tr('ghub_step8'), font=("Segoe UI Variable", 8),
+                            fg=self.colors['text_primary'], bg=self.colors['bg_light'])
+        step_text8.pack(side=tk.LEFT, padx=(5, 0))
 
         copy_frame_block = tk.Frame(inner, bg=self.colors['bg_light'])
         copy_frame_block.pack(fill=tk.X, pady=(10, 5))
