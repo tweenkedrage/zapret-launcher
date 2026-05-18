@@ -1029,19 +1029,19 @@ class ZapretLauncher:
 
     def check_for_updates(self):
         try:
-            version_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/version.txt"
+            buildnumber_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt"
             
             req = urllib.request.Request(
-                version_url,
+                buildnumber_url,
                 headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
             )
             
             with urllib.request.urlopen(req, timeout=10) as response:
-                latest_version = response.read().decode('utf-8').strip()
+                latest_build = response.read().decode('utf-8').strip()
             
-            current_version = CURRENT_VERSION
+            current_build = CURRENT_BUILD
             
-            if self._compare_versions(current_version, latest_version):
+            if self._compare_builds(current_build, latest_build):
                 self.root.after(0, self.show_update_label)
             else:
                 self.root.after(0, self.hide_update_label)
@@ -3653,10 +3653,13 @@ github.community"""
         
         return tuple(nums[:4] + [suffix_value])
 
-    def _compare_versions(self, current, latest):
-        current_tuple = self._version_to_tuple(current)
-        latest_tuple = self._version_to_tuple(latest)
-        return latest_tuple > current_tuple
+    def _compare_builds(self, current, latest):
+        try:
+            current_int = int(current)
+            latest_int = int(latest)
+            return latest_int > current_int
+        except ValueError:
+            return str(latest) > str(current)
     
     def start_update_checker(self):
         self.stop_update_checker()
