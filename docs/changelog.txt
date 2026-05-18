@@ -1,1 +1,8 @@
-
+3.2.1.5 —> 3.2.1.7:
+- Uninstallation now deletes the entire Zapret Launcher folder, including the desktop shortcut;
+- Fixed updating the table on the Traffic page after disabling modes;
+- Added automatic update check every 30 minutes;
+- Fixed cleaning of old _internal_old_* folders;
+- Added statistics reset on the main page;
+- Increased RTT update interval to 30 seconds;
+- Reduced background ping (RTT) calls.
