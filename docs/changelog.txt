@@ -3,6 +3,6 @@
 - Fixed updating the table on the Traffic page after disabling modes;
 - Added automatic update check every 30 minutes;
 - Fixed cleaning of old _internal_old_* folders;
-- Added statistics reset on the main page;
 - Increased RTT update interval to 30 seconds;
+- Added statistics reset on the main page;
 - Reduced background ping (RTT) calls.
