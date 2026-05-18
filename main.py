@@ -32,7 +32,7 @@ import ctypes
 import urllib.request
 from ctypes import windll, byref, c_int
 from typing import Optional, List, Tuple
-from config import CURRENT_VERSION, BASE_DIR, APPDATA_DIR, CONFIG_FILE, ZAPRET_CORE_DIR
+from config import CURRENT_VERSION, CURRENT_BUILD, BASE_DIR, APPDATA_DIR, CONFIG_FILE, ZAPRET_CORE_DIR
 
 def check_single_instance():
     mutex_name = "ZapretLauncher_SingleInstance"
@@ -540,13 +540,17 @@ class ZapretLauncher:
         self._notification_queue = []
         self._notification_active = False
 
-        self.update_intervals = [0, 5, 10, 30, 60, None]
-        self.update_interval_index = 0
+        self.update_intervals = [1, 5, 10, 30, 60, None]
+        self.update_interval_index = 1
         self.update_interval = self.update_intervals[self.update_interval_index]
         self.update_timer_id = None
 
         self.rtt_timer_id = None
-        self.rtt_update_interval = 10000
+        self.rtt_update_interval = 30000
+
+        self._cached_rtt = -1
+        self._cached_rtt_time = 0
+        self.rtt_cache_duration = 30
 
         self.MAX_HISTORY_SIZE = 100
         self.MAX_HISTORY_AGE = 3600
@@ -1069,7 +1073,7 @@ class ZapretLauncher:
 
     def show_mode_selector(self):
         dialog = tk.Toplevel(self.root)
-        dialog.title(tr('mode_select'))
+        dialog.title(tr('mode_select_title'))
         dialog.geometry("500x550")
         dialog.resizable(False, False)
         dialog.configure(bg=self.colors['bg_medium'])
@@ -1596,6 +1600,11 @@ class ZapretLauncher:
             self.rtt_timer_id = None
 
     def measure_rtt(self) -> float:
+        current_time = time.time()
+
+        if self._cached_rtt > 0 and (current_time - self._cached_rtt_time) < self.rtt_cache_duration:
+            return self._cached_rtt
+
         try:
             result = subprocess.run(
                 ['ping', '-n', '1', '8.8.8.8'],
@@ -1603,25 +1612,30 @@ class ZapretLauncher:
                 creationflags=subprocess.CREATE_NO_WINDOW,
                 timeout=3
             )
+
+            rtt = -1
             
             if result.returncode == 0:
                 output = result.stdout
                 
                 match = re.search(r'(?:время|time)[=<>]\s*(\d+)\s*мс', output, re.IGNORECASE)
                 if match:
-                    return float(match.group(1))
-                
-                match = re.search(r'time[=<>](\d+)ms', output, re.IGNORECASE)
-                if match:
-                    return float(match.group(1))
-                
-                match = re.search(r'(\d+)\s*мс', output, re.IGNORECASE)
-                if match:
-                    return float(match.group(1))
+                    rtt = float(match.group(1))
+                else:
+                    match = re.search(r'time[=<>](\d+)ms', output, re.IGNORECASE)
+                    if match:
+                        rtt = float(match.group(1))
+                    else:
+                        match = re.search(r'(\d+)\s*мс', output, re.IGNORECASE)
+                        if match:
+                            rtt = float(match.group(1))
             
-            return -1
+            if rtt > 0:
+                self._cached_rtt = rtt
+                self._cached_rtt_time = current_time
+            return rtt
+            
         except Exception:
-            pass
             return -1
 
     def start_stats_monitoring(self):
@@ -1644,7 +1658,7 @@ class ZapretLauncher:
             if not self.root.winfo_viewable():
                 interval = 5000
             elif self.update_interval == 0:
-                interval = 500
+                interval = 1000
             elif self.update_interval > 0:
                 interval = int(self.update_interval * 1000)
             else:
@@ -1662,7 +1676,7 @@ class ZapretLauncher:
         if not self.root.winfo_viewable():
             interval = 5000
         elif self.update_interval == 0:
-            interval = 500
+            interval = 1000
         elif self.update_interval > 0:
             interval = max(500, int(self.update_interval * 1000))
         else:
@@ -3721,7 +3735,7 @@ if __name__ == "__main__":
             sys.exit(1)
     
     if '--no-splash' not in sys.argv and '--from-splash' not in sys.argv:
-        splash = SplashWindow(current_version=CURRENT_VERSION)
+        splash = SplashWindow(current_version=CURRENT_VERSION, current_build=CURRENT_BUILD)
         splash.start()
     else:
         root = tk.Tk()
