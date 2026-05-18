@@ -29,6 +29,15 @@ class TrafficPage:
             bg=self.colors['bg_dark']
         )
         desc_label.pack(anchor='w', pady=(0, 20), padx=30)
+
+        warning_label = tk.Label(
+            self.frame,
+            text=tr('traffic_warning'),
+            font=("Inter", 8),
+            fg=self.colors['accent'],
+            bg=self.colors['bg_dark']
+        )
+        warning_label.pack(anchor='w', pady=(0, 20), padx=30)
         
         table_frame = tk.Frame(self.frame, bg=self.colors['bg_light'])
         table_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=10)
