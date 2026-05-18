@@ -85,7 +85,7 @@ class ListEditor:
                 self.text_area.insert('1.0', "# File not found. Create content and save")
         except Exception as e:
             self.app.log_event("info", f"Failed to upload file: {os.path.basename(self.file_path)}")
-            messagebox.showerror(tr('editor_error_load'), f"{tr('editor_error_load')}: {str(e)}")
+            messagebox.showerror(tr('error_no_connection'), f"{tr('editor_error_load')}: {str(e)}")
     
     def save_content(self):
         try:
@@ -95,7 +95,7 @@ class ListEditor:
                 f.write(content)
 
             self.app.log_event("info", f"File has been saved: {os.path.basename(self.file_path)}")
-            messagebox.showinfo(tr('editor_success'), tr('editor_success'))
+            messagebox.showinfo(tr('success'), tr('editor_success'))
             self.dialog.destroy()
         except Exception as e:
-            messagebox.showerror(tr('editor_error_save'), f"{tr('editor_error_save')}: {str(e)}")
+            messagebox.showerror(tr('error_no_connection'), f"{tr('editor_error_save')}: {str(e)}")
