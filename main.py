@@ -34,6 +34,16 @@ from ctypes import windll, byref, c_int
 from typing import Optional, List, Tuple
 from config import CURRENT_VERSION, CURRENT_BUILD, BASE_DIR, APPDATA_DIR, CONFIG_FILE, ZAPRET_CORE_DIR
 
+def check_single_instance():
+    mutex_name = "ZapretLauncher_SingleInstance"
+    
+    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
+    last_error = ctypes.windll.kernel32.GetLastError()
+    
+    if last_error == 183:
+        return False, None
+    return True, mutex
+
 def is_admin():
     try:
         return ctypes.windll.shell32.IsUserAnAdmin()
