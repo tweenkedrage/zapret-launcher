@@ -265,6 +265,7 @@ class Languages:
             'button_restart': 'Перезапустить',
             
             'select_strategy': 'Выбор стратегии Zapret',
+            'select_strategy_title': 'Выбор стратегии',
             'available_strategies': 'Доступные стратегии:',
             'selected': 'Выбрано:',
             
@@ -547,6 +548,7 @@ class Languages:
             'button_restart': 'Restart',
             
             'select_strategy': 'Select Zapret strategy',
+            'select_strategy_title': 'Select strategy',
             'available_strategies': 'Available strategies:',
             'selected': 'Selected:',
             
