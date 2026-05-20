@@ -548,6 +548,8 @@ class ZapretLauncher:
         self.rtt_timer_id = None
         self.rtt_update_interval = 30000
 
+        self.last_selected_index = -1
+
         self._cached_rtt = -1
         self._cached_rtt_time = 0
         self.rtt_cache_duration = 30
@@ -658,8 +660,10 @@ class ZapretLauncher:
         self.setup_ui()
         self.update_check_timer_id = None
         self.start_update_checker()
+        self.setup_keyboard_navigation()
         self.root.after(100, self.check_initial_status)
         self.show_main_page()
+        self.root.bind('<Button-1>', self.reset_keyboard_focus)
                 
         self.tray_icon = ModernSystemTray(self)
         threading.Thread(target=self.tray_icon.run, daemon=True).start()
@@ -928,8 +932,10 @@ class ZapretLauncher:
                 fg=self.colors['text_secondary'],
                 font=("Segoe UI Variable", 11),
                 corner_radius=10,
-                hover_color=self.colors['accent']
+                hover_color=self.colors['accent'],
             )
+
+            btn._command = command
 
             if self.current_theme == 'light':
                 btn.hover_color = self.colors['accent']
@@ -943,6 +949,7 @@ class ZapretLauncher:
             
             btn.bind("<Enter>", lambda e: btn.config(cursor="hand2"))
             btn.bind("<Leave>", lambda e: btn.config(cursor=""))
+            btn.bind('<Button-1>', lambda e: self.reset_keyboard_focus())
         
         separator = tk.Frame(left_panel, bg=self.colors['separator'], height=1)
         separator.pack(fill=tk.X, padx=15, pady=20)
@@ -992,6 +999,162 @@ class ZapretLauncher:
         self.credit_label.bind("<Enter>", lambda e: self.credit_label.config(fg=self.colors['accent']))
         self.credit_label.bind("<Leave>", lambda e: self.credit_label.config(fg=self.colors['text_secondary']))
         self.credit_label.bind("<Button-1>", lambda e: self.open_github())
+
+    def setup_keyboard_navigation(self):
+        self.current_nav_index = -1
+        
+        self.root.bind('<Tab>', self.on_tab_press)
+        self.root.bind('<Shift-Tab>', self.on_shift_tab_press)
+        self.root.bind('<Return>', self.on_enter_press)
+        self.root.focus_set()
+
+    def on_tab_press(self, event):
+        if not self.nav_buttons:
+            return
+        
+        if self.current_nav_index == -1 and self.last_selected_index != -1:
+            self.current_nav_index = self.last_selected_index
+        elif self.current_nav_index == -1:
+            self.current_nav_index = 0
+        else:
+            self.current_nav_index = (self.current_nav_index + 1) % len(self.nav_buttons)
+        
+        self.highlight_button(self.current_nav_index)
+        return "break"
+
+    def on_shift_tab_press(self, event):
+        if not self.nav_buttons:
+            return
+        
+        if self.current_nav_index == -1 and self.last_selected_index != -1:
+            self.current_nav_index = self.last_selected_index
+        elif self.current_nav_index == -1:
+            self.current_nav_index = len(self.nav_buttons) - 1
+        else:
+            self.current_nav_index = (self.current_nav_index - 1) % len(self.nav_buttons)
+        
+        self.highlight_button(self.current_nav_index)
+        return "break"
+
+    def on_enter_press(self, event):
+        if 0 <= self.current_nav_index < len(self.nav_buttons):
+            btn = self.nav_buttons[self.current_nav_index]
+            if hasattr(btn, '_command') and btn._command:
+                self.last_selected_index = self.current_nav_index
+                btn._command()
+        return "break"
+
+    def on_button_focus(self, index):
+        self.current_nav_index = index
+        self.last_selected_index = index
+        self.highlight_button(index)
+
+    def on_button_focus_out(self):
+        if 0 <= self.current_nav_index < len(self.nav_buttons):
+            self.remove_highlight(self.current_nav_index)
+
+    def highlight_button(self, index):
+        for i, btn in enumerate(self.nav_buttons):
+            self.remove_highlight(i)
+        
+        if 0 <= index < len(self.nav_buttons):
+            btn = self.nav_buttons[index]
+            btn.config(highlightthickness=1.5, highlightbackground=self.colors['accent'], highlightcolor=self.colors['accent'])
+            btn.focus_set()
+            btn._keyboard_focused = True
+            
+            def on_mouse_enter(e, b=btn):
+                if hasattr(b, '_keyboard_focused') and b._keyboard_focused:
+                    b.config(highlightthickness=0)
+            
+            def on_mouse_leave(e, b=btn):
+                if hasattr(b, '_keyboard_focused') and b._keyboard_focused and self.current_nav_index == index:
+                    b.config(highlightthickness=2, highlightbackground=self.colors['accent'], highlightcolor=self.colors['accent'])
+            
+            btn.bind('<Enter>', on_mouse_enter)
+            btn.bind('<Leave>', on_mouse_leave)
+
+    def remove_highlight(self, index):
+        if 0 <= index < len(self.nav_buttons):
+            btn = self.nav_buttons[index]
+            btn.config(highlightthickness=0)
+            if hasattr(btn, '_keyboard_focused'):
+                del btn._keyboard_focused
+
+    def reset_keyboard_focus(self, event=None):
+        for i, btn in enumerate(self.nav_buttons):
+            self.remove_highlight(i)
+        self.current_nav_index = -1
+        self.root.focus_set()
+
+    def update_nav_buttons_for_page(self, page_name):
+        if hasattr(self, 'nav_buttons'):
+            for btn in self.nav_buttons:
+                try:
+                    btn.unbind('<FocusIn>')
+                    btn.unbind('<FocusOut>')
+                except:
+                    pass
+        
+        self.nav_buttons = []
+        
+        if hasattr(self, 'left_panel'):
+            for child in self.left_panel.winfo_children():
+                if isinstance(child, tk.Frame):
+                    for widget in child.winfo_children():
+                        if widget == self.left_status or widget == self.credit_label:
+                            continue
+                        
+                        if isinstance(widget, tk.Label) and hasattr(widget, 'cget') and 'image' in widget.keys():
+                            self.nav_buttons.append(widget)
+                            widget._command = self.show_settings_page
+                            widget.bind('<FocusIn>', lambda e, idx=len(self.nav_buttons)-1: self.on_button_focus(idx))
+                            widget.bind('<FocusOut>', lambda e: self.on_button_focus_out())
+                        elif isinstance(widget, RoundedButton) and hasattr(widget, '_command') and widget._command:
+                            self.nav_buttons.append(widget)
+                            widget.bind('<FocusIn>', lambda e, idx=len(self.nav_buttons)-1: self.on_button_focus(idx))
+                            widget.bind('<FocusOut>', lambda e: self.on_button_focus_out())
+        
+        if page_name == "main":
+            if hasattr(self, 'connect_btn') and self.connect_btn:
+                self.connect_btn._command = self.toggle_connection
+                self.nav_buttons.append(self.connect_btn)
+                self.connect_btn.bind('<FocusIn>', lambda e, idx=len(self.nav_buttons)-1: self.on_button_focus(idx))
+                self.connect_btn.bind('<FocusOut>', lambda e: self.on_button_focus_out())
+        
+        elif page_name == "service" and hasattr(self.pages, 'service_page_obj'):
+            frame = self.pages.service_page_obj.get_frame()
+            self._collect_buttons_from_widget(frame)
+        
+        elif page_name == "lists":
+            frame = self.pages.lists_page_obj.get_frame()
+            self._collect_buttons_from_widget(frame)
+        
+        elif page_name == "additionally":
+            frame = self.pages.additionally_page_obj.get_frame()
+            self._collect_buttons_from_widget(frame)
+        
+        elif page_name == "settings":
+            frame = self.pages.settings_page_obj.get_frame()
+            self._collect_buttons_from_widget(frame)
+        
+        elif page_name == "logs":
+            frame = self.pages.logs_page_obj.get_frame()
+            self._collect_buttons_from_widget(frame)
+        
+        elif page_name == "traffic":
+            pass
+
+    def _collect_buttons_from_widget(self, widget):
+        if isinstance(widget, RoundedButton) and hasattr(widget, 'command') and widget.command:
+            self.nav_buttons.append(widget)
+            widget.bind('<FocusIn>', lambda e, idx=len(self.nav_buttons)-1: self.on_button_focus(idx))
+            widget.bind('<FocusOut>', lambda e: self.on_button_focus_out())
+        try:
+            for child in widget.winfo_children():
+                self._collect_buttons_from_widget(child)
+        except:
+            pass
 
     def show_update_label(self):
         try:
@@ -1079,6 +1242,7 @@ class ZapretLauncher:
         dialog.configure(bg=self.colors['bg_medium'])
         dialog.transient(self.root)
         dialog.grab_set()
+        dialog.focus_force()
         
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 250
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 275
@@ -1111,8 +1275,10 @@ class ZapretLauncher:
             "zapret": True, "tgproxy": True},
         ]
         
+        selected_index = [0]
         selected_mode = [None]
         selected_widget = [None]
+        mode_frames = []
         select_btn = [None]
         
         def update_select_button():
@@ -1138,9 +1304,9 @@ class ZapretLauncher:
                     )
                     select_btn[0].config(cursor="arrow")
         
-        def on_single_click(mode, frame, name_label, desc_label):
+        def on_single_click(mode, frame, name_label, desc_label, index):
             if selected_widget[0]:
-                prev_frame, prev_name, prev_desc = selected_widget[0]
+                prev_frame, prev_name, prev_desc, _ = selected_widget[0]
                 prev_frame.configure(bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
                 prev_name.configure(fg=self.colors['accent'], bg=self.colors['bg_light'])
                 prev_desc.configure(fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
@@ -1149,9 +1315,11 @@ class ZapretLauncher:
             name_label.configure(fg=self.colors['text_primary'], bg=self.colors['accent'])
             desc_label.configure(fg=self.colors['text_secondary'], bg=self.colors['accent'])
             
-            selected_widget[0] = (frame, name_label, desc_label)
+            selected_widget[0] = (frame, name_label, desc_label, index)
             selected_mode[0] = mode
+            selected_index[0] = index
             update_select_button()
+            canvas.yview_moveto(index / len(modes) if len(modes) > 0 else 0)
         
         def on_double_click(mode):
             if mode:
@@ -1163,7 +1331,36 @@ class ZapretLauncher:
                 dialog.destroy()
                 self.start_with_mode(selected_mode[0])
         
-        for mode in modes:
+        def move_selection(delta):
+            new_index = selected_index[0] + delta
+            if 0 <= new_index < len(modes):
+                selected_index[0] = new_index
+                mode = modes[new_index]
+                frame, name_label, desc_label = mode_frames[new_index]
+                on_single_click(mode, frame, name_label, desc_label, new_index)
+        
+        def on_key_press(event):
+            if event.keysym == 'Up':
+                move_selection(-1)
+                return "break"
+            elif event.keysym == 'Down':
+                move_selection(1)
+                return "break"
+            elif event.keysym == 'Return':
+                if selected_mode[0]:
+                    dialog.destroy()
+                    self.start_with_mode(selected_mode[0])
+                return "break"
+            elif event.keysym == 'Escape':
+                dialog.destroy()
+                return "break"
+        
+        dialog.bind('<Up>', on_key_press)
+        dialog.bind('<Down>', on_key_press)
+        dialog.bind('<Return>', on_key_press)
+        dialog.bind('<Escape>', on_key_press)
+        
+        for idx, mode in enumerate(modes):
             mode_frame = tk.Frame(scrollable_frame, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0, cursor="hand2")
             mode_frame.pack(fill=tk.X, padx=10, pady=5, ipady=8)
             
@@ -1174,14 +1371,25 @@ class ZapretLauncher:
             desc_label = tk.Label(mode_frame, text=mode["desc"], font=("Segoe UI Variable", 9),
                                 fg=self.colors['text_secondary'], bg=original_bg)
             desc_label.pack(anchor='w', padx=15, pady=(0, 8))
+            
+            mode_frames.append((mode_frame, name_label, desc_label))
+            
+            if idx == 0:
+                selected_index[0] = 0
+                selected_mode[0] = mode
+                selected_widget[0] = (mode_frame, name_label, desc_label, idx)
+                mode_frame.configure(bg=self.colors['accent'], relief=tk.RIDGE, bd=2)
+                name_label.configure(fg=self.colors['text_primary'], bg=self.colors['accent'])
+                desc_label.configure(fg=self.colors['text_secondary'], bg=self.colors['accent'])
+                update_select_button()
 
-            def make_on_click(m, f, nl, dl):
-                return lambda e: on_single_click(m, f, nl, dl)
+            def make_on_click(m, f, nl, dl, i):
+                return lambda e: on_single_click(m, f, nl, dl, i)
             
             def make_on_double(m):
                 return lambda e: on_double_click(m)
             
-            click_handler = make_on_click(mode, mode_frame, name_label, desc_label)
+            click_handler = make_on_click(mode, mode_frame, name_label, desc_label, idx)
             double_handler = make_on_double(mode)
             
             mode_frame.bind("<Button-1>", click_handler)
@@ -1191,30 +1399,30 @@ class ZapretLauncher:
             desc_label.bind("<Button-1>", click_handler)
             desc_label.bind("<Double-Button-1>", double_handler)
             
-            def make_on_enter(frame, nl, dl, orig_bg):
+            def make_on_enter(frame, nl, dl, orig_bg, idx_local):
                 def on_enter_func(e):
-                    if selected_widget[0] and selected_widget[0][0] == frame:
+                    if selected_widget[0] and selected_widget[0][3] == idx_local:
                         return
                     frame.configure(bg=self.colors['bg_light_hover'])
                     nl.configure(bg=self.colors['bg_light_hover'])
                     dl.configure(bg=self.colors['bg_light_hover'])
                 return on_enter_func
             
-            def make_on_leave(frame, nl, dl, orig_bg):
+            def make_on_leave(frame, nl, dl, orig_bg, idx_local):
                 def on_leave_func(e):
-                    if selected_widget[0] and selected_widget[0][0] == frame:
+                    if selected_widget[0] and selected_widget[0][3] == idx_local:
                         return
                     frame.configure(bg=orig_bg)
                     nl.configure(bg=orig_bg)
                     dl.configure(bg=orig_bg)
                 return on_leave_func
             
-            mode_frame.bind("<Enter>", make_on_enter(mode_frame, name_label, desc_label, original_bg))
-            mode_frame.bind("<Leave>", make_on_leave(mode_frame, name_label, desc_label, original_bg))
-            name_label.bind("<Enter>", make_on_enter(mode_frame, name_label, desc_label, original_bg))
-            name_label.bind("<Leave>", make_on_leave(mode_frame, name_label, desc_label, original_bg))
-            desc_label.bind("<Enter>", make_on_enter(mode_frame, name_label, desc_label, original_bg))
-            desc_label.bind("<Leave>", make_on_leave(mode_frame, name_label, desc_label, original_bg))
+            mode_frame.bind("<Enter>", make_on_enter(mode_frame, name_label, desc_label, original_bg, idx))
+            mode_frame.bind("<Leave>", make_on_leave(mode_frame, name_label, desc_label, original_bg, idx))
+            name_label.bind("<Enter>", make_on_enter(mode_frame, name_label, desc_label, original_bg, idx))
+            name_label.bind("<Leave>", make_on_leave(mode_frame, name_label, desc_label, original_bg, idx))
+            desc_label.bind("<Enter>", make_on_enter(mode_frame, name_label, desc_label, original_bg, idx))
+            desc_label.bind("<Leave>", make_on_leave(mode_frame, name_label, desc_label, original_bg, idx))
         
         bottom_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
         bottom_frame.pack(fill=tk.X, padx=20, pady=15)
@@ -1224,14 +1432,14 @@ class ZapretLauncher:
             text=tr('mode_select_button'),
             command=on_select_click,
             width=100, height=35,
-            bg=self.colors['button_bg'],
+            bg=self.colors['accent'],
             font=("Segoe UI Variable", 10),
             corner_radius=8
         )
-        select_btn[0].normal_color = self.colors['button_bg']
-        select_btn[0].hover_color = self.colors['accent']
-        select_btn[0].set_enabled(False)
-        select_btn[0].config(cursor="arrow")
+        select_btn[0].normal_color = self.colors['accent']
+        select_btn[0].hover_color = self.colors['button_hover']
+        select_btn[0].set_enabled(True)
+        select_btn[0].config(cursor="hand2")
         select_btn[0].pack(side=tk.RIGHT, padx=(10, 0))
         
         cancel_btn = RoundedButton(
@@ -1389,10 +1597,13 @@ class ZapretLauncher:
 
     def select_strategy_for_mode(self, mode_name):
         dialog = tk.Toplevel(self.root)
-        dialog.title(tr('select_strategy'))
+        dialog.title(tr('select_strategy_title'))
         dialog.geometry("550x550")
         dialog.resizable(False, False)
         dialog.configure(bg=self.colors['bg_medium'])
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.focus_force()
         
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 275
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 275
@@ -1446,6 +1657,8 @@ class ZapretLauncher:
                             wraplength=400, justify=tk.LEFT)
         desc_label.pack(pady=5, padx=20)
         
+        is_processing = False
+        
         def on_select(event):
             selection = strategy_listbox.curselection()
             if selection:
@@ -1460,8 +1673,56 @@ class ZapretLauncher:
                 strategy_listbox.selection_set(idx)
                 strategy_listbox.see(idx)
                 desc_label.config(text=f"{tr('selected')} {self.current_strategy}")
-            except:
+            except ValueError:
                 pass
+        
+        def move_selection(delta):
+            nonlocal is_processing
+            if is_processing:
+                return
+            is_processing = True
+            
+            try:
+                current = strategy_listbox.curselection()
+                if current:
+                    new_idx = current[0] + delta
+                else:
+                    new_idx = 0 if delta > 0 else len(self.zapret.available_strategies) - 1
+                
+                if 0 <= new_idx < len(self.zapret.available_strategies):
+                    strategy_listbox.selection_clear(0, tk.END)
+                    strategy_listbox.selection_set(new_idx)
+                    strategy_listbox.see(new_idx)
+                    strategy = self.zapret.available_strategies[new_idx]
+                    desc_label.config(text=f"{tr('selected')} {strategy}")
+            finally:
+                dialog.after(100, lambda: setattr(move_selection, 'processing', False))
+                is_processing = False
+        
+        def on_key_press(event):
+            if event.keysym == 'Up':
+                move_selection(-1)
+                return "break"
+            elif event.keysym == 'Down':
+                move_selection(1)
+                return "break"
+            elif event.keysym == 'Return':
+                start_with_strategy()
+                return "break"
+            elif event.keysym == 'Escape':
+                dialog.destroy()
+                return "break"
+        
+        dialog.bind('<Up>', on_key_press)
+        dialog.bind('<Down>', on_key_press)
+        dialog.bind('<Return>', on_key_press)
+        dialog.bind('<Escape>', on_key_press)
+
+        strategy_listbox.bind('<Up>', on_key_press)
+        strategy_listbox.bind('<Down>', on_key_press)
+        strategy_listbox.bind('<Return>', on_key_press)
+        strategy_listbox.bind('<Escape>', on_key_press)
+        strategy_listbox.focus_set()
         
         btn_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
         btn_frame.pack(pady=20)
@@ -1489,6 +1750,7 @@ class ZapretLauncher:
                         return
                     
                     self.current_strategy = selected_strategy
+                    self.save_settings()
                     
                     tg_success = self.tg_proxy.start()
                     if not tg_success:
@@ -1519,6 +1781,7 @@ class ZapretLauncher:
                     return
                 
                 self.current_strategy = selected_strategy
+                self.save_settings()
                 
                 if mode.get("tgproxy", False):
                     self.tg_proxy.start()
@@ -2274,18 +2537,23 @@ class ZapretLauncher:
 
     def show_main_page(self):
         self.pages.show_page_with_animation("main")
+        self.update_nav_buttons_for_page("main")
         
     def show_service_page(self):
         self.pages.show_page_with_animation("service")
+        self.update_nav_buttons_for_page("service")
         
     def show_lists_page(self):
         self.pages.show_page_with_animation("lists")
+        self.update_nav_buttons_for_page("lists")
 
     def show_settings_page(self):
         self.pages.show_page_with_animation("settings")
+        self.update_nav_buttons_for_page("settings")
 
     def show_traffic_page(self):
         self.pages.show_page_with_animation("traffic")
+        self.update_nav_buttons_for_page("traffic")
         self._cached_processes = []
         if hasattr(self, '_traffic_collecting'):
             self._traffic_collecting = False
@@ -2298,10 +2566,12 @@ class ZapretLauncher:
 
     def show_logs_page(self):
         self.pages.show_page_with_animation("logs")
+        self.update_nav_buttons_for_page("logs")
         self.pages.update_logs_display()
 
     def show_additionally_page(self):
         self.pages.show_page_with_animation("additionally")
+        self.update_nav_buttons_for_page("additionally")
 
     def add_soundcloud_unblock(self):
         try:
