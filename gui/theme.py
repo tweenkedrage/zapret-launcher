@@ -4,7 +4,7 @@ def get_theme(theme_name='Dark'):
             'accent': '#6c5579',
             'accent_hover': '#e8ccf7',
             'accent_green': '#4ade80',
-            'accent_darkgreen': "#348f55",
+            'accent_darkgreen': '#348f55',
             'accent_red': '#EF4444',
             
             'bg_dark': '#0F0F12',
@@ -24,6 +24,7 @@ def get_theme(theme_name='Dark'):
             'accent': '#6c5579',
             'accent_hover': '#e8ccf7',
             'accent_green': '#10b981',
+            'accent_darkgreen': '#348f55',
             'accent_red': '#EF4444',
             
             'bg_dark': '#F5F5F7',
