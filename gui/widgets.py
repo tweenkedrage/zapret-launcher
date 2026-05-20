@@ -62,6 +62,7 @@ class RoundedButton(tk.Canvas):
         super().__init__(parent, width=width, height=height, 
                         highlightthickness=0, 
                         bg=_get_parent_bg(parent), cursor="hand2")
+        self._command = command
         self.command = command
         self.bg = bg
         self.fg = '#FFFFFF'
