@@ -55,6 +55,6 @@
 > [!NOTE]
 > Если вы скачали лаунчер с [официального репозитория](https://github.com/tweenkedrage/zapret-launcher) **GitHub**,
 > можете быть **уверены** в **безопасности** лаунчера.
-> При необходимости проверьте файлы через **VirusTotal**.
+> При необходимости проверьте файлы через [**VirusTotal**](https://www.virustotal.com/gui/home/upload).
 
 ### Идея по улучшению лаунчера/Нашли баг? — Discord (@uyolookatme)
