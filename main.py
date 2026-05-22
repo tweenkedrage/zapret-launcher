@@ -1,4 +1,5 @@
 import tkinter as tk
+import pywinstyles
 from tkinter import messagebox, ttk
 from gui.pages import Pages
 from gui.page.lists_page import check_zapret_folder
@@ -36,7 +37,6 @@ from config import CURRENT_VERSION, CURRENT_BUILD, BASE_DIR, APPDATA_DIR, CONFIG
 
 def check_single_instance():
     mutex_name = "ZapretLauncher_SingleInstance"
-    
     mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
     last_error = ctypes.windll.kernel32.GetLastError()
     
@@ -660,10 +660,8 @@ class ZapretLauncher:
         self.setup_ui()
         self.update_check_timer_id = None
         self.start_update_checker()
-        self.setup_keyboard_navigation()
         self.root.after(100, self.check_initial_status)
         self.show_main_page()
-        self.root.bind('<Button-1>', self.reset_keyboard_focus)
                 
         self.tray_icon = ModernSystemTray(self)
         threading.Thread(target=self.tray_icon.run, daemon=True).start()
@@ -932,7 +930,7 @@ class ZapretLauncher:
                 fg=self.colors['text_secondary'],
                 font=("Segoe UI Variable", 11),
                 corner_radius=10,
-                hover_color=self.colors['accent'],
+                hover_color=self.colors['accent']
             )
 
             btn._command = command
@@ -949,7 +947,6 @@ class ZapretLauncher:
             
             btn.bind("<Enter>", lambda e: btn.config(cursor="hand2"))
             btn.bind("<Leave>", lambda e: btn.config(cursor=""))
-            btn.bind('<Button-1>', lambda e: self.reset_keyboard_focus())
         
         separator = tk.Frame(left_panel, bg=self.colors['separator'], height=1)
         separator.pack(fill=tk.X, padx=15, pady=20)
@@ -999,162 +996,6 @@ class ZapretLauncher:
         self.credit_label.bind("<Enter>", lambda e: self.credit_label.config(fg=self.colors['accent']))
         self.credit_label.bind("<Leave>", lambda e: self.credit_label.config(fg=self.colors['text_secondary']))
         self.credit_label.bind("<Button-1>", lambda e: self.open_github())
-
-    def setup_keyboard_navigation(self):
-        self.current_nav_index = -1
-        
-        self.root.bind('<Tab>', self.on_tab_press)
-        self.root.bind('<Shift-Tab>', self.on_shift_tab_press)
-        self.root.bind('<Return>', self.on_enter_press)
-        self.root.focus_set()
-
-    def on_tab_press(self, event):
-        if not self.nav_buttons:
-            return
-        
-        if self.current_nav_index == -1 and self.last_selected_index != -1:
-            self.current_nav_index = self.last_selected_index
-        elif self.current_nav_index == -1:
-            self.current_nav_index = 0
-        else:
-            self.current_nav_index = (self.current_nav_index + 1) % len(self.nav_buttons)
-        
-        self.highlight_button(self.current_nav_index)
-        return "break"
-
-    def on_shift_tab_press(self, event):
-        if not self.nav_buttons:
-            return
-        
-        if self.current_nav_index == -1 and self.last_selected_index != -1:
-            self.current_nav_index = self.last_selected_index
-        elif self.current_nav_index == -1:
-            self.current_nav_index = len(self.nav_buttons) - 1
-        else:
-            self.current_nav_index = (self.current_nav_index - 1) % len(self.nav_buttons)
-        
-        self.highlight_button(self.current_nav_index)
-        return "break"
-
-    def on_enter_press(self, event):
-        if 0 <= self.current_nav_index < len(self.nav_buttons):
-            btn = self.nav_buttons[self.current_nav_index]
-            if hasattr(btn, '_command') and btn._command:
-                self.last_selected_index = self.current_nav_index
-                btn._command()
-        return "break"
-
-    def on_button_focus(self, index):
-        self.current_nav_index = index
-        self.last_selected_index = index
-        self.highlight_button(index)
-
-    def on_button_focus_out(self):
-        if 0 <= self.current_nav_index < len(self.nav_buttons):
-            self.remove_highlight(self.current_nav_index)
-
-    def highlight_button(self, index):
-        for i, btn in enumerate(self.nav_buttons):
-            self.remove_highlight(i)
-        
-        if 0 <= index < len(self.nav_buttons):
-            btn = self.nav_buttons[index]
-            btn.config(highlightthickness=1.5, highlightbackground=self.colors['accent'], highlightcolor=self.colors['accent'])
-            btn.focus_set()
-            btn._keyboard_focused = True
-            
-            def on_mouse_enter(e, b=btn):
-                if hasattr(b, '_keyboard_focused') and b._keyboard_focused:
-                    b.config(highlightthickness=0)
-            
-            def on_mouse_leave(e, b=btn):
-                if hasattr(b, '_keyboard_focused') and b._keyboard_focused and self.current_nav_index == index:
-                    b.config(highlightthickness=2, highlightbackground=self.colors['accent'], highlightcolor=self.colors['accent'])
-            
-            btn.bind('<Enter>', on_mouse_enter)
-            btn.bind('<Leave>', on_mouse_leave)
-
-    def remove_highlight(self, index):
-        if 0 <= index < len(self.nav_buttons):
-            btn = self.nav_buttons[index]
-            btn.config(highlightthickness=0)
-            if hasattr(btn, '_keyboard_focused'):
-                del btn._keyboard_focused
-
-    def reset_keyboard_focus(self, event=None):
-        for i, btn in enumerate(self.nav_buttons):
-            self.remove_highlight(i)
-        self.current_nav_index = -1
-        self.root.focus_set()
-
-    def update_nav_buttons_for_page(self, page_name):
-        if hasattr(self, 'nav_buttons'):
-            for btn in self.nav_buttons:
-                try:
-                    btn.unbind('<FocusIn>')
-                    btn.unbind('<FocusOut>')
-                except:
-                    pass
-        
-        self.nav_buttons = []
-        
-        if hasattr(self, 'left_panel'):
-            for child in self.left_panel.winfo_children():
-                if isinstance(child, tk.Frame):
-                    for widget in child.winfo_children():
-                        if widget == self.left_status or widget == self.credit_label:
-                            continue
-                        
-                        if isinstance(widget, tk.Label) and hasattr(widget, 'cget') and 'image' in widget.keys():
-                            self.nav_buttons.append(widget)
-                            widget._command = self.show_settings_page
-                            widget.bind('<FocusIn>', lambda e, idx=len(self.nav_buttons)-1: self.on_button_focus(idx))
-                            widget.bind('<FocusOut>', lambda e: self.on_button_focus_out())
-                        elif isinstance(widget, RoundedButton) and hasattr(widget, '_command') and widget._command:
-                            self.nav_buttons.append(widget)
-                            widget.bind('<FocusIn>', lambda e, idx=len(self.nav_buttons)-1: self.on_button_focus(idx))
-                            widget.bind('<FocusOut>', lambda e: self.on_button_focus_out())
-        
-        if page_name == "main":
-            if hasattr(self, 'connect_btn') and self.connect_btn:
-                self.connect_btn._command = self.toggle_connection
-                self.nav_buttons.append(self.connect_btn)
-                self.connect_btn.bind('<FocusIn>', lambda e, idx=len(self.nav_buttons)-1: self.on_button_focus(idx))
-                self.connect_btn.bind('<FocusOut>', lambda e: self.on_button_focus_out())
-        
-        elif page_name == "service" and hasattr(self.pages, 'service_page_obj'):
-            frame = self.pages.service_page_obj.get_frame()
-            self._collect_buttons_from_widget(frame)
-        
-        elif page_name == "lists":
-            frame = self.pages.lists_page_obj.get_frame()
-            self._collect_buttons_from_widget(frame)
-        
-        elif page_name == "additionally":
-            frame = self.pages.additionally_page_obj.get_frame()
-            self._collect_buttons_from_widget(frame)
-        
-        elif page_name == "settings":
-            frame = self.pages.settings_page_obj.get_frame()
-            self._collect_buttons_from_widget(frame)
-        
-        elif page_name == "logs":
-            frame = self.pages.logs_page_obj.get_frame()
-            self._collect_buttons_from_widget(frame)
-        
-        elif page_name == "traffic":
-            pass
-
-    def _collect_buttons_from_widget(self, widget):
-        if isinstance(widget, RoundedButton) and hasattr(widget, 'command') and widget.command:
-            self.nav_buttons.append(widget)
-            widget.bind('<FocusIn>', lambda e, idx=len(self.nav_buttons)-1: self.on_button_focus(idx))
-            widget.bind('<FocusOut>', lambda e: self.on_button_focus_out())
-        try:
-            for child in widget.winfo_children():
-                self._collect_buttons_from_widget(child)
-        except:
-            pass
 
     def show_update_label(self):
         try:
@@ -1243,6 +1084,8 @@ class ZapretLauncher:
         dialog.transient(self.root)
         dialog.grab_set()
         dialog.focus_force()
+
+        pywinstyles.change_header_color(dialog, "#1A1A1F")
         
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 250
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 275
@@ -1604,6 +1447,8 @@ class ZapretLauncher:
         dialog.transient(self.root)
         dialog.grab_set()
         dialog.focus_force()
+
+        pywinstyles.change_header_color(dialog, "#1A1A1F")
         
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 275
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 275
@@ -1713,6 +1558,9 @@ class ZapretLauncher:
                 dialog.destroy()
                 return "break"
         
+        def on_double_click(event):
+            start_with_strategy()
+        
         dialog.bind('<Up>', on_key_press)
         dialog.bind('<Down>', on_key_press)
         dialog.bind('<Return>', on_key_press)
@@ -1722,6 +1570,7 @@ class ZapretLauncher:
         strategy_listbox.bind('<Down>', on_key_press)
         strategy_listbox.bind('<Return>', on_key_press)
         strategy_listbox.bind('<Escape>', on_key_press)
+        strategy_listbox.bind('<Double-Button-1>', on_double_click)
         strategy_listbox.focus_set()
         
         btn_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
@@ -2537,23 +2386,18 @@ class ZapretLauncher:
 
     def show_main_page(self):
         self.pages.show_page_with_animation("main")
-        self.update_nav_buttons_for_page("main")
         
     def show_service_page(self):
         self.pages.show_page_with_animation("service")
-        self.update_nav_buttons_for_page("service")
         
     def show_lists_page(self):
         self.pages.show_page_with_animation("lists")
-        self.update_nav_buttons_for_page("lists")
 
     def show_settings_page(self):
         self.pages.show_page_with_animation("settings")
-        self.update_nav_buttons_for_page("settings")
 
     def show_traffic_page(self):
         self.pages.show_page_with_animation("traffic")
-        self.update_nav_buttons_for_page("traffic")
         self._cached_processes = []
         if hasattr(self, '_traffic_collecting'):
             self._traffic_collecting = False
@@ -2566,12 +2410,10 @@ class ZapretLauncher:
 
     def show_logs_page(self):
         self.pages.show_page_with_animation("logs")
-        self.update_nav_buttons_for_page("logs")
         self.pages.update_logs_display()
 
     def show_additionally_page(self):
         self.pages.show_page_with_animation("additionally")
-        self.update_nav_buttons_for_page("additionally")
 
     def add_soundcloud_unblock(self):
         try:
@@ -4104,6 +3946,7 @@ if __name__ == "__main__":
     else:
         root = tk.Tk()
         app = ZapretLauncher(root)
+        pywinstyles.change_header_color(root, "#0F0F12")
         root.mainloop()
         
         if mutex:
