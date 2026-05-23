@@ -91,7 +91,7 @@ class MainPage:
                 fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(anchor='w')
         
         self.app.stats_speed_up_label = tk.Label(speed_frame, text="⬆ 0 B/s", font=self.font_primary,
-                                                fg=self.colors['accent_green'], bg=self.colors['bg_medium'])
+                                                fg=self.colors['accent'], bg=self.colors['bg_medium'])
         self.app.stats_speed_up_label.pack(anchor='w', pady=(5, 2))
         
         self.app.stats_speed_down_label = tk.Label(speed_frame, text="⬇ 0 B/s", font=self.font_primary,
