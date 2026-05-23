@@ -4,10 +4,7 @@ from gui.widgets import RoundedButton
 from utils.languages import tr
 from utils.list_editor import ListEditor
 import os
-from pathlib import Path
-
-APPDATA_DIR = Path(os.getenv('APPDATA')) / 'Zapret Launcher'
-LISTS_DIR = APPDATA_DIR / "zapret_core" / "lists"
+from config import APPDATA_DIR, LISTS_DIR
 
 def check_zapret_folder():
     zapret_core_dir = APPDATA_DIR / "zapret_core"
