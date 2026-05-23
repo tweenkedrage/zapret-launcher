@@ -21,10 +21,7 @@ class ListEditor:
 
         if app:
             self.dialog.configure(bg=app.colors['bg_medium'])
-            try:
-                pywinstyles.change_header_color(self.dialog, "#0F0F12")
-            except:
-                pass
+            self._set_dialog_header_color(self.dialog)
         
         self.dialog.update_idletasks()
         x = parent.winfo_x() + (parent.winfo_width() // 2) - (600 // 2)
@@ -122,7 +119,28 @@ class ListEditor:
             self.save_btn.bind("<Leave>", lambda e: self.save_btn.configure(bg=app.colors['accent']))
             self.cancel_btn.bind("<Enter>", lambda e: self.cancel_btn.configure(bg=app.colors['accent']))
             self.cancel_btn.bind("<Leave>", lambda e: self.cancel_btn.configure(bg=app.colors['button_bg']))
-    
+
+    def _set_dialog_header_color(self, dialog):
+        try:
+            if self.app and hasattr(self.app, 'colors'):
+                header_color = self.app.colors['bg_medium']
+            else:
+                header_color = "#0F0F12"
+            
+            dialog.after(10, lambda: self._apply_header_color(dialog, header_color))
+        except ImportError:
+            pass
+        except Exception:
+            pass
+
+    def _apply_header_color(self, dialog, color):
+        try:
+            if dialog.winfo_exists():
+                pywinstyles.change_header_color(dialog, color)
+                dialog.update()
+        except Exception:
+            pass
+        
     def copy_text(self, event=None):
         try:
             self.text_area.event_generate("<<Copy>>")
