@@ -1,8 +1,8 @@
 [Setup]
 AppId={{8A5F5B5E-8B5E-4B5E-8B5E-8B5E8B5E8B5E}}
 AppName=Zapret Launcher
-AppVersion=3.2.1.8
-AppVerName=Zapret Launcher 3.2.1.8
+AppVersion=3.2.1.9
+AppVerName=Zapret Launcher 3.2.1.9
 AppPublisher=trimansberg
 AppPublisherURL=https://github.com/tweenkedrage/zapret-launcher
 AppSupportURL=https://github.com/tweenkedrage/zapret-launcher
