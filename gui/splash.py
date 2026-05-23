@@ -47,6 +47,7 @@ class SplashWindow:
         self.build_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt"
         self.exe_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/Zapret%20Launcher.exe"
         self.zip_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/_internal.zip"
+        self.zapret_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/zapret_core.zip"
         
         self.appdata_path = Path(os.environ.get('APPDATA', '')) / "Zapret Launcher"
         self.internal_path = self.appdata_path / "_internal"
@@ -373,10 +374,86 @@ class SplashWindow:
             return True
         except Exception:
             return False
+        
+    def _download_zapret_core(self):
+        temp_zip = None
+        try:
+            zapret_dir = self.appdata_path / "zapret_core"
+            temp_zip = self.appdata_path / "zapret_core_temp.zip"
+            
+            self.after(0, lambda: self.update_status(tr('splash_downloading_zapret'), 0))
+            success = self._download_with_progress(self.zapret_url, temp_zip, 0, 50)
+            
+            if not success:
+                raise Exception("Failed to download zapret_core.zip")
+            
+            self.after(0, lambda: self.update_status(tr('splash_extracting_zapret'), 50))
+            
+            temp_extract = self.appdata_path / "zapret_core_temp_extract"
+            if temp_extract.exists():
+                shutil.rmtree(temp_extract, ignore_errors=True)
+            temp_extract.mkdir(parents=True, exist_ok=True)
+            
+            with zipfile.ZipFile(temp_zip, 'r') as zf:
+                zf.extractall(temp_extract)
+            
+            source_core = None
+            for item in temp_extract.iterdir():
+                if item.is_dir() and item.name == "zapret_core":
+                    source_core = item
+                    break
+                elif item.is_dir() and (item / "bin" / "winws.exe").exists():
+                    source_core = item
+                    break
+            
+            if source_core and source_core.exists():
+                zapret_dir.mkdir(parents=True, exist_ok=True)
+                
+                for item in source_core.iterdir():
+                    dest = zapret_dir / item.name
+                    if item.is_dir():
+                        if dest.exists():
+                            shutil.rmtree(dest)
+                        shutil.copytree(item, dest)
+                    else:
+                        shutil.copy2(item, dest)
+            
+            if temp_extract.exists():
+                shutil.rmtree(temp_extract, ignore_errors=True)
+            if temp_zip.exists():
+                temp_zip.unlink()
+            return True
+            
+        except Exception:
+            return False
+        finally:
+            if temp_zip and temp_zip.exists():
+                try:
+                    temp_zip.unlink()
+                except:
+                    pass
+
+    def _remove_readonly_dir(self, path):
+        if not path.exists():
+            return
+        
+        for root, dirs, files in os.walk(path):
+            for file in files:
+                file_path = Path(root) / file
+                try:
+                    os.chmod(file_path, 0o666)
+                except:
+                    pass
+            for dir_name in dirs:
+                dir_path = Path(root) / dir_name
+                try:
+                    os.chmod(dir_path, 0o666)
+                except:
+                    pass
+        
+        shutil.rmtree(path, ignore_errors=True)
 
     def _download_and_update(self):
-        was_admin = self.is_admin()
-        
         def update_worker():
             temp_exe = None
             temp_zip = None
@@ -386,24 +463,30 @@ class SplashWindow:
                 temp_zip = current_exe.parent / "_internal_temp.zip"
                 
                 self.after(0, lambda: self.update_status(tr('splash_downloading_exe'), 0))
-                exe_success = self._download_with_progress(self.exe_url, temp_exe, 0, 40)
+                exe_success = self._download_with_progress(self.exe_url, temp_exe, 0, 30)
                 
-                if not exe_success or not temp_exe.exists() or temp_exe.stat().st_size == 0:
+                if not exe_success:
                     raise Exception("Failed to download exe file")
                 
-                self.after(0, lambda: self.update_status(tr('splash_downloading_zip'), 40))
-                zip_success = self._download_with_progress(self.zip_url, temp_zip, 40, 70)
+                self.after(0, lambda: self.update_status(tr('splash_downloading_zip'), 30))
+                zip_success = self._download_with_progress(self.zip_url, temp_zip, 30, 60)
                 
-                if not zip_success or not temp_zip.exists() or temp_zip.stat().st_size == 0:
+                if not zip_success:
                     raise Exception("Failed to download zip file")
                 
-                self.after(0, lambda: self.update_status(tr('splash_extracting_files'), 70))
-                extract_success = self._extract_zip_with_progress(temp_zip, self.appdata_path, 70, 95)
+                self.after(0, lambda: self.update_status(tr('splash_extracting_files'), 60))
+                extract_success = self._extract_zip_with_progress(temp_zip, self.appdata_path, 60, 80)
                 
                 if not extract_success:
                     raise Exception("Failed to extract zip file")
                 
-                self.after(0, lambda: self.update_status(tr('splash_install_update'), 95))
+                self.after(0, lambda: self.update_status(tr('splash_downloading_zapret'), 80))
+                zapret_success = self._download_zapret_core()
+                
+                if not zapret_success:
+                    print("Warning: Failed to download zapret_core")
+                
+                self.after(0, lambda: self.update_status(tr('splash_install_update'), 90))
                 self._stop_zapret_processes()
                 
                 old_exe = current_exe.with_suffix(".exe.old")
@@ -416,16 +499,15 @@ class SplashWindow:
                 if temp_zip.exists():
                     temp_zip.unlink()
                 
+                subprocess.Popen(
+                    [str(current_exe), '--no-splash', '--from-splash'],
+                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW
+                )
+                
                 self.after(0, lambda: self.update_status(tr('splash_starting_exe'), 100))
-                
-                if was_admin:
-                    subprocess.Popen([str(current_exe)])
-                else:
-                    subprocess.Popen([str(current_exe)])
-                
                 self.after(500, self.close)
                 sys.exit(0)
-                
+                                
             except Exception:
                 self.after(0, lambda: self.update_status(tr('splash_update_error'), 100))
                 self.after(2000, self._launch_main_app)
@@ -492,9 +574,17 @@ class SplashWindow:
     def _launch_main_app(self):
         if self._is_closing:
             return
+        
+        zapret_dir = self.appdata_path / "zapret_core"
+        if not zapret_dir.exists() or not (zapret_dir / "bin" / "winws.exe").exists():
+            self.update_status(tr('splash_downloading_zapret'), 50)
+            self._download_zapret_core()
+        
         self.update_status(tr('splash_starting_exe'), 100)
         time.sleep(0.5)
         self.close()
+
+        time.sleep(0.5)
         
         try:
             if getattr(sys, 'frozen', False):
