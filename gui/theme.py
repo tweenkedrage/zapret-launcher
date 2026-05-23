@@ -1,6 +1,6 @@
-def get_theme(theme_name='Dark'):
+def get_theme(theme_name='Default'):
     themes = {
-        'Dark': {
+        'Default': {
             'accent': '#6c5579',
             'accent_hover': '#e8ccf7',
             'accent_green': '#4ade80',
@@ -20,28 +20,28 @@ def get_theme(theme_name='Dark'):
             
             'separator': '#2D2D35',
         },
-        'Light': { # prerelease
-            'accent': '#6c5579',
-            'accent_hover': '#e8ccf7',
-            'accent_green': '#10b981',
+        'Pink': {
+            'accent': "#D4438C",
+            'accent_hover': "#DD72A9",
+            'accent_green': '#4ade80',
             'accent_darkgreen': '#348f55',
             'accent_red': '#EF4444',
             
-            'bg_dark': '#F5F5F7',
-            'bg_medium': '#E8E8EC',
-            'bg_light': '#FFFFFF',
-            'bg_light_hover': '#F0F0F4',
+            'bg_dark': '#1E1B2E',
+            'bg_medium': '#2D2A3F',
+            'bg_light': '#3D3A55',
+            'bg_light_hover': '#4D4A6B',
             
-            'text_primary': '#1A1A1F',
-            'text_secondary': '#6B6B76',
+            'text_primary': '#FFFFFF',
+            'text_secondary': '#A1A1C2',
             
-            'button_bg': '#E0E0E6',
-            'button_hover': '#D0D0D8',
+            'button_bg': '#4D4A6B',
+            'button_hover': '#5D5A7B',
             
-            'separator': '#D0D0D8',
+            'separator': '#3D3A55',
         }
     }
-    return themes.get(theme_name, themes['Dark'])
+    return themes.get(theme_name, themes['Default'])
 
 def get_theme_names():
-    return ['Dark', 'Light']
+    return ['Default', 'Pink']
