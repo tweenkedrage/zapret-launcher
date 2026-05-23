@@ -57,7 +57,7 @@ class RoundedButton(tk.Canvas):
     def __init__(self, parent, text, command, width=200, height=40, 
                 bg='#2D2D35', fg='#FFFFFF',
                 font=("Inter", 11, "bold"), 
-                corner_radius=8, hover_color='#6c5579',
+                corner_radius=8, hover_color="#855f9b",
                 animation_steps=5):
         super().__init__(parent, width=width, height=height, 
                         highlightthickness=0, 
