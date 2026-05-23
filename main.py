@@ -6,12 +6,12 @@ from gui.page.lists_page import check_zapret_folder
 from gui.tray import ModernSystemTray
 from utils.languages import tr, get_languages
 from typing import List, Optional
-from gui.theme import get_theme
+from gui.theme import get_theme, get_theme_names
 from datetime import datetime
 from gui.splash import SplashWindow
-from tg_proxy import run_proxy, run
 from gui.widgets import RoundedButton
 try:
+    from tg_proxy import run_proxy, run
     TG_PROXY_AVAILABLE = True
 except ImportError:
     TG_PROXY_AVAILABLE = False
@@ -66,6 +66,8 @@ class StatsMonitor:
         self.is_monitoring = False
         self._monitor_thread = None
         self._cache_duration = 1.0
+        self._cached_stats = (0, 0)
+        self._cached_time = 0
         self._stop_event = None
         self.last_up = 0
         self.last_down = 0
@@ -90,33 +92,18 @@ class StatsMonitor:
         
     def _get_network_stats(self):
         current_time = time.time()
-        if hasattr(self, '_cached_stats') and current_time - self._cached_time < self._cache_duration:
-            return self._cached_stats
+        if hasattr(self, '_cached_stats') and hasattr(self, '_cached_time'):
+            if current_time - self._cached_time < self._cache_duration:
+                return self._cached_stats
         
         try:
-            result = subprocess.run(
-                ['netstat', '-e'],
-                capture_output=True, text=True, encoding='cp866',
-                creationflags=subprocess.CREATE_NO_WINDOW,
-                timeout=2
-            )
-            lines = result.stdout.split('\n')
-            for line in lines:
-                if 'Байт' in line or 'Bytes' in line:
-                    parts = line.split()
-                    if len(parts) >= 3:
-                        try:
-                            recv_str = parts[1].replace(',', '').replace(' ', '')
-                            sent_str = parts[2].replace(',', '').replace(' ', '')
-                            recv = int(recv_str)
-                            sent = int(sent_str)
-                            self._cached_stats = (recv, sent)
-                            self._cached_time = current_time
-                            return recv, sent
-                        except (ValueError, IndexError):
-                            pass
-            return 0, 0
-        except:
+            counters = psutil.net_io_counters()
+            recv = counters.bytes_recv
+            sent = counters.bytes_sent
+            self._cached_stats = (recv, sent)
+            self._cached_time = current_time
+            return recv, sent
+        except Exception:
             return 0, 0
     
     def update_speed(self):
@@ -519,6 +506,7 @@ class ZapretLauncher:
 
         self.mode_label = None
         self.connect_btn = None
+        self._connecting = False
         self.main_status = None
         self.stats_frame = None
         self.stats_time_label = None
@@ -602,7 +590,7 @@ class ZapretLauncher:
                     except:
                         continue
         except Exception:
-                    pass
+            pass
         
         self.window_width = 1200
         self.window_height = 800
@@ -647,7 +635,7 @@ class ZapretLauncher:
         
         self.ensure_appdata_dir()
         self.languages = get_languages()
-        self.current_theme = 'Dark'
+        self.current_theme = 'Default'
         self.load_settings()
         self.apply_theme()
 
@@ -774,6 +762,7 @@ class ZapretLauncher:
         self.root.configure(bg=self.colors['bg_dark'])
         self.setup_scrollbar_style()
         self.update_ui_colors()
+        self._update_window_title_color()
         
         if hasattr(self, 'pages') and self.pages:
             self.pages.colors = self.colors
@@ -792,6 +781,31 @@ class ZapretLauncher:
 
         if hasattr(self, 'pages'):
             self.pages.update_animation_color()
+
+    def set_dialog_header_color(self, dialog):
+        try:
+            header_color = self.colors['bg_medium'] if hasattr(self, 'colors') else "#1A1A1F"
+            pywinstyles.change_header_color(dialog, header_color)
+        except ImportError:
+            pass
+        except Exception:
+            pass
+
+    def _update_window_title_color(self):
+        try:
+            if self.current_theme == 'Default':
+                header_color = "#0F0F12"
+            elif self.current_theme == 'Pink':
+                header_color = "#1E1B2E"
+            else:
+                header_color = self.colors['bg_dark']
+            
+            pywinstyles.change_header_color(self.root, header_color)
+            
+        except ImportError:
+            pass
+        except Exception:
+            pass
 
     def _stop_windivert_before_restart(self):
         try:
@@ -934,15 +948,9 @@ class ZapretLauncher:
             )
 
             btn._command = command
-
-            if self.current_theme == 'light':
-                btn.hover_color = self.colors['accent']
-                btn.normal_color = self.colors['bg_light']
-                btn.update_colors(self.colors['bg_light'], self.colors['text_secondary'], self.colors['accent'])
-            else:
-                btn.hover_color = self.colors['accent']
-                btn.normal_color = self.colors['bg_light']
-                btn.update_colors(self.colors['bg_light'], self.colors['text_secondary'], self.colors['accent'])
+            btn.hover_color = self.colors['accent']
+            btn.normal_color = self.colors['bg_light']
+            btn.update_colors(self.colors['bg_light'], self.colors['text_secondary'], self.colors['accent'])
             btn.pack()
             
             btn.bind("<Enter>", lambda e: btn.config(cursor="hand2"))
@@ -1049,7 +1057,6 @@ class ZapretLauncher:
                 self.root.after(0, self.show_update_label)
             else:
                 self.root.after(0, self.hide_update_label)
-                
         except Exception:
             self.root.after(0, self.hide_update_label)
 
@@ -1085,7 +1092,7 @@ class ZapretLauncher:
         dialog.grab_set()
         dialog.focus_force()
 
-        pywinstyles.change_header_color(dialog, "#1A1A1F")
+        self.set_dialog_header_color(dialog)
         
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 250
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 275
@@ -1275,12 +1282,12 @@ class ZapretLauncher:
             text=tr('mode_select_button'),
             command=on_select_click,
             width=100, height=35,
-            bg=self.colors['accent'],
+            bg=self.colors['button_bg'],
             font=("Segoe UI Variable", 10),
             corner_radius=8
         )
         select_btn[0].normal_color = self.colors['accent']
-        select_btn[0].hover_color = self.colors['button_hover']
+        select_btn[0].hover_color = self.colors['accent']
         select_btn[0].set_enabled(True)
         select_btn[0].config(cursor="hand2")
         select_btn[0].pack(side=tk.RIGHT, padx=(10, 0))
@@ -1448,7 +1455,7 @@ class ZapretLauncher:
         dialog.grab_set()
         dialog.focus_force()
 
-        pywinstyles.change_header_color(dialog, "#1A1A1F")
+        self.set_dialog_header_color(dialog)
         
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 275
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 275
@@ -1714,8 +1721,9 @@ class ZapretLauncher:
     def measure_rtt(self) -> float:
         current_time = time.time()
 
-        if self._cached_rtt > 0 and (current_time - self._cached_rtt_time) < self.rtt_cache_duration:
-            return self._cached_rtt
+        if hasattr(self, '_cached_rtt_time') and self._cached_rtt > 0:
+            if (current_time - self._cached_rtt_time) < self.rtt_cache_duration:
+                return self._cached_rtt
 
         try:
             result = subprocess.run(
@@ -2078,12 +2086,9 @@ class ZapretLauncher:
                     
                 if self.is_connected:
                     self.connect_btn.set_text(tr('button_disconnect'))
-                    if self.current_theme == 'light':
-                        self.connect_btn.normal_color = '#9CA3AF'
-                        self.connect_btn.update_colors('#9CA3AF', '#FFFFFF', '#6B7280')
-                    else:
-                        self.connect_btn.normal_color = '#3D3D45'
-                        self.connect_btn.update_colors('#3D3D45', '#FFFFFF', self.colors['accent'])
+                    self.connect_btn.normal_color = '#3D3D45'
+                    self.connect_btn.hover_color = self.colors['accent']
+                    self.connect_btn.update_colors('#3D3D45', '#FFFFFF', self.colors['accent'])
                 else:
                     self.connect_btn.set_text(tr('button_connect'))
                     self.connect_btn.normal_color = self.colors['accent']
@@ -2099,10 +2104,17 @@ class ZapretLauncher:
                 pass
 
     def toggle_connection(self):
+        if self._connecting:
+            return
+        
         if self.is_connected:
             self.disconnect()
         else:
-            self.show_mode_selector()
+            self._connecting = True
+            try:
+                self.show_mode_selector()
+            finally:
+                self.root.after(500, lambda: setattr(self, '_connecting', False))
         self.root.after(500, self.update_tray_icon_state)
 
     def connect(self):
@@ -2112,7 +2124,6 @@ class ZapretLauncher:
             return
         
         self._reset_traffic_history()
-
         self.update_status(tr('status_starting'), self.colors['accent'])
         self.connect_btn.set_enabled(False)
         self.root.update()
@@ -2321,7 +2332,6 @@ class ZapretLauncher:
                     creationflags=subprocess.CREATE_NO_WINDOW,
                     timeout=10
                 )
-                
                 time.sleep(2)
                 
                 verify = subprocess.run(
@@ -2361,6 +2371,12 @@ class ZapretLauncher:
                     self._tg_instruction = data.get('tg_instruction', False)
                     self._tg_secret = data.get('tg_secret', None)
 
+                    saved_theme = data.get('theme', 'Default')
+                    if saved_theme in get_theme_names():
+                        self.current_theme = saved_theme
+                    else:
+                        self.current_theme = 'Default'
+
                     if not self._tg_secret:
                         self._tg_secret = os.urandom(16).hex()
                         self.save_settings()
@@ -2368,6 +2384,7 @@ class ZapretLauncher:
         except Exception:
             self.log_event("info", "New secret key has been generated (first run)")
             self._tg_secret = os.urandom(16).hex()
+            self.current_theme = 'Default'
 
     def save_settings(self):
         try:
@@ -2378,6 +2395,7 @@ class ZapretLauncher:
                 'tg_instruction': getattr(self, '_tg_instruction', False),
                 'language': self.languages.get_current_language(),
                 'tg_secret': getattr(self, '_tg_secret', None),
+                'theme': self.current_theme,
             }
             with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
                 json.dump(settings, f, indent=2, ensure_ascii=False)
@@ -3269,10 +3287,16 @@ class ZapretLauncher:
         dialog.geometry("600x480")
         dialog.resizable(False, False)
         dialog.configure(bg=self.colors['bg_medium'])
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.focus_force()
         
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 300
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 240
         dialog.geometry(f"+{x}+{y}")
+
+        dialog.update_idletasks()
+        self.set_dialog_header_color(dialog)
         
         title_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
         title_frame.pack(fill=tk.X, pady=(15, 5))
@@ -3429,10 +3453,6 @@ class ZapretLauncher:
             corner_radius=8
         )
         close_btn.pack(side=tk.RIGHT)
-        
-        dialog.transient(self.root)
-        dialog.grab_set()
-        dialog.focus_force()
 
     def show_github_instruction(self):
         dialog = tk.Toplevel(self.root)
@@ -3440,10 +3460,16 @@ class ZapretLauncher:
         dialog.geometry("700x500")
         dialog.resizable(False, False)
         dialog.configure(bg=self.colors['bg_medium'])
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.focus_force()
         
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 300
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 200
         dialog.geometry(f"+{x}+{y}")
+
+        dialog.update_idletasks()
+        self.set_dialog_header_color(dialog)
         
         title_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
         title_frame.pack(fill=tk.X, pady=(15, 5))
@@ -3616,10 +3642,6 @@ github.community"""
             corner_radius=8
         )
         close_btn.pack(side=tk.RIGHT)
-        
-        dialog.transient(self.root)
-        dialog.grab_set()
-        dialog.focus_force()
 
     def show_tg_proxy_instruction(self):
         dialog = tk.Toplevel(self.root)
@@ -3627,6 +3649,9 @@ github.community"""
         dialog.geometry("500x520")
         dialog.resizable(False, False)
         dialog.configure(bg=self.colors['bg_medium'])
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.focus_force()
 
         secret = getattr(self, '_tg_secret', None)
         if not secret:
@@ -3635,6 +3660,9 @@ github.community"""
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 250
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 310
         dialog.geometry(f"+{x}+{y}")
+        
+        dialog.update_idletasks()
+        self.set_dialog_header_color(dialog)
         
         title_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
         title_frame.pack(fill=tk.X, pady=(20, 5))
@@ -3768,10 +3796,6 @@ github.community"""
             corner_radius=8
         )
         close_btn.pack(side=tk.RIGHT)
-        
-        dialog.transient(self.root)
-        dialog.grab_set()
-        dialog.focus_force()
 
     def _start_tg_proxy_mode(self, dialog, dont_show=False):
         if dialog:
@@ -3881,7 +3905,7 @@ github.community"""
             interval = 5000
             self._first_check_done = True
         else:
-            interval = 30 * 60 * 1000
+            interval = 60 * 60 * 1000
         
         self.update_check_timer_id = self.root.after(interval, self._do_update_check)
 
@@ -3946,7 +3970,6 @@ if __name__ == "__main__":
     else:
         root = tk.Tk()
         app = ZapretLauncher(root)
-        pywinstyles.change_header_color(root, "#0F0F12")
         root.mainloop()
         
         if mutex:
