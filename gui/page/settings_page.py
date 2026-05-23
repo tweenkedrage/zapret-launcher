@@ -11,6 +11,7 @@ import urllib.request
 from config import APPDATA_DIR, ZAPRET_CORE_URL
 from pathlib import Path
 from tkinter import ttk, messagebox
+from gui.theme import get_theme_names
 from gui.widgets import RoundedButton
 from utils.languages import tr
 
@@ -21,7 +22,6 @@ class SettingsPage:
         self.font_primary = app.font_primary
         self.font_medium = app.font_medium
         self.font_bold = app.font_bold
-        
         self.frame = tk.Frame(parent, bg=self.colors['bg_dark'])
         
         title_label = tk.Label(
@@ -59,6 +59,44 @@ class SettingsPage:
             (tr('settings_interval_60'), self._set_update_interval_60),
             (tr('settings_interval_off'), self._set_update_interval_none),
         ])
+
+        theme_card = tk.Frame(left_column, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
+        theme_card.pack(fill=tk.X, pady=6)
+        theme_inner = tk.Frame(theme_card, bg=self.colors['bg_light'])
+        theme_inner.pack(fill=tk.X, padx=10, pady=8)
+        
+        tk.Label(theme_inner, text=tr('settings_theme'), font=("Inter", 12, "bold"),
+                fg=self.colors['accent'], bg=self.colors['bg_light']).pack(anchor='w', pady=(0, 5))
+        
+        theme_names = get_theme_names()
+        
+        theme_var = tk.StringVar(value=self.app.current_theme)
+        theme_combo = ttk.Combobox(theme_inner, textvariable=theme_var, 
+                                   values=theme_names,
+                                   state='readonly', width=15)
+        theme_combo.pack(anchor='w', pady=5)
+        
+        def on_theme_change(event=None):
+            new_theme = theme_var.get()
+            current_theme = self.app.current_theme
+            
+            if new_theme != current_theme:
+                restart_msg = tr('restart_manual_message')
+                restart_title = tr('restart_manual_title')
+                self.app.log_event("info", f"Theme changed: {current_theme} -> {new_theme}")
+                self.app.current_theme = new_theme
+                self.app.save_settings()
+                
+                result = messagebox.showwarning(
+                    restart_title,
+                    restart_msg + "\n\n",
+                    type=messagebox.OKCANCEL
+                )
+                
+                if result == 'ok':
+                    self.app.root.after(1000, self._restart_launcher)
+        
+        theme_combo.bind("<<ComboboxSelected>>", on_theme_change)
         
         lang_card = tk.Frame(left_column, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
         lang_card.pack(fill=tk.X, pady=6)
@@ -80,7 +118,6 @@ class SettingsPage:
             
             if new_lang != current_lang:
                 self.app.log_event("info", f"Interface language changed: {current_lang} -> {new_lang}")
-
                 restart_msg = tr('restart_manual_message')
                 restart_title = tr('restart_manual_title')
                 
@@ -95,7 +132,6 @@ class SettingsPage:
                 
                 if result == 'ok':
                     self.app.root.after(1000, self._restart_launcher)
-        
         lang_combo.bind("<<ComboboxSelected>>", on_language_change)
         
         tg_card = tk.Frame(right_column, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
@@ -128,7 +164,8 @@ class SettingsPage:
             bg=self.colors['accent'],
             fg=self.colors['text_primary'],
             font=("Inter", 10),
-            corner_radius=8
+            corner_radius=8,
+            hover_color=self.colors['accent']
         )
         regenerate_btn.pack(anchor='w', pady=5)
 
@@ -501,14 +538,13 @@ class SettingsPage:
             
             except Exception as e:
                 self.app.root.after_idle(lambda: messagebox.showerror(
-                    "Ошибка", 
-                    f"Не удалось переустановить ядро: {str(e)}"
+                    "Error", 
+                    f"Unable to reinstall kernel: {str(e)}"
                 ))
         
         threading.Thread(target=install_thread, daemon=True).start()
 
     def _show_success_and_restart(self):
-        self.app.show_notification("Перезапуск лаунчера...", 2000)
         self.app.root.after(2500, self._restart_launcher)
 
     def _restart_launcher(self):
@@ -545,14 +581,14 @@ class SettingsPage:
     
     def _get_current_interval_text(self):
         intervals = {
-            0: tr('settings_interval_fast_text'),
-            5: "5 seconds",
-            10: "10 seconds",
-            30: "30 seconds",
-            60: "60 seconds",
+            1: tr('settings_interval_fast_text'),
+            5: tr('settings_interval_5'),
+            10: tr('settings_interval_10'),
+            30: tr('settings_interval_30'),
+            60: tr('settings_interval_60'),
             None: tr('settings_interval_off_text')
         }
-        return intervals.get(self.app.update_interval, "10 seconds")
+        return intervals.get(self.app.update_interval, tr('settings_interval_10'))
     
     def _create_settings_card(self, parent, title, options):
         card = tk.Frame(parent, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
@@ -603,7 +639,7 @@ class SettingsPage:
         if self.app.update_interval_index == 0:
             return
         self.app.update_interval_index = 0
-        self.app.update_interval = self.app.update_intervals[0]
+        self.app.update_interval = 1
         self._update_interval_ui()
         self.app.save_settings()
         self.app.stop_stats_monitoring()
