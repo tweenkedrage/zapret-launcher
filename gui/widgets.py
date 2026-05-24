@@ -57,11 +57,20 @@ class RoundedButton(tk.Canvas):
     def __init__(self, parent, text, command, width=200, height=40, 
                 bg='#2D2D35', fg='#FFFFFF',
                 font=("Inter", 11, "bold"), 
-                corner_radius=8, hover_color="#855f9b",
-                animation_steps=5):
+                corner_radius=8, hover_color=None,
+                animation_steps=5, theme_name='Default'):
         super().__init__(parent, width=width, height=height, 
                         highlightthickness=0, 
                         bg=_get_parent_bg(parent), cursor="hand2")
+        
+        if hover_color is None:
+            if theme_name == 'Pink':
+                hover_color = '#DD72A9'
+            #elif theme_name == 'Light':
+            #    hover_color = '#8b6b9e'
+            else:
+                hover_color = '#6c5579'
+
         self._command = command
         self.command = command
         self.bg = bg
@@ -74,6 +83,7 @@ class RoundedButton(tk.Canvas):
         self._text = text
         self.animation_steps = animation_steps
         self._animation_id = None
+        self.theme_name = theme_name
         
         self.original_width = width
         self.original_height = height
@@ -203,3 +213,11 @@ class RoundedButton(tk.Canvas):
         self.hover_color = hover_color
         self.itemconfig(self.rect, fill=bg_color)
         self.itemconfig(self.text_id, fill='#FFFFFF')
+
+    def update_theme(self, theme_name):
+        self.theme_name = theme_name
+        
+        if theme_name == 'Pink':
+            self.hover_color = '#DD72A9'
+        else:
+            self.hover_color = '#6c5579'
