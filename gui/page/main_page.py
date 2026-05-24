@@ -112,8 +112,9 @@ class MainPage:
         button_frame.pack(fill=tk.X, padx=30, pady=20)
         
         self.app.connect_btn = RoundedButton(button_frame, text=tr('button_connect'), command=self.app.toggle_connection,
-                                    width=350, height=60, bg='#6c5579', 
-                                    font=("Inter", 18, "bold"), corner_radius=15)
+                                    width=350, height=60, bg=self.colors['accent'], 
+                                    font=("Inter", 18, "bold"), corner_radius=15,
+                                    theme_name=self.app.current_theme)
         self.app.connect_btn.hover_color = '#3D3D45'
         self.app.connect_btn.pack()
 
