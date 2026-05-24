@@ -559,6 +559,50 @@ class SettingsPage:
         self.app.root.after(2500, self._restart_launcher)
 
     def _restart_launcher(self):
+        try:
+            winws_running = False
+            for proc in psutil.process_iter(['name']):
+                try:
+                    if proc.info['name'] and proc.info['name'].lower() == 'winws.exe':
+                        winws_running = True
+                        break
+                except:
+                    pass
+            
+            tg_running = False
+            if hasattr(self.app, 'tg_proxy') and self.app.tg_proxy:
+                tg_running = self.app.tg_proxy.is_running
+            
+            if winws_running or tg_running or self.app.is_connected:
+                if hasattr(self.app, 'zapret') and self.app.zapret:
+                    self.app.zapret.stop_current_strategy()
+                
+                if tg_running and hasattr(self.app, 'tg_proxy'):
+                    self.app.tg_proxy.stop()
+                
+                try:
+                    subprocess.run(['sc', 'stop', 'WinDivert'], 
+                                capture_output=True, 
+                                creationflags=subprocess.CREATE_NO_WINDOW)
+                except:
+                    pass
+                
+                time.sleep(1)
+                
+                self.app.is_connected = False
+                self.app.current_strategy = None
+                
+                if hasattr(self.app, 'mode_label') and self.app.mode_label:
+                    self.app.mode_label.config(text=tr('mode_not_selected'), 
+                                            fg=self.app.colors['text_secondary'])
+                if hasattr(self.app, 'connect_btn') and self.app.connect_btn:
+                    self.app.connect_btn.set_text(tr('button_connect'))
+        
+        except Exception:
+            pass
+        
+        self.app.save_settings()
+        
         if getattr(sys, 'frozen', False):
             exe_path = sys.executable
         else:
