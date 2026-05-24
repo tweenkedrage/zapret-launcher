@@ -655,5 +655,3 @@ class SplashWindow:
             self.window.destroy()
         except:
             pass
-        finally:
-            sys.exit(0)
