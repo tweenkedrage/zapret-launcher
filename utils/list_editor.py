@@ -86,7 +86,7 @@ class ListEditor:
             button_style = {
                 'bg': app.colors['accent'],
                 'fg': app.colors['text_primary'],
-                'activebackground': app.colors['button_hover'],
+                'activebackground': app.colors['accent'],
                 'activeforeground': app.colors['text_primary'],
                 'relief': tk.FLAT,
                 'bd': 0,
@@ -115,7 +115,7 @@ class ListEditor:
         self.buttons = [self.save_btn, self.cancel_btn]
         
         if app:
-            self.save_btn.bind("<Enter>", lambda e: self.save_btn.configure(bg=app.colors['button_hover']))
+            self.save_btn.bind("<Enter>", lambda e: self.save_btn.configure(bg=app.colors['accent']))
             self.save_btn.bind("<Leave>", lambda e: self.save_btn.configure(bg=app.colors['accent']))
             self.cancel_btn.bind("<Enter>", lambda e: self.cancel_btn.configure(bg=app.colors['accent']))
             self.cancel_btn.bind("<Leave>", lambda e: self.cancel_btn.configure(bg=app.colors['button_bg']))
