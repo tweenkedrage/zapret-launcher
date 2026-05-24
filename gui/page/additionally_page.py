@@ -52,14 +52,15 @@ class AdditionallyPage:
         hosts_title.bind("<Button-1>", on_click_tgweb)
         
         hosts_desc = tk.Label(hosts_inner, text=tr('hosts_desc_on_page'), font=("Inter", 10),
-                              fg=self.colors['text_secondary'], bg=self.colors['bg_medium'],
-                              wraplength=800, justify=tk.LEFT)
+                                fg=self.colors['text_secondary'], bg=self.colors['bg_medium'],
+                                wraplength=800, justify=tk.LEFT)
         hosts_desc.pack(anchor='w', pady=(5, 10))
         
         hosts_btn = RoundedButton(hosts_inner, text=tr('hosts_button_unblock'),
-                                  command=self.app.show_hosts_instruction,
-                                  width=120, height=35, bg=self.colors['accent'],
-                                  fg=self.colors['text_primary'], font=("Inter", 10), corner_radius=8)
+                                command=self.app.show_hosts_instruction,
+                                width=120, height=35, bg=self.colors['accent'],
+                                fg=self.colors['text_primary'], font=("Inter", 10), corner_radius=8, 
+                                hover_color=self.colors['accent'], theme_name=self.app.current_theme)
         hosts_btn.pack(side=tk.LEFT)
         
         soundcloud_card = tk.Frame(self.frame, bg=self.colors['bg_medium'], relief=tk.FLAT, bd=0)
@@ -69,7 +70,7 @@ class AdditionallyPage:
         inner.pack(fill=tk.X, padx=20, pady=15)
         
         sc_title = tk.Label(inner, text="SoundCloud", font=("Inter", 16, "bold"),
-                            fg=self.colors['accent'], bg=self.colors['bg_medium'], cursor="hand2")
+                                fg=self.colors['accent'], bg=self.colors['bg_medium'], cursor="hand2")
         sc_title.pack(anchor='w')
         
         def on_enter(event):
@@ -103,14 +104,16 @@ class AdditionallyPage:
                 disable_btn = RoundedButton(btn_frame, text=tr('disable'),
                     command=lambda: [self.app.remove_soundcloud_unblock(), update_buttons()],
                     width=120, height=35, bg=self.colors['button_bg'],
-                    fg=self.colors['text_secondary'], font=("Inter", 10), corner_radius=8)
+                    fg=self.colors['text_secondary'], font=("Inter", 10), corner_radius=8, 
+                                hover_color=self.colors['accent'], theme_name=self.app.current_theme)
                 disable_btn.pack(side=tk.LEFT)
                 status_label.config(text=tr('enabled_additionally'), fg=self.colors['accent_green'])
             else:
                 enable_btn = RoundedButton(btn_frame, text=tr('enable'),
                     command=lambda: [self.app.add_soundcloud_unblock(), update_buttons()],
                     width=120, height=35, bg=self.colors['accent'],
-                    fg=self.colors['text_primary'], font=("Inter", 10), corner_radius=8)
+                    fg=self.colors['text_primary'], font=("Inter", 10), corner_radius=8, 
+                                hover_color=self.colors['accent'], theme_name=self.app.current_theme)
                 enable_btn.pack(side=tk.LEFT)
                 status_label.config(text=tr('disabled_additionally'), fg=self.colors['text_secondary'])
 
@@ -142,7 +145,8 @@ class AdditionallyPage:
         ghub_btn = RoundedButton(ghub_inner, text=tr('ghub_button_unblock'),
                                   command=self.app.show_github_instruction,
                                   width=120, height=35, bg=self.colors['accent'],
-                                  fg=self.colors['text_primary'], font=("Inter", 10), corner_radius=8)
+                                  fg=self.colors['text_primary'], font=("Inter", 10), corner_radius=8, 
+                                  hover_color=self.colors['accent'], theme_name=self.app.current_theme)
         ghub_btn.pack(side=tk.LEFT)
         
         meta_card = tk.Frame(self.frame, bg=self.colors['bg_medium'], relief=tk.FLAT, bd=0)
@@ -185,14 +189,16 @@ class AdditionallyPage:
                 disable_btn = RoundedButton(meta_btn_frame, text=tr('disable'),
                     command=lambda: [self.app.remove_facebook_instagram_unblock(), update_meta_buttons()],
                     width=120, height=35, bg=self.colors['button_bg'],
-                    fg=self.colors['text_secondary'], font=("Inter", 10), corner_radius=8)
+                    fg=self.colors['text_secondary'], font=("Inter", 10), corner_radius=8, hover_color=self.colors['accent'],
+                    theme_name=self.app.current_theme)
                 disable_btn.pack(side=tk.LEFT)
                 meta_status_label.config(text=tr('enabled_additionally'), fg=self.colors['accent_green'])
             else:
                 enable_btn = RoundedButton(meta_btn_frame, text=tr('enable'),
                     command=lambda: [self.app.add_facebook_instagram_unblock(), update_meta_buttons()],
                     width=120, height=35, bg=self.colors['accent'],
-                    fg=self.colors['text_primary'], font=("Inter", 10), corner_radius=8)
+                    fg=self.colors['text_primary'], font=("Inter", 10), corner_radius=8, hover_color=self.colors['accent'],
+                    theme_name=self.app.current_theme)
                 enable_btn.pack(side=tk.LEFT)
                 meta_status_label.config(text=tr('disabled_additionally'), fg=self.colors['text_secondary'])
         
