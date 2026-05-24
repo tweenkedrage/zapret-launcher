@@ -3454,7 +3454,9 @@ class ZapretLauncher:
             bg=self.colors['accent'],
             fg=self.colors['text_primary'],
             font=("Segoe UI Variable", 10),
-            corner_radius=8
+            corner_radius=8,
+            hover_color=self.colors['accent'], 
+            theme_name=self.current_theme
         )
         close_btn.pack(side=tk.RIGHT)
 
@@ -3645,7 +3647,7 @@ github.community"""
             font=("Segoe UI Variable", 10),
             corner_radius=8,
             hover_color=self.colors['accent'], 
-            theme_name=self.app.current_theme
+            theme_name=self.current_theme
         )
         close_btn.pack(side=tk.RIGHT)
 
@@ -3801,7 +3803,7 @@ github.community"""
             font=("Segoe UI Variable", 10),
             corner_radius=8,
             hover_color=self.colors['accent'], 
-            theme_name=self.app.current_theme
+            theme_name=self.current_theme
         )
         close_btn.pack(side=tk.RIGHT)
 
@@ -3971,9 +3973,29 @@ if __name__ == "__main__":
                 tr('dialog_no_connection')
             )
             sys.exit(1)
+
+    zapret_version = "0.0"
+    try:
+        version_file = APPDATA_DIR / "zapret_core" / "version.txt"
+        if version_file.exists():
+            zapret_version = version_file.read_text(encoding='utf-8').strip()
+    except Exception:
+        pass
+
+    current_theme = 'Default'
+    try:
+        if CONFIG_FILE.exists():
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                current_theme = data.get('theme', 'Default')
+    except Exception:
+        pass
     
     if '--no-splash' not in sys.argv and '--from-splash' not in sys.argv:
-        splash = SplashWindow(current_version=CURRENT_VERSION, current_build=CURRENT_BUILD)
+        splash = SplashWindow(theme=current_theme, 
+                            current_version=CURRENT_VERSION, 
+                            current_build=CURRENT_BUILD,
+                            zapret_version=zapret_version)
         splash.start()
     else:
         root = tk.Tk()
