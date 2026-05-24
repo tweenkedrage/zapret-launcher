@@ -3,6 +3,7 @@ from tkinter import ttk
 from pathlib import Path
 from PIL import Image, ImageTk
 from utils.languages import tr
+from gui.theme import get_theme
 import urllib.request
 import subprocess
 import sys
@@ -16,16 +17,10 @@ import shutil
 import os
 
 class SplashWindow:
-    def __init__(self, theme='Dark', current_version=None, current_build=None):
+    def __init__(self, theme='Default', current_version=None, current_build=None, zapret_version=None):
         self.window = tk.Tk()
-        
-        self.theme = {
-            'bg_dark': '#1E1E1E',
-            'bg_light': '#2D2D2D',
-            'accent': '#6c5579',
-            'accent_hover': '#e8ccf7',
-            'text_secondary': '#A0A0A0'
-        }
+        self.colors_name = theme
+        self.colors = get_theme(theme)
         
         if current_version is None:
             for arg in sys.argv:
@@ -41,11 +36,19 @@ class SplashWindow:
                     break
         self.current_build = current_build if current_build else "0"
 
+        if zapret_version is None:
+            for arg in sys.argv:
+                if arg.startswith('--zapret-version='):
+                    zapret_version = arg.split('=')[1]
+                    break
+        self.current_zapret_version = zapret_version if zapret_version else "0.0"
+
         self.width = 320
         self.height = 260
         self._is_closing = False
 
-        self.build_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt" # build_number.txt
+        self.zapret_version_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/zapret_version.txt"
+        self.build_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt"
         self.exe_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/Zapret%20Launcher.exe"
         self.zip_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/_internal.zip"
         self.zapret_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/zapret_core.zip"
@@ -78,7 +81,7 @@ class SplashWindow:
         
     def setup_window(self):
         self.window.overrideredirect(True)
-        self.window.configure(bg=self.theme['bg_dark'])
+        self.window.configure(bg=self.colors['bg_dark'])
         self.window.attributes('-topmost', True)
         self.window.bind("<Button-1>", self.start_move)
         self.window.bind("<B1-Motion>", self.on_move)
@@ -103,13 +106,13 @@ class SplashWindow:
         self.window.geometry(f"{self.width}x{self.height}+{x}+{y}")
         
     def setup_ui(self):
-        main_frame = tk.Frame(self.window, bg=self.theme['bg_dark'])
+        main_frame = tk.Frame(self.window, bg=self.colors['bg_dark'])
         main_frame.pack(fill=tk.BOTH, expand=True)
         
-        center_container = tk.Frame(main_frame, bg=self.theme['bg_dark'])
+        center_container = tk.Frame(main_frame, bg=self.colors['bg_dark'])
         center_container.place(relx=0.5, rely=0.45, anchor="center")
         
-        self.logo_label = tk.Label(center_container, bg=self.theme['bg_dark'])
+        self.logo_label = tk.Label(center_container, bg=self.colors['bg_dark'])
         self.logo_label.pack(pady=(0, 5))
         self.load_logo()
         
@@ -117,8 +120,8 @@ class SplashWindow:
             center_container,
             text=tr('splash_check_connecting'),
             font=("Segoe UI Variable", 10),
-            fg=self.theme['text_secondary'],
-            bg=self.theme['bg_dark']
+            fg=self.colors['text_secondary'],
+            bg=self.colors['bg_dark']
         )
         self.status_label.pack(pady=(0, 8))
         
@@ -136,29 +139,29 @@ class SplashWindow:
         style.theme_use('default')
         style.configure(
             'TProgressbar',
-            background=self.theme['accent_hover'],
-            troughcolor=self.theme['bg_light'],
+            background=self.colors['accent_hover'],
+            troughcolor=self.colors['bg_light'],
             thickness=6
         )
         
-        bottom_frame = tk.Frame(center_container, bg=self.theme['bg_dark'])
+        bottom_frame = tk.Frame(center_container, bg=self.colors['bg_dark'])
         bottom_frame.pack(fill=tk.X, pady=(15, 0))
         
         manual_label = tk.Label(
             bottom_frame,
-            text="Ошибка обновления? Ручная установка",
+            text=tr('splash_help_update'),
             font=("Segoe UI Variable", 8),
-            fg=self.theme['text_secondary'],
-            bg=self.theme['bg_dark'],
+            fg=self.colors['text_secondary'],
+            bg=self.colors['bg_dark'],
             cursor="hand2"
         )
         manual_label.pack()
         
         def on_enter_manual(event):
-            manual_label.config(fg=self.theme['accent'])
+            manual_label.config(fg=self.colors['accent'])
         
         def on_leave_manual(event):
-            manual_label.config(fg=self.theme['text_secondary'])
+            manual_label.config(fg=self.colors['text_secondary'])
         
         def on_click_manual(event):
             webbrowser.open("https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/zapret-launcher-installer.exe")
@@ -270,6 +273,47 @@ class SplashWindow:
             return latest_int > current_int
         except ValueError:
             return str(latest) > str(current)
+        
+    def get_current_zapret_version(self):
+        try:
+            version_file = self.appdata_path / "zapret_core" / "version.txt"
+            if version_file.exists():
+                version = version_file.read_text(encoding='utf-8').strip()
+                version = re.sub(r'[^\d\.a-z]', '', version.lower())
+                return version
+        except Exception:
+            pass
+        return "0.0"
+    
+    def _compare_zapret_versions(self, current, latest):
+        if not current or current == "0.0":
+            return True
+        
+        def version_to_parts(ver):
+            ver = ver.strip().lower()
+            match = re.match(r'^(\d+(?:\.\d+)*)([a-z]?)$', ver)
+            if not match:
+                return [0, 0, 0], 0
+            
+            num_part, letter = match.groups()
+            nums = [int(x) for x in num_part.split('.')]
+            while len(nums) < 3:
+                nums.append(0)
+            
+            letter_val = ord(letter) - ord('a') + 1 if letter else 0
+            
+            return nums, letter_val
+        
+        current_nums, current_letter = version_to_parts(current)
+        latest_nums, latest_letter = version_to_parts(latest)
+        
+        for i in range(3):
+            if latest_nums[i] > current_nums[i]:
+                return True
+            elif latest_nums[i] < current_nums[i]:
+                return False
+        
+        return latest_letter > current_letter
 
     def _check_for_update(self):
         self.update_status(tr('splash_check_updates'), 30)
@@ -282,12 +326,16 @@ class SplashWindow:
                 )
                 with urllib.request.urlopen(req, timeout=10) as response:
                     latest_build = response.read().decode('utf-8').strip()
+                    latest_build = re.sub(r'[^\d]', '', latest_build)
                 
-                current_build  = self.current_build
-                need_update = self._compare_builds(current_build, latest_build)
-            
-                if need_update:
+                current_build = self.current_build
+                need_launcher_update = self._compare_builds(current_build, latest_build)
+                need_zapret_update, latest_zapret = self._check_zapret_core_update()
+                
+                if need_launcher_update:
                     self.after(1000, lambda: self._start_update(latest_build))
+                elif need_zapret_update:
+                    self.after(1000, lambda: self._update_zapret_core_only(latest_zapret))
                 else:
                     self.after(0, lambda: self.update_status(tr('splash_starting_exe'), 100))
                     self.after(1500, self._launch_main_app)
@@ -297,6 +345,21 @@ class SplashWindow:
                 self.after(1500, self._launch_main_app)
         
         threading.Thread(target=check, daemon=True).start()
+
+    def _check_zapret_core_update(self):
+        try:
+            req = urllib.request.Request(
+                self.zapret_version_url,
+                headers={'User-Agent': 'Mozilla/5.0'}
+            )
+            with urllib.request.urlopen(req, timeout=10) as response:
+                latest_version = response.read().decode('utf-8').strip()
+            
+            current_version = self.get_current_zapret_version()
+            need_update = self._compare_zapret_versions(current_version, latest_version)
+            return need_update, latest_version
+        except Exception:
+            return False, None
 
     def _start_update(self, new_build):
         self.update_status(f"{tr('splash_downloading')}", 50)
@@ -402,6 +465,30 @@ class SplashWindow:
         except Exception:
             return False
         
+    def _update_zapret_core_only(self, new_version):
+        self.update_status(tr('splash_updating_zapret'), 80)
+        
+        def update_zapret_thread():
+            try:
+                self._stop_zapret_processes()
+                success = self._download_zapret_core()
+                
+                if success:
+                    version_file = self.appdata_path / "zapret_core" / "version.txt"
+                    version_file.write_text(new_version, encoding='utf-8')
+                    
+                    self.after(0, lambda: self.update_status(None, 100))
+                    self.after(1000, self._launch_main_app)
+                else:
+                    self.after(0, lambda: self.update_status(tr('splash_update_error'), 100))
+                    self.after(2000, self._launch_main_app)
+                    
+            except Exception:
+                self.after(0, lambda: self.update_status(tr('splash_update_error'), 100))
+                self.after(2000, self._launch_main_app)
+        
+        threading.Thread(target=update_zapret_thread, daemon=True).start()
+        
     def _download_zapret_core(self):
         temp_zip = None
         try:
@@ -418,6 +505,9 @@ class SplashWindow:
             self.window.after(0, lambda: self.update_status(tr('splash_extracting_zapret'), 88))
             self.window.update()
             
+            self._stop_zapret_processes()
+            time.sleep(1)
+            
             temp_extract = self.appdata_path / "zapret_core_temp_extract"
             if temp_extract.exists():
                 shutil.rmtree(temp_extract, ignore_errors=True)
@@ -431,28 +521,16 @@ class SplashWindow:
                     zf.extract(file_info, temp_extract)
                     extracted += 1
                     
-                    if total_files > 0 and extracted % 5 == 0:
-                        progress = 88 + int((extracted / total_files) * 7)
-                        progress = min(95, progress)
+                    if total_files > 0 and extracted % 10 == 0:
+                        progress = 88 + int((extracted / total_files) * 10)
+                        progress = min(98, progress)
                         self.window.after(0, lambda p=progress: self.update_status(None, p))
                         self.window.update()
             
-            source_core = None
-            for item in temp_extract.iterdir():
-                if item.is_dir() and item.name == "zapret_core":
-                    source_core = item
-                    break
-                elif item.is_dir() and (item / "bin" / "winws.exe").exists():
-                    source_core = item
-                    break
+            source_core = temp_extract / "zapret_core"
             
-            if source_core and source_core.exists():
-                zapret_dir.mkdir(parents=True, exist_ok=True)
-                all_items = list(source_core.iterdir())
-                total_items = len(all_items)
-                copied = 0
-                
-                for item in all_items:
+            if source_core.exists():
+                for item in source_core.iterdir():
                     dest = zapret_dir / item.name
                     if item.is_dir():
                         if dest.exists():
@@ -460,13 +538,6 @@ class SplashWindow:
                         shutil.copytree(item, dest)
                     else:
                         shutil.copy2(item, dest)
-                    
-                    copied += 1
-                    if total_items > 0:
-                        progress = 95 + int((copied / total_items) * 3)
-                        progress = min(98, progress)
-                        self.window.after(0, lambda p=progress: self.update_status(None, p))
-                        self.window.update()
             
             if temp_extract.exists():
                 shutil.rmtree(temp_extract, ignore_errors=True)
@@ -477,7 +548,8 @@ class SplashWindow:
             self.window.update()
             return True
             
-        except Exception:
+        except Exception as e:
+            print(f"Error in _download_zapret_core: {e}")
             return False
         finally:
             if temp_zip and temp_zip.exists():
@@ -533,14 +605,10 @@ class SplashWindow:
                 if not extract_success:
                     raise Exception("Failed to extract zip file")
                 
-                self.after(0, lambda: self.update_status(tr('splash_downloading_zapret'), 80))
-                zapret_success = self._download_zapret_core()
-                
-                if not zapret_success:
-                    print("Warning: Failed to download zapret_core")
-                
                 self.after(0, lambda: self.update_status(tr('splash_install_update'), 90))
                 self._stop_zapret_processes()
+
+                time.sleep(2)
                 
                 old_exe = current_exe.with_suffix(".exe.old")
                 if old_exe.exists():
@@ -551,6 +619,8 @@ class SplashWindow:
                 
                 if temp_zip.exists():
                     temp_zip.unlink()
+
+                time.sleep(1)
                 
                 subprocess.Popen(
                     [str(current_exe), '--no-splash', '--from-splash'],
@@ -634,10 +704,10 @@ class SplashWindow:
             self._download_zapret_core()
         
         self.update_status(tr('splash_starting_exe'), 100)
-        time.sleep(0.5)
+        time.sleep(1)
         self.close()
 
-        time.sleep(0.5)
+        time.sleep(1)
         
         try:
             if getattr(sys, 'frozen', False):
@@ -645,7 +715,10 @@ class SplashWindow:
             else:
                 exe_path = sys.argv[0]
             
-            subprocess.Popen([exe_path, '--no-splash', '--from-splash'])
+            subprocess.Popen(
+                [exe_path, '--no-splash', '--from-splash'],
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+            )
         except Exception:
             pass
     
