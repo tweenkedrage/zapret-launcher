@@ -3643,7 +3643,9 @@ github.community"""
             bg=self.colors['accent'],
             fg=self.colors['text_primary'],
             font=("Segoe UI Variable", 10),
-            corner_radius=8
+            corner_radius=8,
+            hover_color=self.colors['accent'], 
+            theme_name=self.app.current_theme
         )
         close_btn.pack(side=tk.RIGHT)
 
@@ -3797,7 +3799,9 @@ github.community"""
             bg=self.colors['accent'],
             fg=self.colors['text_primary'],
             font=("Segoe UI Variable", 10),
-            corner_radius=8
+            corner_radius=8,
+            hover_color=self.colors['accent'], 
+            theme_name=self.app.current_theme
         )
         close_btn.pack(side=tk.RIGHT)
 
