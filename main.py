@@ -750,11 +750,13 @@ class ZapretLauncher:
             for child in self.left_panel.winfo_children():
                 if isinstance(child, tk.Frame):
                     for btn in child.winfo_children():
+                        if hasattr(btn, 'update_theme'):
+                            btn.update_theme(self.current_theme)
                         if hasattr(btn, 'update_colors'):
                             btn.update_colors(
                                 self.colors['bg_light'], 
                                 self.colors['text_secondary'], 
-                                self.colors['bg_light_hover']
+                                self.colors['accent']
                             )
 
     def apply_theme(self):
@@ -944,7 +946,7 @@ class ZapretLauncher:
                 fg=self.colors['text_secondary'],
                 font=("Segoe UI Variable", 11),
                 corner_radius=10,
-                hover_color=self.colors['accent']
+                theme_name=self.current_theme
             )
 
             btn._command = command
@@ -1136,16 +1138,16 @@ class ZapretLauncher:
                 if selected_mode[0]:
                     select_btn[0].set_enabled(True)
                     select_btn[0].normal_color = self.colors['accent']
-                    select_btn[0].hover_color = self.colors['button_hover']
+                    select_btn[0].hover_color = self.colors['accent']
                     select_btn[0].update_colors(
                         self.colors['accent'],
                         self.colors['text_primary'],
-                        self.colors['button_hover']
+                        self.colors['accent']
                     )
                     select_btn[0].config(cursor="hand2")
                 else:
                     select_btn[0].set_enabled(False)
-                    select_btn[0].normal_color = self.colors['button_bg']
+                    select_btn[0].normal_color = self.colors['accent']
                     select_btn[0].hover_color = self.colors['accent']
                     select_btn[0].update_colors(
                         self.colors['button_bg'],
@@ -1282,7 +1284,7 @@ class ZapretLauncher:
             text=tr('mode_select_button'),
             command=on_select_click,
             width=100, height=35,
-            bg=self.colors['button_bg'],
+            bg=self.colors['accent'],
             font=("Segoe UI Variable", 10),
             corner_radius=8
         )
@@ -1657,12 +1659,14 @@ class ZapretLauncher:
         
         start_btn = RoundedButton(btn_frame, text=tr('button_start'), command=start_with_strategy,
                                 width=120, height=35, bg=self.colors['accent'],
-                                font=("Segoe UI Variable", 10), corner_radius=8)
+                                font=("Segoe UI Variable", 10), corner_radius=8,
+                                hover_color=self.colors['accent'], theme_name=self.current_theme)
         start_btn.pack(side=tk.LEFT, padx=5)
         
         cancel_btn = RoundedButton(btn_frame, text=tr('mode_cancel'), command=dialog.destroy,
                                 width=80, height=35, bg=self.colors['button_bg'],
-                                font=("Segoe UI Variable", 10), corner_radius=8)
+                                font=("Segoe UI Variable", 10), corner_radius=8,
+                                hover_color=self.colors['accent'], theme_name=self.current_theme)
         cancel_btn.pack(side=tk.LEFT, padx=5)
 
     def update_stats_display(self):
