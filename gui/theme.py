@@ -33,12 +33,32 @@ def get_theme(theme_name='Default'):
             'bg_light_hover': '#4D4A6B',
             
             'text_primary': '#FFFFFF',
-            'text_secondary': '#A1A1C2',
+            'text_secondary': "#B0B0C9",
             
             'button_bg': '#4D4A6B',
             'button_hover': '#5D5A7B',
             
             'separator': '#3D3A55',
+        },
+        'Light': { #pre-release
+            'accent': '#6c5579',
+            'accent_hover': '#8b6b9e',
+            'accent_green': '#10B981',
+            'accent_darkgreen': '#059669',
+            'accent_red': '#EF4444',
+            
+            'bg_dark': '#F8F9FA',
+            'bg_medium': '#F1F3F5',
+            'bg_light': '#FFFFFF',
+            'bg_light_hover': '#E9ECEF',
+            
+            'text_primary': '#212529',
+            'text_secondary': '#6C757D',
+            
+            'button_bg': '#E9ECEF',
+            'button_hover': '#DEE2E6',
+            
+            'separator': '#DEE2E6',
         }
     }
     return themes.get(theme_name, themes['Default'])
