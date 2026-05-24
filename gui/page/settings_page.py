@@ -165,7 +165,8 @@ class SettingsPage:
             fg=self.colors['text_primary'],
             font=("Inter", 10),
             corner_radius=8,
-            hover_color=self.colors['accent']
+            hover_color=self.colors['accent'],
+            theme_name=self.app.current_theme
         )
         regenerate_btn.pack(anchor='w', pady=5)
 
@@ -188,7 +189,9 @@ class SettingsPage:
             bg=self.colors['button_bg'],
             fg=self.colors['text_secondary'],
             font=("Inter", 10),
-            corner_radius=8
+            corner_radius=8,
+            hover_color=self.colors['accent'],
+            theme_name=self.app.current_theme
         )
         copy_btn.pack(anchor='w', pady=5)
 
@@ -224,7 +227,9 @@ class SettingsPage:
             bg=self.colors['button_bg'],
             fg=self.colors['text_secondary'],
             font=("Inter", 9),
-            corner_radius=6
+            corner_radius=6,
+            hover_color=self.colors['accent'],
+            theme_name=self.app.current_theme
         )
         integrity_btn.pack(side=tk.LEFT, padx=(0, 10))
 
@@ -236,7 +241,9 @@ class SettingsPage:
             bg=self.colors['button_bg'],
             fg=self.colors['text_secondary'],
             font=("Inter", 9),
-            corner_radius=6
+            corner_radius=6,
+            hover_color=self.colors['accent'],
+            theme_name=self.app.current_theme
         )
         reinstall_btn.pack(side=tk.LEFT)
 
@@ -251,7 +258,9 @@ class SettingsPage:
             bg=self.colors['button_bg'],
             fg=self.colors['text_secondary'],
             font=("Inter", 9),
-            corner_radius=6
+            corner_radius=6,
+            hover_color=self.colors['accent'],
+            theme_name=self.app.current_theme
         )
         appdata_btn.pack(side=tk.LEFT, padx=(0, 10))
 
@@ -263,7 +272,9 @@ class SettingsPage:
             bg=self.colors['button_bg'],
             fg=self.colors['text_secondary'],
             font=("Inter", 9),
-            corner_radius=6
+            corner_radius=6,
+            hover_color=self.colors['accent'],
+            theme_name=self.app.current_theme
         )
         autostart_btn.pack(side=tk.LEFT, padx=(0, 10))
 
@@ -621,7 +632,9 @@ class SettingsPage:
                                     bg=self.colors['button_bg'],
                                     fg=self.colors['text_secondary'],
                                     font=("Inter", 9),
-                                    corner_radius=6)
+                                    corner_radius=6,
+                                    hover_color=self.colors['accent'],
+                                    theme_name=self.app.current_theme)
                 btn1.pack(side=tk.LEFT, padx=(0, 6))
             
             if i + 1 < len(options):
@@ -632,7 +645,9 @@ class SettingsPage:
                                         bg=self.colors['button_bg'],
                                         fg=self.colors['text_secondary'],
                                         font=("Inter", 9),
-                                        corner_radius=6)
+                                        corner_radius=6,
+                                        hover_color=self.colors['accent'],
+                                        theme_name=self.app.current_theme)
                     btn2.pack(side=tk.LEFT, padx=(6, 0))
     
     def _set_update_interval_0(self):
