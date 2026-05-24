@@ -48,7 +48,9 @@ class LogsPage:
             bg=self.colors['button_bg'],
             fg=self.colors['text_secondary'],
             font=("Inter", 10),
-            corner_radius=8
+            corner_radius=8,
+            hover_color=self.colors['accent'], 
+            theme_name=self.app.current_theme
         )
         clear_btn.pack(side=tk.RIGHT, padx=(5, 0))
         
@@ -60,7 +62,9 @@ class LogsPage:
             bg=self.colors['button_bg'],
             fg=self.colors['text_secondary'],
             font=("Inter", 10),
-            corner_radius=8
+            corner_radius=8,
+            hover_color=self.colors['accent'], 
+            theme_name=self.app.current_theme
         )
         refresh_btn.pack(side=tk.RIGHT)
         
