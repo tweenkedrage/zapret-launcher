@@ -48,7 +48,8 @@ class ServicePage:
                 btn = RoundedButton(card, text=btn_text, 
                                 command=lambda c=cmd: self.app.run_service_command(c),
                                 width=200, height=35, bg=self.colors['button_bg'],
-                                font=self.font_primary, corner_radius=8)
+                                font=self.font_primary, corner_radius=8,
+                                hover_color=self.colors['accent'], theme_name=self.app.current_theme)
                 btn.pack(anchor='w', padx=15, pady=2)
         
         self.game_filter_btn = None
