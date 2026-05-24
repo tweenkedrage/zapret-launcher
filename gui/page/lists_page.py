@@ -79,7 +79,9 @@ class ListsPage:
             edit_btn = RoundedButton(btn_frame, text=tr('lists_edit'), 
                                     command=lambda f=filename: self.edit_list_file(f),
                                     width=100, height=35, bg=self.colors['button_bg'], 
-                                    font=("Inter", 10), corner_radius=8)
+                                    font=("Inter", 10), corner_radius=8,
+                                    hover_color=self.colors['accent'], 
+                                    theme_name=self.app.current_theme)
             edit_btn.pack()
         
         folder_frame = tk.Frame(self.frame, bg=self.colors['bg_dark'])
@@ -88,7 +90,9 @@ class ListsPage:
         open_folder_btn = RoundedButton(folder_frame, text=tr('lists_open_folder'), 
                                     command=open_lists_folder,
                                     width=300, height=40, bg=self.colors['button_bg'], 
-                                    font=("Inter", 11, "bold"), corner_radius=10)
+                                    font=("Inter", 11, "bold"), corner_radius=10,
+                                    hover_color=self.colors['accent'], 
+                                    theme_name=self.app.current_theme)
         open_folder_btn.pack()
     
     def edit_list_file(self, filename):
