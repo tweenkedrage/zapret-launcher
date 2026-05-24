@@ -6,6 +6,7 @@ from utils.languages import tr
 import urllib.request
 import subprocess
 import sys
+import webbrowser
 import threading
 import re
 import ctypes
@@ -21,7 +22,7 @@ class SplashWindow:
         self.theme = {
             'bg_dark': '#1E1E1E',
             'bg_light': '#2D2D2D',
-            'accent': '#0078D4',
+            'accent': '#6c5579',
             'accent_hover': '#e8ccf7',
             'text_secondary': '#A0A0A0'
         }
@@ -44,7 +45,7 @@ class SplashWindow:
         self.height = 260
         self._is_closing = False
 
-        self.build_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt"
+        self.build_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt" # build_number.txt
         self.exe_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/Zapret%20Launcher.exe"
         self.zip_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/_internal.zip"
         self.zapret_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/zapret_core.zip"
@@ -139,6 +140,32 @@ class SplashWindow:
             troughcolor=self.theme['bg_light'],
             thickness=6
         )
+        
+        bottom_frame = tk.Frame(center_container, bg=self.theme['bg_dark'])
+        bottom_frame.pack(fill=tk.X, pady=(15, 0))
+        
+        manual_label = tk.Label(
+            bottom_frame,
+            text="Ошибка обновления? Ручная установка",
+            font=("Segoe UI Variable", 8),
+            fg=self.theme['text_secondary'],
+            bg=self.theme['bg_dark'],
+            cursor="hand2"
+        )
+        manual_label.pack()
+        
+        def on_enter_manual(event):
+            manual_label.config(fg=self.theme['accent'])
+        
+        def on_leave_manual(event):
+            manual_label.config(fg=self.theme['text_secondary'])
+        
+        def on_click_manual(event):
+            webbrowser.open("https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/zapret-launcher-installer.exe")
+        
+        manual_label.bind("<Enter>", on_enter_manual)
+        manual_label.bind("<Leave>", on_leave_manual)
+        manual_label.bind("<Button-1>", on_click_manual)
         
     def load_logo(self):
         try:
@@ -381,13 +408,15 @@ class SplashWindow:
             zapret_dir = self.appdata_path / "zapret_core"
             temp_zip = self.appdata_path / "zapret_core_temp.zip"
             
-            self.after(0, lambda: self.update_status(tr('splash_downloading_zapret'), 0))
-            success = self._download_with_progress(self.zapret_url, temp_zip, 0, 50)
+            self.window.after(0, lambda: self.update_status(tr('splash_downloading_zapret'), 80))
+            self.window.update()
+            success = self._download_with_progress(self.zapret_url, temp_zip, 80, 88)
             
             if not success:
                 raise Exception("Failed to download zapret_core.zip")
             
-            self.after(0, lambda: self.update_status(tr('splash_extracting_zapret'), 50))
+            self.window.after(0, lambda: self.update_status(tr('splash_extracting_zapret'), 88))
+            self.window.update()
             
             temp_extract = self.appdata_path / "zapret_core_temp_extract"
             if temp_extract.exists():
@@ -395,7 +424,18 @@ class SplashWindow:
             temp_extract.mkdir(parents=True, exist_ok=True)
             
             with zipfile.ZipFile(temp_zip, 'r') as zf:
-                zf.extractall(temp_extract)
+                total_files = len(zf.namelist())
+                extracted = 0
+                
+                for file_info in zf.infolist():
+                    zf.extract(file_info, temp_extract)
+                    extracted += 1
+                    
+                    if total_files > 0 and extracted % 5 == 0:
+                        progress = 88 + int((extracted / total_files) * 7)
+                        progress = min(95, progress)
+                        self.window.after(0, lambda p=progress: self.update_status(None, p))
+                        self.window.update()
             
             source_core = None
             for item in temp_extract.iterdir():
@@ -408,8 +448,11 @@ class SplashWindow:
             
             if source_core and source_core.exists():
                 zapret_dir.mkdir(parents=True, exist_ok=True)
+                all_items = list(source_core.iterdir())
+                total_items = len(all_items)
+                copied = 0
                 
-                for item in source_core.iterdir():
+                for item in all_items:
                     dest = zapret_dir / item.name
                     if item.is_dir():
                         if dest.exists():
@@ -417,11 +460,21 @@ class SplashWindow:
                         shutil.copytree(item, dest)
                     else:
                         shutil.copy2(item, dest)
+                    
+                    copied += 1
+                    if total_items > 0:
+                        progress = 95 + int((copied / total_items) * 3)
+                        progress = min(98, progress)
+                        self.window.after(0, lambda p=progress: self.update_status(None, p))
+                        self.window.update()
             
             if temp_extract.exists():
                 shutil.rmtree(temp_extract, ignore_errors=True)
             if temp_zip.exists():
                 temp_zip.unlink()
+            
+            self.window.after(0, lambda: self.update_status(None, 98))
+            self.window.update()
             return True
             
         except Exception:
@@ -602,3 +655,5 @@ class SplashWindow:
             self.window.destroy()
         except:
             pass
+        finally:
+            sys.exit(0)
