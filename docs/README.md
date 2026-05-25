@@ -59,4 +59,3 @@
 ### Идея по улучшению/Нашли баг? — Discord (@uyolookatme)
 
 ## [MIT](https://github.com/tweenkedrage/zapret-launcher/blob/main/docs/LICENSE)
-- Credits: [Flowseal](https://github.com/Flowseal), [bol-van](https://github.com/bol-van)
