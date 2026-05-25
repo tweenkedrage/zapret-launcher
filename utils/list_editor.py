@@ -12,8 +12,13 @@ class ListEditor:
         self.title = title
         self.result = None
         self.current_button_index = -1
+        self.search_frame = None
+        self.search_var = None
+        self.search_start_pos = "1.0"
+        self.search_visible = False
+        
         self.dialog = tk.Toplevel(parent)
-        self.dialog.title(f"{tr('editor_title')} {title}")
+        self.dialog.title(f"{tr('edit_title_window')} {title}")
         self.dialog.geometry("600x500")
         self.dialog.minsize(500, 400)
         self.dialog.transient(parent)
@@ -50,6 +55,8 @@ class ListEditor:
         self.text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.text_area.config(yscrollcommand=scrollbar.set)
         scrollbar.config(command=self.text_area.yview)
+
+        self.text_area.focus_set()
         
         if app:
             self.text_area.configure(
@@ -66,6 +73,58 @@ class ListEditor:
         else:
             self.text_area.configure(relief=tk.SUNKEN)
         
+        self.search_frame = tk.Frame(main_frame)
+        if app:
+            self.search_frame.configure(bg=app.colors['bg_medium'])
+        
+        self.search_label = tk.Label(self.search_frame, text=tr('editor_find'), font=("Segoe UI", 9))
+        if app:
+            self.search_label.configure(bg=app.colors['bg_medium'], fg=app.colors['text_secondary'])
+        self.search_label.pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.search_entry = tk.Entry(self.search_frame, font=("Segoe UI", 9), width=30)
+        if app:
+            self.search_entry.configure(
+                bg=app.colors['bg_light'],
+                fg=app.colors['text_primary'],
+                insertbackground=app.colors['text_primary'],
+                relief=tk.FLAT,
+                highlightthickness=1,
+                highlightcolor=app.colors['accent']
+            )
+        self.search_entry.pack(side=tk.LEFT, padx=(0, 10))
+        self.search_entry.bind('<Return>', self.search_next)
+        
+        self.search_next_btn = tk.Button(self.search_frame, text=tr('editor_find_next'), command=self.search_next, width=10)
+        if app:
+            self.search_next_btn.configure(
+                bg=app.colors['accent'],
+                fg=app.colors['text_primary'],
+                relief=tk.FLAT,
+                cursor='hand2',
+                activebackground=app.colors['accent']
+            )
+        self.search_next_btn.pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.search_close_btn = tk.Button(self.search_frame, text=tr('editor_close'), command=self.toggle_search, width=8)
+        if app:
+            self.search_close_btn.configure(
+                bg=app.colors['button_bg'],
+                fg=app.colors['text_primary'],
+                relief=tk.FLAT,
+                cursor='hand2',
+                activebackground=app.colors['accent']
+            )
+        self.search_close_btn.pack(side=tk.LEFT)
+        
+        self.search_info = tk.Label(self.search_frame, text="", font=("Segoe UI", 8))
+        if app:
+            self.search_info.configure(bg=app.colors['bg_medium'], fg=app.colors['accent'])
+        self.search_info.pack(side=tk.LEFT, padx=(10, 0))
+        
+        self.text_area.bind('<Control-f>', self.toggle_search)
+        self.text_area.bind('<Control-F>', self.toggle_search)
+        self.text_area.bind('<Escape>', self.on_escape)
         self.text_area.bind('<Control-c>', self.copy_text)
         self.text_area.bind('<Control-C>', self.copy_text)
         self.text_area.bind('<Control-v>', self.paste_text)
@@ -74,6 +133,11 @@ class ListEditor:
         self.text_area.bind('<Control-X>', self.cut_text)
         self.text_area.bind('<Control-a>', self.select_all)
         self.text_area.bind('<Control-A>', self.select_all)
+
+        self.dialog.bind('<Escape>', lambda e: self.dialog.destroy())
+        self.text_area.bind('<Escape>', lambda e: self.dialog.destroy())
+        self.search_entry.bind('<Escape>', lambda e: self.dialog.destroy())
+        
         self.load_content()
         
         button_frame = tk.Frame(main_frame)
@@ -114,11 +178,72 @@ class ListEditor:
         self.cancel_btn.pack(side=tk.RIGHT)
         self.buttons = [self.save_btn, self.cancel_btn]
         
+        info_frame = tk.Frame(button_frame)
+        if app:
+            info_frame.configure(bg=app.colors['bg_medium'])
+        info_frame.pack(side=tk.LEFT)
+        
+        info_label = tk.Label(info_frame, text=tr('editor_tooltip'),
+                             font=("Segoe UI", 8))
+        if app:
+            info_label.configure(bg=app.colors['bg_medium'], fg=app.colors['text_secondary'])
+        info_label.pack(side=tk.LEFT, padx=10)
+        
         if app:
             self.save_btn.bind("<Enter>", lambda e: self.save_btn.configure(bg=app.colors['accent']))
             self.save_btn.bind("<Leave>", lambda e: self.save_btn.configure(bg=app.colors['accent']))
             self.cancel_btn.bind("<Enter>", lambda e: self.cancel_btn.configure(bg=app.colors['accent']))
             self.cancel_btn.bind("<Leave>", lambda e: self.cancel_btn.configure(bg=app.colors['button_bg']))
+
+    def toggle_search(self, event=None):
+        if self.search_visible:
+            self.search_frame.pack_forget()
+            self.search_visible = False
+            self.text_area.tag_remove("search", "1.0", "end")
+            self.text_area.focus()
+        else:
+            self.search_frame.pack(fill=tk.X, pady=(0, 10), before=self.text_area.master)
+            self.search_visible = True
+            self.search_entry.focus()
+            self.search_entry.select_range(0, tk.END)
+            self.text_area.tag_remove("search", "1.0", "end")
+            self.search_start_pos = self.text_area.index(tk.INSERT)
+            self.search_info.config(text="")
+
+    def on_escape(self, event=None):
+        if self.search_visible:
+            self.toggle_search()
+        return "break"
+
+    def search_next(self, event=None):
+        search_text = self.search_entry.get()
+        if not search_text:
+            self.search_info.config(text=tr('editor_enter_text'))
+            return
+        
+        self.text_area.tag_remove("search", "1.0", "end")
+        start_pos = self.search_start_pos
+        
+        pos = self.text_area.search(search_text, start_pos, "end", nocase=True)
+        
+        if not pos:
+            pos = self.text_area.search(search_text, "1.0", "end", nocase=True)
+            if not pos:
+                self.search_info.config(text=f"'{search_text}' {tr('editor_not_found')}")
+                self.search_start_pos = "1.0"
+                return
+            self.search_start_pos = self.text_area.index(f"{pos}+{len(search_text)}c")
+        else:
+            self.search_info.config(text="")
+            self.search_start_pos = self.text_area.index(f"{pos}+{len(search_text)}c")
+        
+        end_pos = self.text_area.index(f"{pos}+{len(search_text)}c")
+        self.text_area.tag_add("search", pos, end_pos)
+        self.text_area.tag_config("search", background="#A46EBD", foreground="#000000")
+        
+        self.text_area.see(pos)
+        self.text_area.mark_set(tk.INSERT, pos)
+        self.text_area.focus()
 
     def _set_dialog_header_color(self, dialog):
         try:
