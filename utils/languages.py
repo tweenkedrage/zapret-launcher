@@ -30,11 +30,11 @@ class Languages:
             'update_available': 'Доступно обновление',
             
             'service_title': 'Сервис',
-            'service_desc': 'Дополнительные сервисы и функции',
+            'service_desc': 'Zapret фильтры',
             'service_filters': 'Фильтры',
             'service_game_filter': 'Game Filter',
             'service_ipset_filter': 'IPSet Filter',
-            
+                
             'lists_title': 'Редактор',
             'lists_desc': 'Редактирование списков для обхода блокировок',
             'lists_general': 'General листы',
@@ -87,10 +87,12 @@ class Languages:
             'splash_extracting': 'Распаковка...',
             'splash_downloading_zapret': 'Загрузка zapret...',
             'splash_extracting_zapret': 'Распаковка zapret...',
+            'splash_updating_zapret': 'Обновление zapret core...',
             'splash_stopping_processes': 'Остановка процессов...',
             'splash_install_update': 'Устанавливаем обновление...',
             'splash_starting_exe': 'Запускаем лаунчер..',
             'splash_update_error': 'Ошибка обновления!',
+            'splash_help_update': 'Ошибка обновления? Ручная установка',
             'splash_check_connect_error': 'Не удалось установить сетевое соединение',
                         
             'settings_title': 'Настройки',
@@ -171,7 +173,8 @@ class Languages:
             'tg_dont_show': 'Больше не показывать',
             'tg_start': 'Запустить',
 
-            'instruction_title_window': 'Инструкция (Zapret Launcher)',
+            'instruction_title_window': 'Инструкция',
+            'edit_title_window': 'Редактирование',
 
             'hosts_instruction_title': 'Доступ к Telegram Web',
             'hosts_instruction_subtitle': 'Для использования Web версии выполните следующие шаги:',
@@ -256,6 +259,12 @@ class Languages:
             'editor_success': 'Файл успешно сохранен!',
             'editor_error_load': 'Не удалось загрузить файл',
             'editor_error_save': 'Не удалось сохранить файл',
+            'editor_find': 'Найти:',
+            'editor_find_next': 'Далее',
+            'editor_close': 'Закрыть',
+            'editor_enter_text': 'Введите текст для поиска',
+            'editor_not_found': 'не найден',
+            'editor_tooltip': 'Ctrl+F — поиск | Esc — закрыть',
             
             'menu_open': 'Открыть лаунчер',
             'menu_connect': 'Подключиться',
@@ -307,7 +316,7 @@ class Languages:
             'update_available': 'Update available',
             
             'service_title': 'Service',
-            'service_desc': 'Additional services and functions',
+            'service_desc': 'Zapret filters',
             'service_filters': 'Filters',
             'service_game_filter': 'Game Filter',
             'service_ipset_filter': 'IPSet Filter',
@@ -357,7 +366,7 @@ class Languages:
             'splash_download_update': 'Preparing for the update..',
             'splash_downloading': 'Starting to download the update..',
             'splash_downloading_percent': 'Uploaded:',
-            'splash_install_update': 'Installing the update...',
+            'splash_install_update': 'Installing update...',
             'splash_starting_exe': 'Starting..',
             'splash_downloading_exe': 'Downloading executable...',
             'splash_downloading_zip': 'Downloading files...',
@@ -365,9 +374,11 @@ class Languages:
             'splash_remove_old': 'Removing old files...',
             'splash_extracting': 'Extracting...',
             'splash_downloading_zapret': 'Downloading zapret...',
+            'splash_updating_zapret': 'Updating zapret core...',
             'splash_extracting_zapret': 'Extracting zapret...',
             'splash_stopping_processes': 'Stopping processes...',
             'splash_update_error': 'Update error!',
+            'splash_help_update': 'Update error? Manual installation',
             'splash_check_connect_error': 'Unable to establish connection network!',
             
             'settings_title': 'Settings',
@@ -447,7 +458,8 @@ class Languages:
             'tg_dont_show': 'Don\'t show again',
             'tg_start': 'Start',
 
-            'instruction_title_window': 'Instruction (Zapret Launcher)',
+            'instruction_title_window': 'Instruction',
+            'edit_title_window': 'Editing',
 
             'hosts_instruction_title': 'Unblock Telegram Web',
             'hosts_instruction_subtitle': 'To use the Web version, follow these steps:',
@@ -542,6 +554,12 @@ class Languages:
             'editor_success': 'File saved successfully!',
             'editor_error_load': 'Failed to load file',
             'editor_error_save': 'Failed to save file',
+            'editor_find': 'Find:',
+            'editor_find_next': 'Next',
+            'editor_close': 'Close',
+            'editor_enter_text': 'Enter text to search',
+            'editor_not_found': 'not found',
+            'editor_tooltip': 'Ctrl+F — search | Esc — close',
             
             'menu_open': 'Open launcher',
             'menu_connect': 'Connect',
