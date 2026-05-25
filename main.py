@@ -1043,7 +1043,7 @@ class ZapretLauncher:
 
     def check_for_updates(self):
         try:
-            buildnumber_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt"
+            buildnumber_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt" # build_number.txt
             
             req = urllib.request.Request(
                 buildnumber_url,
@@ -3901,6 +3901,8 @@ github.community"""
     def start_update_checker(self):
         self.stop_update_checker()
         self._schedule_update_check()
+        if hasattr(self, 'tray_icon') and self.tray_icon:
+            self.tray_icon.start_update_checker()
 
     def stop_update_checker(self):
         if hasattr(self, 'update_check_timer_id') and self.update_check_timer_id:
