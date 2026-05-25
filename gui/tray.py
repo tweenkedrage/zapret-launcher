@@ -1,13 +1,15 @@
 import pystray
 from PIL import Image, ImageDraw
-import time
 import ctypes
+import webbrowser
 from pathlib import Path
 from tkinter import messagebox
 import subprocess
 from utils.languages import tr
+import urllib.request
+import threading
 import re
-from config import BASE_DIR
+from config import BASE_DIR, CURRENT_BUILD
 
 class ModernSystemTray:
     def __init__(self, app):
@@ -15,6 +17,8 @@ class ModernSystemTray:
         self.icon = None
         self.current_rtt = None
         self.last_rtt_update = 0
+        self.update_available = False
+        self.update_check_timer_id = None
         self.colors = {
             'bg_dark': '#1E1E24',
             'bg_medium': '#2D2D35',
@@ -110,15 +114,43 @@ class ModernSystemTray:
             )
 
     def update_menu(self, image=None):
+        help_menu = pystray.Menu(
+            pystray.MenuItem(
+                tr('menu_help_report'),
+                lambda: webbrowser.open("https://github.com/tweenkedrage/zapret-launcher/issues"),
+                enabled=True
+            ),
+            pystray.MenuItem(
+                tr('menu_help_release'),
+                lambda: webbrowser.open("https://github.com/tweenkedrage/zapret-launcher/releases"),
+                enabled=True
+            ),
+            pystray.MenuItem(
+                tr('menu_help_readme'),
+                lambda: webbrowser.open("https://github.com/tweenkedrage/zapret-launcher/blob/main/docs/README.md"),
+                enabled=True
+            ),
+            pystray.MenuItem(
+                tr('menu_help_logs'),
+                lambda: self.open_logs(),
+                enabled=True
+            )
+        )
+        
         menu = pystray.Menu(
             pystray.MenuItem(
                 tr('menu_open'),
-                self.show_window,
+                self.show_window(),
                 default=True
             ),
+            pystray.Menu.SEPARATOR,
             pystray.MenuItem(
                 tr('menu_connect') if not self.app.is_connected else tr('menu_disconnect'),
                 self.toggle_connection
+            ),
+            pystray.MenuItem(
+                tr('menu_help'),
+                help_menu
             ),
             pystray.MenuItem(
                 tr('menu_exit'),
@@ -144,12 +176,76 @@ class ModernSystemTray:
                 menu
             )
 
+    def open_logs(self):
+        try:
+            self.show_window()
+            self.app.root.after(500, lambda: self.app.show_logs_page())
+        except Exception:
+            pass
+
     def update_tooltip(self):
         if self.icon:
             try:
                 self.icon.title = self.get_tooltip_text()
             except:
                 pass
+
+    def check_for_updates(self):
+        try:
+            buildnumber_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt" # build_number.txt
+            
+            req = urllib.request.Request(
+                buildnumber_url,
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+            )
+            
+            with urllib.request.urlopen(req, timeout=10) as response:
+                latest_build = response.read().decode('utf-8').strip()
+            
+            current_build = CURRENT_BUILD
+            
+            if self._compare_builds(current_build, latest_build):
+                if not self.update_available:
+                    self.update_available = True
+                    self.update_icon_state()
+            else:
+                if self.update_available:
+                    self.update_available = False
+                    self.update_icon_state()
+        except Exception:
+            pass
+
+    def _compare_builds(self, current, latest):
+        try:
+            current_int = int(current)
+            latest_int = int(latest)
+            return latest_int > current_int
+        except ValueError:
+            return str(latest) > str(current)
+
+    def start_update_checker(self):
+        self.stop_update_checker()
+        self._schedule_update_check()
+
+    def stop_update_checker(self):
+        if self.update_check_timer_id:
+            try:
+                self.app.root.after_cancel(self.update_check_timer_id)
+            except:
+                pass
+            self.update_check_timer_id = None
+
+    def _schedule_update_check(self):
+        if not hasattr(self, '_first_check_done'):
+            interval = 5000
+            self._first_check_done = True
+        else:
+            interval = 60 * 60 * 1000
+        self.update_check_timer_id = self.app.root.after(interval, self._do_update_check)
+
+    def _do_update_check(self):
+        threading.Thread(target=self.check_for_updates, daemon=True).start()
+        self._schedule_update_check()
 
     def update_icon_state(self):
         try:
@@ -195,23 +291,33 @@ class ModernSystemTray:
                 indicator_x = 64 - indicator_size - 4
                 indicator_y = 64 - indicator_size - 4
                 
-                if is_connected:
-                    indicator_color = self._hex_to_rgb(self.colors['accent_green'])
+                if hasattr(self, 'update_available') and self.update_available:
+                    draw.ellipse(
+                        [indicator_x, indicator_y, indicator_x + indicator_size, indicator_y + indicator_size],
+                        fill=(30, 144, 255)
+                    )
+                    draw.ellipse(
+                        [indicator_x - 1, indicator_y - 1, indicator_x + indicator_size + 1, indicator_y + indicator_size + 1],
+                        outline=(255, 255, 255, 255),
+                        width=1
+                    )
                 else:
-                    indicator_color = self._hex_to_rgb(self.colors['accent_red'])
+                    if is_connected:
+                        indicator_color = self._hex_to_rgb(self.colors['accent_green'])
+                    else:
+                        indicator_color = self._hex_to_rgb(self.colors['accent_red'])
+                    
+                    draw.ellipse(
+                        [indicator_x, indicator_y, indicator_x + indicator_size, indicator_y + indicator_size],
+                        fill=indicator_color
+                    )
+                    draw.ellipse(
+                        [indicator_x - 1, indicator_y - 1, indicator_x + indicator_size + 1, indicator_y + indicator_size + 1],
+                        outline=(255, 255, 255, 255),
+                        width=1
+                    )
                 
-                draw.ellipse(
-                    [indicator_x, indicator_y, indicator_x + indicator_size, indicator_y + indicator_size],
-                    fill=indicator_color
-                )
-                
-                draw.ellipse(
-                    [indicator_x - 1, indicator_y - 1, indicator_x + indicator_size + 1, indicator_y + indicator_size + 1],
-                    outline=(255, 255, 255, 255),
-                    width=1
-                )
                 self.icon.icon = image
-            
         except Exception:
             pass
 
@@ -249,16 +355,7 @@ class ModernSystemTray:
             self.app.root.lift()
             self.app.root.focus_force()
             self.app.root.state('normal')
-            
-            try:
-                self.app.root.attributes('-alpha', 0.0)
-                for i in range(0, 101, 10):
-                    self.app.root.attributes('-alpha', i / 100)
-                    self.app.root.update()
-                    time.sleep(0.01)
-                self.app.root.attributes('-alpha', 1.0)
-            except:
-                pass
+            self.app.root.attributes('-alpha', 1.0)
             
             try:
                 hwnd = ctypes.windll.user32.GetParent(self.app.root.winfo_id())
@@ -300,4 +397,5 @@ class ModernSystemTray:
         return None
 
     def run(self):
+        self.start_update_checker()
         self.icon.run()
