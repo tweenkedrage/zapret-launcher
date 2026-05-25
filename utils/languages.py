@@ -266,9 +266,14 @@ class Languages:
             'editor_not_found': 'не найден',
             'editor_tooltip': 'Ctrl+F — поиск | Esc — закрыть',
             
-            'menu_open': 'Открыть лаунчер',
+            'menu_open': 'Открыть',
             'menu_connect': 'Подключиться',
             'menu_disconnect': 'Отключиться',
+            'menu_help': 'Помощь',
+            'menu_help_release': 'Список изменений',
+            'menu_help_report': 'Сообщить об ошибке',
+            'menu_help_readme': 'Документация',
+            'menu_help_logs': 'Логи',
             'menu_exit': 'Выход',
             
             'button_start': 'Запустить',
@@ -561,9 +566,15 @@ class Languages:
             'editor_not_found': 'not found',
             'editor_tooltip': 'Ctrl+F — search | Esc — close',
             
-            'menu_open': 'Open launcher',
+            'menu_open': 'Open',
             'menu_connect': 'Connect',
             'menu_disconnect': 'Disconnect',
+            'menu_choose': 'Choose mode',
+            'menu_help': 'Help',
+            'menu_help_release': 'Release notes',
+            'menu_help_report': 'Report a bug',
+            'menu_help_readme': 'Documentation',
+            'menu_help_logs': 'Logs',
             'menu_exit': 'Exit',
             
             'button_start': 'Start',
