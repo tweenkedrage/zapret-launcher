@@ -467,13 +467,13 @@ class ZapretCore:
     def run_service_command(self, command: str) -> Tuple[bool, str]:
         if command == "game_filter":
             self.game_filter_enabled = not self.game_filter_enabled
-            return True, f"Game Filter: {tr('status_enabled') if self.game_filter_enabled else tr('status_disabled')}"
+            return True, f"Game Filter: {tr('status_enabled') if self.game_filter_enabled else tr('status_disabled')}\n{tr('restart_zapret')}"
             
         elif command == "ipset_filter":
             modes = ["none", "loaded", "any"]
             current_idx = modes.index(self.ipset_filter_mode)
             self.ipset_filter_mode = modes[(current_idx + 1) % 3]
-            return True, f"IPSet Filter: {self.ipset_filter_mode}"
+            return True, f"IPSet Filter: {self.ipset_filter_mode}\n{tr('restart_zapret')}"
         return False, f"{tr('error_unknown_command')} {command}"
 
 class ZapretLauncher:
