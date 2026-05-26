@@ -278,6 +278,12 @@ class SettingsPage:
         )
         autostart_btn.pack(side=tk.LEFT, padx=(0, 10))
 
+    def update_interval_display(self):
+        if hasattr(self, 'current_interval_label'):
+            self.current_interval_label.config(
+                text=f"{tr('settings_current_interval')} {self._get_current_interval_text()}"
+            )
+
     def _show_integrity_placeholder(self):
         missing_files = []
         ok_count = 0
