@@ -56,7 +56,7 @@ class ModernSystemTray:
             
             if image:
                 draw = ImageDraw.Draw(image)
-                indicator_size = 12
+                indicator_size = 16
                 indicator_x = 64 - indicator_size - 4
                 indicator_y = 64 - indicator_size - 4
                 
@@ -136,6 +136,18 @@ class ModernSystemTray:
                 enabled=True
             )
         )
+        settings_menu = pystray.Menu(
+            pystray.MenuItem(
+                f"{tr('menu_settings_interface')} ({self._get_interval_text()})",
+                self._cycle_refresh_interval,
+                enabled=True
+            ),
+            pystray.MenuItem(
+                tr('menu_settings_folder'),
+                self.app.open_appdata_folder,
+                enabled=True
+            ),
+        )
         
         menu = pystray.Menu(
             pystray.MenuItem(
@@ -147,6 +159,10 @@ class ModernSystemTray:
             pystray.MenuItem(
                 tr('menu_connect') if not self.app.is_connected else tr('menu_disconnect'),
                 self.toggle_connection
+            ),
+            pystray.MenuItem(
+                tr('menu_settings'),
+                settings_menu
             ),
             pystray.MenuItem(
                 tr('menu_help'),
@@ -175,6 +191,57 @@ class ModernSystemTray:
                 self.get_tooltip_text(),
                 menu
             )
+
+    def _get_interval_text(self):
+        interval = self.app.update_interval
+        if interval == 1:
+            return tr('settings_interval_fast_small')
+        elif interval == 5:
+            return tr('settings_interval_5_small')
+        elif interval == 10:
+            return tr('settings_interval_10_small')
+        elif interval == 30:
+            return tr('settings_interval_30_small')
+        elif interval == 60:
+            return tr('settings_interval_60_small')
+        elif interval is None:
+            return tr('settings_interval_off_small')
+        else:
+            return f"{interval} {tr('seconds')}"
+
+    def _cycle_refresh_interval(self):
+        intervals = [1, 5, 10, 30, 60, None]
+        current = self.app.update_interval
+        next_index = (intervals.index(current) + 1) % len(intervals) if current in intervals else 1
+        new_interval = intervals[next_index]
+        
+        if new_interval is None:
+            self.app.update_interval_index = 5
+            self.app.update_interval = None
+        elif new_interval == 1:
+            self.app.update_interval_index = 0
+            self.app.update_interval = 1
+        elif new_interval == 5:
+            self.app.update_interval_index = 1
+            self.app.update_interval = 5
+        elif new_interval == 10:
+            self.app.update_interval_index = 2
+            self.app.update_interval = 10
+        elif new_interval == 30:
+            self.app.update_interval_index = 3
+            self.app.update_interval = 30
+        elif new_interval == 60:
+            self.app.update_interval_index = 4
+            self.app.update_interval = 60
+        
+        self.app.save_settings()
+        self.app.stop_stats_monitoring()
+        self.app.start_stats_monitoring()
+
+        if hasattr(self.app, 'pages') and hasattr(self.app.pages, 'settings_page_obj'):
+            self.app.pages.settings_page_obj.update_interval_display()
+
+        self.update_menu()
 
     def open_logs(self):
         try:
@@ -287,7 +354,7 @@ class ModernSystemTray:
             
             if image:
                 draw = ImageDraw.Draw(image)
-                indicator_size = 12
+                indicator_size = 16
                 indicator_x = 64 - indicator_size - 4
                 indicator_y = 64 - indicator_size - 4
                 
