@@ -140,7 +140,7 @@ class ModernSystemTray:
         menu = pystray.Menu(
             pystray.MenuItem(
                 tr('menu_open'),
-                self.show_window(),
+                self.show_window,
                 default=True
             ),
             pystray.Menu.SEPARATOR,
