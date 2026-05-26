@@ -48,8 +48,8 @@ class SplashWindow:
         self._is_closing = False
 
         self.zapret_version_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/zapret_version.txt"
-        self.build_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt"
-        self.exe_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/Zapret%20Launcher.exe"
+        self.build_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt" # build_number.txt
+        self.exe_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/Zapret%20Launcher.exe" # Zapret%20Launcher.exe
         self.zip_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/_internal.zip"
         self.zapret_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/zapret_core.zip"
         
@@ -164,7 +164,7 @@ class SplashWindow:
             manual_label.config(fg=self.colors['text_secondary'])
         
         def on_click_manual(event):
-            webbrowser.open("https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/zapret-launcher-installer.exe")
+            webbrowser.open("https://sourceforge.net/projects/zapret-launcher/files/")
         
         manual_label.bind("<Enter>", on_enter_manual)
         manual_label.bind("<Leave>", on_leave_manual)
@@ -548,8 +548,7 @@ class SplashWindow:
             self.window.update()
             return True
             
-        except Exception as e:
-            print(f"Error in _download_zapret_core: {e}")
+        except Exception:
             return False
         finally:
             if temp_zip and temp_zip.exists():
@@ -582,10 +581,12 @@ class SplashWindow:
         def update_worker():
             temp_exe = None
             temp_zip = None
+            update_script = None
             try:
                 current_exe = Path(sys.executable)
                 temp_exe = current_exe.parent / f"{current_exe.stem}_new.exe"
                 temp_zip = current_exe.parent / "_internal_temp.zip"
+                update_script = current_exe.parent / "update_temp.bat"
                 
                 self.after(0, lambda: self.update_status(tr('splash_downloading_exe'), 0))
                 exe_success = self._download_with_progress(self.exe_url, temp_exe, 0, 30)
@@ -607,24 +608,29 @@ class SplashWindow:
                 
                 self.after(0, lambda: self.update_status(tr('splash_install_update'), 90))
                 self._stop_zapret_processes()
-
                 time.sleep(2)
                 
-                old_exe = current_exe.with_suffix(".exe.old")
-                if old_exe.exists():
-                    old_exe.unlink()
+                bat_content = f'''@echo off
+    copy /y "{temp_exe}" "{current_exe}" > nul
+    del /f /q "{temp_exe}" 2>nul
+    del /f /q "{temp_zip}" 2>nul
+    start "" "{current_exe}" --no-splash --from-splash
+    del /f /q "%~f0" 2>nul
+    '''
                 
-                current_exe.rename(old_exe)
-                temp_exe.rename(current_exe)
+                with open(update_script, 'w', encoding='utf-8') as f:
+                    f.write(bat_content)
                 
-                if temp_zip.exists():
-                    temp_zip.unlink()
-
-                time.sleep(1)
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags = subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
                 
                 subprocess.Popen(
-                    [str(current_exe), '--no-splash', '--from-splash'],
-                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW
+                    ['cmd.exe', '/c', str(update_script)],
+                    startupinfo=startupinfo,
+                    creationflags=subprocess.DETACHED_PROCESS,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
                 )
                 
                 self.after(0, lambda: self.update_status(tr('splash_starting_exe'), 100))
@@ -643,6 +649,11 @@ class SplashWindow:
                 if temp_zip and temp_zip.exists():
                     try:
                         temp_zip.unlink()
+                    except:
+                        pass
+                if update_script and update_script.exists():
+                    try:
+                        update_script.unlink()
                     except:
                         pass
         
@@ -706,8 +717,6 @@ class SplashWindow:
         self.update_status(tr('splash_starting_exe'), 100)
         time.sleep(1)
         self.close()
-
-        time.sleep(1)
         
         try:
             if getattr(sys, 'frozen', False):
