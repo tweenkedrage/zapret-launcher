@@ -1043,7 +1043,7 @@ class ZapretLauncher:
 
     def check_for_updates(self):
         try:
-            buildnumber_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt" # build_number.txt
+            buildnumber_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/test.txt" # build_number.txt
             
             req = urllib.request.Request(
                 buildnumber_url,
@@ -1064,23 +1064,62 @@ class ZapretLauncher:
 
     def install_update(self):
         try:
-            self.save_settings()
+            latest_version = None
+            latest_build = None
             
-            if getattr(sys, 'frozen', False):
-                exe_path = sys.executable
+            try:
+                req_version = urllib.request.Request(
+                    "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/version.txt",  # version.txt
+                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+                )
+                with urllib.request.urlopen(req_version, timeout=5) as response:
+                    latest_version = response.read().decode('utf-8').strip()
+            except Exception:
+                latest_version = "?"
+            
+            try:
+                req_build = urllib.request.Request(
+                    "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt",  # build_number.txt
+                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+                )
+                with urllib.request.urlopen(req_build, timeout=5) as response:
+                    latest_build = response.read().decode('utf-8').strip()
+            except Exception:
+                latest_build = "?"
+            
+            if latest_version != "?" and latest_build != "?":
+                version_text = f"v{latest_version} (build {latest_build})"
+            elif latest_version != "?":
+                version_text = f"v{latest_version}"
             else:
-                exe_path = sys.argv[0]
+                version_text = tr('update_available')
             
-            args = [exe_path]
-            for arg in sys.argv[1:]:
-                if arg not in ['--no-splash', '--from-splash']:
-                    args.append(arg)
+            message = f"{tr('update_available_question')}: {version_text}\n{tr('update_ask_now')}"
             
-            subprocess.Popen(args)
+            result = messagebox.askyesno(
+                tr('update_title'),
+                message
+            )
             
-            self.root.quit()
-            self.root.destroy()
-            sys.exit(0)
+            if result:
+                self.save_settings()
+                
+                if getattr(sys, 'frozen', False):
+                    exe_path = sys.executable
+                else:
+                    exe_path = sys.argv[0]
+                
+                args = [exe_path]
+                for arg in sys.argv[1:]:
+                    if arg not in ['--no-splash', '--from-splash']:
+                        args.append(arg)
+                
+                subprocess.Popen(args)
+                
+                self.root.quit()
+                self.root.destroy()
+                sys.exit(0)
+                
         except Exception:
             pass
 
