@@ -248,6 +248,7 @@ class Languages:
             'status_strategy_started': 'Запущена стратегия:',
             'status_enabled': 'включен',
             'status_disabled': 'выключен',
+            'restart_zapret': 'Перезапустите zapret',
             
             'autostart_enabled': 'Лаунчер будет запускаться после старта Windows',
             'autostart_disabled': 'Автозапуск отключен',
@@ -346,7 +347,7 @@ class Languages:
             'enabled_additionally': 'Unlocked',
             'disabled_additionally': 'Not unlocked',
             'enable': 'Enable',
-            'disable': 'Disabled',
+            'disable': 'Disable',
             
             'traffic_title': 'Traffic',
             'traffic_desc': 'Network traffic monitoring by process',
@@ -548,6 +549,7 @@ class Languages:
             'status_strategy_started': 'Strategy started:',
             'status_enabled': 'enabled',
             'status_disabled': 'disabled',
+            'restart_zapret': 'Restart the zapret',
             
             'autostart_enabled': 'Launcher will start with Windows',
             'autostart_disabled': 'Autostart disabled',
