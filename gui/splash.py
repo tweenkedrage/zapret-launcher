@@ -164,7 +164,7 @@ class SplashWindow:
             manual_label.config(fg=self.colors['text_secondary'])
         
         def on_click_manual(event):
-            webbrowser.open("https://sourceforge.net/projects/zapret-launcher/files/")
+            webbrowser.open("https://github.com/tweenkedrage/zapret-launcher/blob/main/updater/zapret-launcher-installer.exe")
         
         manual_label.bind("<Enter>", on_enter_manual)
         manual_label.bind("<Leave>", on_leave_manual)
