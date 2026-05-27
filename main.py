@@ -1043,7 +1043,7 @@ class ZapretLauncher:
 
     def check_for_updates(self):
         try:
-            buildnumber_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/test.txt" # build_number.txt
+            buildnumber_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt" # build_number.txt
             
             req = urllib.request.Request(
                 buildnumber_url,
