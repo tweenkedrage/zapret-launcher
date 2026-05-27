@@ -83,9 +83,6 @@ class SettingsPage:
             if new_theme != current_theme:
                 restart_msg = tr('restart_manual_message')
                 restart_title = tr('restart_manual_title')
-                self.app.log_event("info", f"Theme changed: {current_theme} -> {new_theme}")
-                self.app.current_theme = new_theme
-                self.app.save_settings()
                 
                 result = messagebox.showwarning(
                     restart_title,
@@ -94,8 +91,12 @@ class SettingsPage:
                 )
                 
                 if result == 'ok':
+                    self.app.log_event("info", f"Theme changed: {current_theme} -> {new_theme}")
+                    self.app.current_theme = new_theme
+                    self.app.save_settings()
                     self.app.root.after(1000, self._restart_launcher)
-        
+                else:
+                    theme_var.set(current_theme)
         theme_combo.bind("<<ComboboxSelected>>", on_theme_change)
         
         lang_card = tk.Frame(left_column, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
@@ -117,12 +118,8 @@ class SettingsPage:
             current_lang = self.app.languages.get_current_language()
             
             if new_lang != current_lang:
-                self.app.log_event("info", f"Interface language changed: {current_lang} -> {new_lang}")
                 restart_msg = tr('restart_manual_message')
                 restart_title = tr('restart_manual_title')
-                
-                self.app.languages.set_language(new_lang)
-                self.app.save_settings()
                 
                 result = messagebox.showwarning(
                     restart_title,
@@ -131,7 +128,12 @@ class SettingsPage:
                 )
                 
                 if result == 'ok':
+                    self.app.log_event("info", f"Interface language changed: {current_lang} -> {new_lang}")
+                    self.app.languages.set_language(new_lang)
+                    self.app.save_settings()
                     self.app.root.after(1000, self._restart_launcher)
+                else:
+                    lang_var.set(current_lang)
         lang_combo.bind("<<ComboboxSelected>>", on_language_change)
         
         tg_card = tk.Frame(right_column, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
