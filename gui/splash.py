@@ -4,9 +4,11 @@ from pathlib import Path
 from PIL import Image, ImageTk
 from utils.languages import tr
 from gui.theme import get_theme
+from config import BASE_DIR
 import urllib.request
 import subprocess
 import sys
+import pywinstyles
 import webbrowser
 import threading
 import re
@@ -48,13 +50,16 @@ class SplashWindow:
         self._is_closing = False
 
         self.zapret_version_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/zapret_version.txt"
-        self.build_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt" # build_number.txt
+        self.build_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt" # build_number.txt | test.txt
         self.exe_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/Zapret%20Launcher.exe" # Zapret%20Launcher.exe
         self.zip_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/_internal.zip"
         self.zapret_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/zapret_core.zip"
         
         self.appdata_path = Path(os.environ.get('APPDATA', '')) / "Zapret Launcher"
         self.internal_path = self.appdata_path / "_internal"
+
+        self._target_progress = 0
+        self._animation_id = None
 
         self.setup_window()
         self.setup_ui()
@@ -80,23 +85,56 @@ class SplashWindow:
         return None
         
     def setup_window(self):
-        self.window.overrideredirect(True)
+        self.window.overrideredirect(False)
+        self.window.title("Zapret Launcher")
         self.window.configure(bg=self.colors['bg_dark'])
         self.window.attributes('-topmost', True)
-        self.window.bind("<Button-1>", self.start_move)
-        self.window.bind("<B1-Motion>", self.on_move)
+        self.window.resizable(False, False)
+
+        try:
+            icon_paths = [
+                BASE_DIR / "resources" / "icon.ico",
+                BASE_DIR / "resources" / "icon.png",
+                Path("resources/icon.ico"),
+                Path("icon.ico"),
+            ]
+            
+            icon_loaded = False
+            for path in icon_paths:
+                if path and path.exists():
+                    try:
+                        if path.suffix.lower() == '.ico':
+                            self.window.iconbitmap(default=str(path))
+                            icon_loaded = True
+                            break
+                        elif path.suffix.lower() == '.png':
+                            icon_img = tk.PhotoImage(file=str(path))
+                            self.window.iconphoto(True, icon_img)
+                            self.icon_image = icon_img
+                            icon_loaded = True
+                            break
+                    except:
+                        continue
+        except Exception:
+            pass
+
+        self._update_window_title_color()
         self.center_window()
-        
-    def start_move(self, event):
-        self.x = event.x
-        self.y = event.y
-    
-    def on_move(self, event):
-        deltax = event.x - self.x
-        deltay = event.y - self.y
-        x = self.window.winfo_x() + deltax
-        y = self.window.winfo_y() + deltay
-        self.window.geometry(f"+{x}+{y}")
+
+    def _update_window_title_color(self):
+        try:
+            if self.colors_name == 'Default':
+                header_color = "#0F0F12"
+            elif self.colors_name == 'Pink':
+                header_color = "#1E1B2E"
+            else:
+                header_color = self.colors['bg_dark']
+            pywinstyles.change_header_color(self.window, header_color)
+            
+        except ImportError:
+            pass
+        except Exception:
+            pass
         
     def center_window(self):
         screen_width = self.window.winfo_screenwidth()
@@ -164,7 +202,7 @@ class SplashWindow:
             manual_label.config(fg=self.colors['text_secondary'])
         
         def on_click_manual(event):
-            webbrowser.open("https://sourceforge.net/projects/zapret-launcher/files/")
+            webbrowser.open("https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/zapret-launcher-installer.exe")
         
         manual_label.bind("<Enter>", on_enter_manual)
         manual_label.bind("<Leave>", on_leave_manual)
@@ -200,11 +238,43 @@ class SplashWindow:
             return
         try:
             if self.status_label and self.status_label.winfo_exists():
-                self.status_label.config(text=text)
-            if progress is not None and self.progress_bar and self.progress_bar.winfo_exists():
-                self.progress_var.set(progress)
+                if text is not None:
+                    self.status_label.config(text=text)
+            if progress is not None:
+                self._target_progress = progress
+                if self._animation_id:
+                    try:
+                        self.window.after_cancel(self._animation_id)
+                    except:
+                        pass
+                    self._animation_id = None
+                self._animate_progress()
         except:
             pass
+    
+    def _animate_progress(self):
+        if self._is_closing:
+            return
+        
+        current = self.progress_var.get()
+        target = self._target_progress
+        
+        if abs(current - target) <= 1:
+            if current != target:
+                self.progress_var.set(target)
+            return
+        
+        if current < target:
+            diff = target - current
+            step = max(1, diff // 8)
+            new_value = min(current + step, target)
+        else:
+            diff = current - target
+            step = max(1, diff // 8)
+            new_value = max(current - step, target)
+        
+        self.progress_var.set(new_value)
+        self._animation_id = self.window.after(16, self._animate_progress)
     
     def start(self):
         if not self.is_admin():
@@ -378,6 +448,8 @@ class SplashWindow:
                 
                 with open(dest_path, 'wb') as f:
                     chunk_size = 8192
+                    last_update = 0
+                    
                     while True:
                         chunk = response.read(chunk_size)
                         if not chunk:
@@ -386,17 +458,15 @@ class SplashWindow:
                         downloaded += len(chunk)
                         
                         if total_size > 0:
-                            progress_range = end_progress - start_progress
-                            progress = start_progress + int((downloaded / total_size) * progress_range)
+                            progress = start_progress + int((downloaded / total_size) * (end_progress - start_progress))
                             progress = min(end_progress, max(start_progress, progress))
                             
-                            def update_prog(p=progress):
+                            now = time.time() * 1000
+                            if now - last_update > 50:
+                                last_update = now
                                 if not self._is_closing:
-                                    try:
-                                        self.progress_var.set(p)
-                                    except:
-                                        pass
-                            self.after(0, update_prog)
+                                    self._target_progress = progress
+                                    self._animate_progress()
             return True
         except Exception:
             return False
@@ -436,6 +506,7 @@ class SplashWindow:
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 total_files = len(zip_ref.namelist())
                 extracted = 0
+                last_update = 0
                 
                 for file_info in zip_ref.infolist():
                     zip_ref.extract(file_info, self.appdata_path)
@@ -449,17 +520,14 @@ class SplashWindow:
                             pass
                     
                     if total_files > 0:
-                        progress_range = end_progress - start_progress
-                        progress = start_progress + int((extracted / total_files) * progress_range)
-                        progress = min(end_progress, max(start_progress, progress))
+                        progress = start_progress + int((extracted / total_files) * (end_progress - start_progress))
                         
-                        def update_prog(p=progress):
+                        now = time.time() * 1000
+                        if now - last_update > 30:
+                            last_update = now
                             if not self._is_closing:
-                                try:
-                                    self.progress_var.set(p)
-                                except:
-                                    pass
-                        self.after(0, update_prog)
+                                self._target_progress = progress
+                                self._animate_progress()
             
             return True
         except Exception:
@@ -495,15 +563,13 @@ class SplashWindow:
             zapret_dir = self.appdata_path / "zapret_core"
             temp_zip = self.appdata_path / "zapret_core_temp.zip"
             
-            self.window.after(0, lambda: self.update_status(tr('splash_downloading_zapret'), 80))
-            self.window.update()
+            self.update_status(tr('splash_downloading_zapret'), 80)
             success = self._download_with_progress(self.zapret_url, temp_zip, 80, 88)
             
             if not success:
                 raise Exception("Failed to download zapret_core.zip")
             
-            self.window.after(0, lambda: self.update_status(tr('splash_extracting_zapret'), 88))
-            self.window.update()
+            self.update_status(tr('splash_extracting_zapret'), 88)
             
             self._stop_zapret_processes()
             time.sleep(1)
@@ -521,11 +587,10 @@ class SplashWindow:
                     zf.extract(file_info, temp_extract)
                     extracted += 1
                     
-                    if total_files > 0 and extracted % 10 == 0:
+                    if total_files > 0:
                         progress = 88 + int((extracted / total_files) * 10)
                         progress = min(98, progress)
-                        self.window.after(0, lambda p=progress: self.update_status(None, p))
-                        self.window.update()
+                        self.update_status(None, progress)
             
             source_core = temp_extract / "zapret_core"
             
@@ -544,8 +609,7 @@ class SplashWindow:
             if temp_zip.exists():
                 temp_zip.unlink()
             
-            self.window.after(0, lambda: self.update_status(None, 98))
-            self.window.update()
+            self.update_status(None, 98)
             return True
             
         except Exception:
@@ -665,8 +729,6 @@ class SplashWindow:
             if not appdata_path.exists():
                 return
             
-            deleted_count = 0
-            
             for item in appdata_path.iterdir():
                 if item.is_dir() and item.name.startswith('_internal_old_'):
                     for root, dirs, files in os.walk(item):
@@ -679,13 +741,11 @@ class SplashWindow:
                     
                     try:
                         shutil.rmtree(item)
-                        deleted_count += 1
                     except PermissionError:
                         try:
                             new_name = item.parent / f"_internal_old_del_{int(time.time())}"
                             item.rename(new_name)
                             shutil.rmtree(new_name, ignore_errors=True)
-                            deleted_count += 1
                         except:
                             pass
                     except Exception:
@@ -720,6 +780,13 @@ class SplashWindow:
             pass
     
     def close(self):
+        if self._animation_id:
+            try:
+                self.window.after_cancel(self._animation_id)
+            except:
+                pass
+            self._animation_id = None
+        
         self._is_closing = True
         try:
             self.window.destroy()
