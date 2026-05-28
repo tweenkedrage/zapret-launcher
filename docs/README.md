@@ -1,5 +1,3 @@
-# Zapret Launcher 
-
 <p align="center">
   <a href="https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/zapret-launcher-installer.exe">
     <img src="https://img.shields.io/badge/DOWNLOAD-2ea44f?style=for-the-badge&logo=github" alt="DOWNLOAD">
@@ -11,6 +9,8 @@
     <img src="https://img.shields.io/badge/CHANGELOG-1D76DB?style=for-the-badge&logo=github" alt="CHANGELOG">
   </a>
 </p>
+
+# Zapret Launcher
 
 > [!WARNING]
 >
