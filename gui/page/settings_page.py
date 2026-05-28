@@ -315,6 +315,7 @@ class SettingsPage:
             ("zapret_core/general (ALT9).bat", "general (ALT9).bat"),
             ("zapret_core/general (ALT10).bat", "general (ALT10).bat"),
             ("zapret_core/general (ALT11).bat", "general (ALT11).bat"),
+            ("zapret_core/general (ALT12).bat", "general (ALT12).bat"),
             ("zapret_core/general (FAKE TLS AUTO).bat", "general (FAKE TLS AUTO).bat"),
             ("zapret_core/general (FAKE TLS AUTO ALT).bat", "general (FAKE TLS AUTO ALT).bat"),
             ("zapret_core/general (FAKE TLS AUTO ALT2).bat", "general (FAKE TLS AUTO ALT2).bat"),
@@ -343,6 +344,7 @@ class SettingsPage:
                         "ipset-exclude-user.txt", 
                         "list-exclude-user.txt", 
                         "list-exclude.txt",
+                        "list-custom.txt",
                         "list-general-user.txt", 
                         "list-general.txt", 
                         "list-google.txt"]
@@ -453,6 +455,7 @@ class SettingsPage:
             "zapret_core/general (ALT9).bat",
             "zapret_core/general (ALT10).bat",
             "zapret_core/general (ALT11).bat",
+            "zapret_core/general (ALT12).bat",
             "zapret_core/general (FAKE TLS AUTO).bat",
             "zapret_core/general (FAKE TLS AUTO ALT).bat",
             "zapret_core/general (FAKE TLS AUTO ALT2).bat",
@@ -479,6 +482,7 @@ class SettingsPage:
                 "ipset-exclude-user.txt",
                 "list-exclude-user.txt",
                 "list-exclude.txt",
+                "list-custom.txt",
                 "list-general-user.txt",
                 "list-general.txt",
                 "list-google.txt"
