@@ -56,8 +56,9 @@ class ListsPage:
         lists_content.pack(fill=tk.X, padx=30, pady=10)
         
         for label, filename in [
-            (tr('lists_general'), "list-general.txt"), 
             (tr('lists_general_user'), "list-general-user.txt"),
+            (tr('lists_general'), "list-general.txt"), 
+            (tr('lists_custom'), "list-custom.txt"), 
             (tr('lists_google'), "list-google.txt"), 
             (tr('lists_ipset'), "ipset-all.txt")
         ]:
