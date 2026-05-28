@@ -3,13 +3,13 @@ from config import CONFIG_FILE
 
 class Languages:
     LANGUAGES = {
-        'Ukranian': 'Ukranian',
+        'Ukrainian': 'Ukrainian',
         'Russian': 'Russian',
         'English': 'English'
     }
     
     TRANSLATIONS = {
-        'Ukranian': {
+        'Ukrainian': {
             'main_title': 'Головна',
             'main_desc': 'Управління підключенням та моніторинг стану',
             'status': 'Статус:',
