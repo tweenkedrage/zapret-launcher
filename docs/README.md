@@ -1,3 +1,15 @@
+<p align="center">
+  <a href="https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/zapret-launcher-installer.exe">
+    <img src="https://img.shields.io/badge/DOWNLOAD-2ea44f?style=for-the-badge&logo=github" alt="DOWNLOAD">
+  </a>
+  <a href="https://github.com/tweenkedrage/zapret-launcher/issues">
+    <img src="https://img.shields.io/badge/REPORT-79553D?style=for-the-badge&logo=github" alt="REPORT">
+  </a>
+  <a href="https://github.com/tweenkedrage/zapret-launcher/blob/main/docs/changelog.md">
+    <img src="https://img.shields.io/badge/CHANGELOG-1D76DB?style=for-the-badge&logo=github" alt="CHANGELOG">
+  </a>
+</p>
+
 # Zapret Launcher 
 Универсальный лаунчер и менеджер для инструментов обхода блокировок
 
