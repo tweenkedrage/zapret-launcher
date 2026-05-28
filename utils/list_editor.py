@@ -316,7 +316,7 @@ class ListEditor:
 
             if self.app:
                 self.app.log_event("info", f"File has been saved: {os.path.basename(self.file_path)}")
-            messagebox.showinfo(tr('success'), tr('editor_success'))
+            messagebox.showinfo(tr('success'), f"{tr('editor_success')}\n{tr('restart_zapret')}")
             self.dialog.destroy()
         except Exception as e:
             messagebox.showerror(tr('error_no_connection'), f"{tr('editor_error_save')}: {str(e)}")
