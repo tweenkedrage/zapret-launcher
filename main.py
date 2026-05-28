@@ -634,6 +634,7 @@ class ZapretLauncher:
         self.tg_proxy.set_log_callback(self.log_event)
         
         self.ensure_appdata_dir()
+        self.ensure_custom_list_file()
         self.languages = get_languages()
         self.current_theme = 'Default'
         self.load_settings()
@@ -653,6 +654,29 @@ class ZapretLauncher:
                 
         self.tray_icon = ModernSystemTray(self)
         threading.Thread(target=self.tray_icon.run, daemon=True).start()
+
+    def ensure_custom_list_file(self):
+        try:
+            lists_dir = ZAPRET_CORE_DIR / "lists"
+            custom_list_path = lists_dir / "list-custom.txt"
+            
+            if not lists_dir.exists():
+                lists_dir.mkdir(parents=True, exist_ok=True)
+                self.log_event("info", "Created lists directory")
+            
+            if not custom_list_path.exists():
+                custom_list_path.touch()
+                self.log_event("info", "Created empty list-custom.txt file")
+                
+                with open(custom_list_path, 'w', encoding='utf-8') as f:
+                    f.write("# example.com\n")
+                
+                self.log_event("info", "Added header comments to list-custom.txt")
+            else:
+                self.log_event("info", "list-custom.txt already exists")
+                
+        except Exception as e:
+            self.log_event("error", f"Failed to ensure list-custom.txt: {str(e)}")
 
     def update_tray_icon_state(self):
         if hasattr(self, 'tray_icon') and self.tray_icon:
