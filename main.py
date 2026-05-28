@@ -770,7 +770,8 @@ class ZapretLauncher:
             self.pages.colors = self.colors
             
             for page_name in ['main_page', 'service_page', 'lists_page', 
-                            'traffic_page', 'settings_page']:
+                            'traffic_page', 'settings_page', 'additionally_page',
+                            'logs_page']:
                 if hasattr(self.pages, page_name):
                     page = getattr(self.pages, page_name)
                     if page:
@@ -1433,7 +1434,6 @@ class ZapretLauncher:
         self.root.clipboard_clear()
         self.root.clipboard_append(link)
         self.root.update()
-
         self.show_notification(tr('notification_updated_secret'), 3000)
         
     def _do_start_tg_proxy(self):
