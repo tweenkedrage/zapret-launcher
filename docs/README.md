@@ -8,6 +8,12 @@
   <a href="https://github.com/tweenkedrage/zapret-launcher/blob/main/docs/changelog.md">
     <img src="https://img.shields.io/badge/CHANGELOG-1D76DB?style=for-the-badge&logo=github" alt="CHANGELOG">
   </a>
+  <a href="https://www.youtube.com/watch?v=vr56osqQDJg&t">
+    <img src="https://img.shields.io/badge/REVIEW-CD5C5C?style=for-the-badge&logo=youtube" alt="REVIEW">
+  </a>
+  <a href="https://t.me/zapret_launcher">
+    <img src="https://img.shields.io/badge/TELEGRAM-87CEFA?style=for-the-badge&logo=telegram" alt="TELEGRAM">
+  </a>
 </p>
 
 # Zapret Launcher
