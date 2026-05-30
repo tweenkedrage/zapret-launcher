@@ -689,8 +689,8 @@ def run_proxy(stop_event: Optional[asyncio.Event] = None):
 def main():
     ap = argparse.ArgumentParser(
         description='Telegram MTProto WebSocket Bridge Proxy')
-    ap.add_argument('--port', type=int, default=1080,
-                    help='Listen port (default 1080)')
+    ap.add_argument('--port', type=int, default=1443,
+                    help='Listen port (default 1443)')
     ap.add_argument('--host', type=str, default='127.0.0.1',
                     help='Listen host (default 127.0.0.1)')
     ap.add_argument('--secret', type=str, default=None,
