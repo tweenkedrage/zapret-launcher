@@ -33,7 +33,7 @@ import ctypes
 import urllib.request
 from ctypes import windll, byref, c_int
 from typing import Optional, List, Tuple
-from config import CURRENT_VERSION, CURRENT_BUILD, BASE_DIR, APPDATA_DIR, CONFIG_FILE, ZAPRET_CORE_DIR
+from config import CURRENT_VERSION, CURRENT_BUILD, BASE_DIR, APPDATA_DIR, CONFIG_FILE, ZAPRET_CORE_DIR, LISTS_DIR
 
 def check_single_instance():
     mutex_name = "ZapretLauncher_SingleInstance"
@@ -191,7 +191,7 @@ class TGProxyServer:
     def __init__(self):
         self._thread = None
         self._running = False
-        self._port = 1080
+        self._port = 1443
         self._host = '127.0.0.1'
         self._secret = None
         self._stop_event = None
@@ -224,7 +224,7 @@ class TGProxyServer:
     def wait_for_start(self, timeout=5):
         start_time = time.time()
         while time.time() - start_time < timeout:
-            if self._is_port_open(1080):
+            if self._is_port_open(1443):
                 return True
             time.sleep(0.2)
         return False
@@ -290,7 +290,7 @@ class TGProxyServer:
 
     @property
     def is_running(self):
-        return self._running and self._is_port_open(1080)
+        return self._running and self._is_port_open(1443)
     
 class ZapretCore:
     def __init__(self, parent):
@@ -527,6 +527,7 @@ class ZapretLauncher:
 
         self._notification_queue = []
         self._notification_active = False
+        self._current_notification = None
 
         self.update_intervals = [1, 5, 10, 30, 60, None]
         self.update_interval_index = 1
@@ -657,26 +658,20 @@ class ZapretLauncher:
 
     def ensure_custom_list_file(self):
         try:
-            lists_dir = ZAPRET_CORE_DIR / "lists"
+            lists_dir = LISTS_DIR
             custom_list_path = lists_dir / "list-custom.txt"
             
             if not lists_dir.exists():
                 lists_dir.mkdir(parents=True, exist_ok=True)
-                self.log_event("info", "Created lists directory")
             
             if not custom_list_path.exists():
                 custom_list_path.touch()
-                self.log_event("info", "Created empty list-custom.txt file")
                 
                 with open(custom_list_path, 'w', encoding='utf-8') as f:
                     f.write("# example.com\n")
                 
-                self.log_event("info", "Added header comments to list-custom.txt")
-            else:
-                self.log_event("info", "list-custom.txt already exists")
-                
-        except Exception as e:
-            self.log_event("error", f"Failed to ensure list-custom.txt: {str(e)}")
+        except Exception:
+            pass
 
     def update_tray_icon_state(self):
         if hasattr(self, 'tray_icon') and self.tray_icon:
@@ -1068,7 +1063,7 @@ class ZapretLauncher:
 
     def check_for_updates(self):
         try:
-            buildnumber_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt" # build_number.txt
+            buildnumber_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt" # build_number.txt | test/test.txt
             
             req = urllib.request.Request(
                 buildnumber_url,
@@ -1462,7 +1457,7 @@ class ZapretLauncher:
         
     def _do_start_tg_proxy(self):
         self._reset_traffic_history()
-        self.update_status(tr('status_starting_tg'), self.colors['accent'])
+        self.update_status(tr('status_starting'), self.colors['accent'])
         if hasattr(self, 'connect_btn') and self.connect_btn:
             self.connect_btn.set_enabled(False)
         self.root.update()
@@ -1876,10 +1871,18 @@ class ZapretLauncher:
             if not self.root.winfo_viewable():
                 return
             
+            if hasattr(self, '_current_notification') and self._current_notification:
+                try:
+                    self._current_notification.destroy()
+                except:
+                    pass
+            
             notification = tk.Toplevel(self.root)
             notification.overrideredirect(True)
             notification.configure(bg=self.colors['bg_medium'])
             notification._is_alive = True
+
+            self._current_notification = notification
 
             try:
                 notification.attributes('-topmost', True)
@@ -1911,6 +1914,8 @@ class ZapretLauncher:
                     self.root.unbind('<Configure>', on_root_configure)
                 except:
                     pass
+                if self._current_notification == notification:
+                    self._current_notification = None
             
             def on_iconify():
                 if notification and notification.winfo_exists():
@@ -2134,6 +2139,13 @@ class ZapretLauncher:
             self.update_ui_state()
             if hasattr(self, 'tray_icon'):
                 self.tray_icon.update_menu()
+
+        if not self.is_connected and not self.zapret.is_winws_running():
+            self.root.after(2000, lambda: self.show_once_notification(
+                "port_changed_to_1443",
+                tr('tg_show_once_notification'),
+                10000
+            ))
 
     def update_status(self, text, color=None):
         if color is None:
@@ -2437,6 +2449,7 @@ class ZapretLauncher:
     
                     self._tg_instruction = data.get('tg_instruction', False)
                     self._tg_secret = data.get('tg_secret', None)
+                    self.shown_tg_notification = data.get('shown_tg_notification', {})
 
                     saved_theme = data.get('theme', 'Default')
                     if saved_theme in get_theme_names():
@@ -2452,6 +2465,7 @@ class ZapretLauncher:
             self.log_event("info", "New secret key has been generated (first run)")
             self._tg_secret = os.urandom(16).hex()
             self.current_theme = 'Default'
+            self.shown_tg_notification = {}
 
     def save_settings(self):
         try:
@@ -2463,6 +2477,7 @@ class ZapretLauncher:
                 'language': self.languages.get_current_language(),
                 'tg_secret': getattr(self, '_tg_secret', None),
                 'theme': self.current_theme,
+                'shown_tg_notification': getattr(self, 'shown_tg_notification', {}),
             }
             with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
                 json.dump(settings, f, indent=2, ensure_ascii=False)
@@ -2499,6 +2514,17 @@ class ZapretLauncher:
 
     def show_additionally_page(self):
         self.pages.show_page_with_animation("additionally")
+
+    def show_once_notification(self, notification_id: str, message: str, duration: int = 3000):
+        if not hasattr(self, 'shown_tg_notification'):
+            self.shown_tg_notification = {}
+        
+        if self.shown_tg_notification.get(notification_id, False):
+            return
+        
+        self.show_notification(message, duration)
+        self.shown_tg_notification[notification_id] = True
+        self.save_settings()
 
     def add_soundcloud_unblock(self):
         try:
@@ -2963,7 +2989,7 @@ class ZapretLauncher:
             top_pids = sorted(pid_counts.items(), key=lambda x: x[1], reverse=True)[:50]
             top_pids_set = {pid for pid, _ in top_pids}
             
-            vpn_ports = {1080, 10801}
+            vpn_ports = {1443}
             vpn_connections = {}
             
             for conn in connections:
