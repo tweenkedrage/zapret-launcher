@@ -40,7 +40,7 @@ def get_tg_link(host: str, port: int, secret: str) -> str:
     link_host = get_link_host(host)
     return f"tg://proxy?server={link_host}&port={port}&secret={secret}"
 
-async def run_with_link(host: str = '127.0.0.1', port: int = 1080, secret: str = None, stop_event: asyncio.Event = None):
+async def run_with_link(host: str = '127.0.0.1', port: int = 1443, secret: str = None, stop_event: asyncio.Event = None):
     proxy_config.host = host
     proxy_config.port = port
     
@@ -76,7 +76,7 @@ async def run_with_link(host: str = '127.0.0.1', port: int = 1080, secret: str =
     
     await _run(stop_event)
 
-def run_proxy(host: str = '127.0.0.1', port: int = 1080, secret: str = None, stop_event: asyncio.Event = None):
+def run_proxy(host: str = '127.0.0.1', port: int = 1443, secret: str = None, stop_event: asyncio.Event = None):
     retry_count = 0
     while True:
         try:
