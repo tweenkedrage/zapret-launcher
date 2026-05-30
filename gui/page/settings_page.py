@@ -197,6 +197,20 @@ class SettingsPage:
         )
         copy_btn.pack(anchor='w', pady=5)
 
+        tg_instruction = RoundedButton(
+            tg_inner,
+            text=tr('tg_instruction_show_hide'),
+            command=self._show_instruction,
+            width=200, height=30,
+            bg=self.colors['button_bg'],
+            fg=self.colors['text_secondary'],
+            font=("Inter", 10),
+            corner_radius=8,
+            hover_color=self.colors['accent'],
+            theme_name=self.app.current_theme
+        )
+        tg_instruction.pack(anchor='w', pady=5)
+
         info_card = tk.Frame(left_column, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
         info_card.pack(fill=tk.X, pady=6)
         info_inner = tk.Frame(info_card, bg=self.colors['bg_light'])
@@ -384,6 +398,15 @@ class SettingsPage:
                 tr('settings_integrity_title'),
                 tr('settings_integrity_success')
             )
+
+    def _show_instruction(self):
+        self.app._tg_instruction = not self.app._tg_instruction
+        self.app.save_settings()
+        
+        if self.app._tg_instruction:
+            self.app.show_notification(tr('tg_instruction_hidden'), 1500)
+        else:
+            self.app.show_notification(tr('tg_instruction_shown'), 1500)
 
     def _regenerate_secret(self):
         self.app.regenerate_tg_secret()
