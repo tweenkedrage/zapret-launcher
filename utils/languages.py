@@ -45,8 +45,8 @@ class Languages:
 
             'additionally_title': 'Додатково',
             'additionally_desc': 'Додаткові інструменти для розблокування сервісів',
-            'soundcloud_description': 'Додає домени для розблокування SoundCloud у list-general.txt та ipset-all.txt',
-            'meta_description': 'Додає домени для розблокування Facebook та Instagram у list-general.txt та ipset-all.txt',
+            'soundcloud_description': 'Додає домени для розблокування SoundCloud у list-custom.txt та ipset-all.txt',
+            'meta_description': 'Додає домени для розблокування Facebook та Instagram у list-custom.txt та ipset-all.txt',
             'soundcloud_unblocked': 'SoundCloud розблоковано',
             'meta_unblocked': 'Meta розблоковано',
             'soundcloud_removed': 'Домени SoundCloud видалені',
@@ -207,7 +207,7 @@ class Languages:
             'ghub_step7': 'Збережіть файл, перейдіть до сторінки Сервіс і виберіть IPSet - loaded',
             'ghub_step8': 'Запустіть будь-який режим, де є Zapret (Стандартний або Спільний)',
             'ghub_desc_on_page': 'Відновлення доступу до GitHub через zapret',
-            'ghub_copy_lines': 'Копіювати домени (Вставити до list-general.txt)',
+            'ghub_copy_lines': 'Копіювати домени',
             'ghub_copied_notification': 'Домени скопійовані в буфер обміну',
             'ghub_button_unblock': 'Відкрити',
             
@@ -291,6 +291,7 @@ class Languages:
             'update_ask_now': 'Бажаєте оновитися прямо зараз?',
 
             'seconds': 'сек',
+            'please_wait': 'Зачекайте, будь ласка...',
             
             'success': 'Успіх',
             'is_empty': 'порожній',
@@ -334,8 +335,8 @@ class Languages:
 
             'additionally_title': 'Дополнительно',
             'additionally_desc': 'Дополнительные инструменты для разблокировки сервисов',
-            'soundcloud_description': 'Добавляет домены для разблокировки SoundCloud в list-general.txt и ipset-all.txt',
-            'meta_description': 'Добавляет домены для разблокировки Facebook и Instagram в list-general.txt и ipset-all.txt',
+            'soundcloud_description': 'Добавляет домены для разблокировки SoundCloud в list-custom.txt и ipset-all.txt',
+            'meta_description': 'Добавляет домены для разблокировки Facebook и Instagram в list-custom.txt и ipset-all.txt',
             'soundcloud_unblocked': 'SoundCloud разблокирован',
             'meta_unblocked': 'Meta разблокирована',
             'soundcloud_removed': 'Домены SoundCloud удалены',
@@ -496,7 +497,7 @@ class Languages:
             'ghub_step7': 'Сохраните файл, перейдите в страницу Сервис и там выберите IPSet - loaded',
             'ghub_step8': 'Запустите любой режим где есть Zapret (Стандартный или Совместный)',
             'ghub_desc_on_page': 'Восстановление доступа к GitHub через zapret',
-            'ghub_copy_lines': 'Скопировать домены (Вставить в list-general.txt)',
+            'ghub_copy_lines': 'Скопировать домены',
             'ghub_copied_notification': 'Домены скопированы в буфер обмена',
             'ghub_button_unblock': 'Открыть',
             
@@ -581,6 +582,7 @@ class Languages:
             'update_ask_now': 'Хотите обновиться прямо сейчас?',
 
             'seconds': 'сек',
+            'please_wait': 'Пожалуйста, подождите...',
             
             'success': 'Успех',
             'is_empty': 'пустой',
@@ -625,8 +627,8 @@ class Languages:
 
             'additionally_title': 'Additionally',
             'additionally_desc': 'Additional tools for unblocking services',
-            'soundcloud_description': 'Adds domains for unblocking SoundCloud to list-general.txt and ipset-all.txt',
-            'meta_description': 'Adds domains to unblock Facebook and Instagram to list-general.txt and ipset-all.txt',
+            'soundcloud_description': 'Adds domains for unblocking SoundCloud to list-custom.txt and ipset-all.txt',
+            'meta_description': 'Adds domains to unblock Facebook and Instagram to list-custom.txt and ipset-all.txt',
             'soundcloud_unblocked': 'SoundCloud is unblocked',
             'meta_unblocked': 'Meta is unblocked',
             'soundcloud_removed': 'SoundCloud domains removed',
@@ -771,7 +773,7 @@ class Languages:
             'hosts_desc_on_page': 'Adds Telegram IP addresses to the hosts file',
             'hosts_step4': 'Save the file (Ctrl+S)',
             'hosts_step5': 'Restart your browser to apply changes',
-            'hosts_copy_lines': 'Copy all lines (Paste into list-general.txt)',
+            'hosts_copy_lines': 'Copy all lines',
             'hosts_copied_notification': 'Lines copied to clipboard',
             'hosts_button_unblock': 'Open',
 
@@ -881,6 +883,7 @@ class Languages:
             'update_ask_now': 'Want to upgrade now?',
 
             'seconds': 'sec',
+            'please_wait': 'Please, wait...',
             
             'success': 'Success',
             'not_found': 'is missing',
