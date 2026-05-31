@@ -2528,8 +2528,8 @@ class ZapretLauncher:
 
     def add_soundcloud_unblock(self):
         try:
-            list_general_path = ZAPRET_CORE_DIR / "lists" / "list-general.txt"
-            ipset_all_path = ZAPRET_CORE_DIR / "lists" / "ipset-all.txt"
+            list_general_path = LISTS_DIR / "list-custom.txt"
+            ipset_all_path = LISTS_DIR / "ipset-all.txt"
             
             soundcloud_domains = [
                 "soundcloud.com", "www.soundcloud.com", "style.sndcdn.com",
@@ -2611,7 +2611,7 @@ class ZapretLauncher:
                         f.write(f"{ip}\n")
             
             self.show_notification(tr('soundcloud_unblocked'), 3000)
-            self.log_event("info", "SoundCloud rules added to list-general.txt and ipset-all.txt")
+            self.log_event("info", "SoundCloud rules added to list-custom.txt and ipset-all.txt")
             return True
         except Exception as e:
             self.log_event("error", f"Error adding SoundCloud rules: {str(e)}")
@@ -2619,8 +2619,8 @@ class ZapretLauncher:
 
     def remove_soundcloud_unblock(self):
         try:
-            list_general_path = ZAPRET_CORE_DIR / "lists" / "list-general.txt"
-            ipset_all_path = ZAPRET_CORE_DIR / "lists" / "ipset-all.txt"
+            list_general_path = LISTS_DIR / "list-custom.txt"
+            ipset_all_path = LISTS_DIR / "ipset-all.txt"
             
             soundcloud_domains = [
                 "soundcloud.com", "www.soundcloud.com", "style.sndcdn.com",
@@ -2692,7 +2692,7 @@ class ZapretLauncher:
                         f.write(f"{ip}\n")
             
             self.show_notification(tr('soundcloud_removed'), 3000)
-            self.log_event("info", "SoundCloud rules have been removed from list-general.txt and ipset-all.txt")
+            self.log_event("info", "SoundCloud rules have been removed from list-custom.txt and ipset-all.txt")
             return True
         except Exception as e:
             self.log_event("error", f"Error removing SoundCloud rules: {str(e)}")
@@ -2700,7 +2700,7 @@ class ZapretLauncher:
 
     def check_soundcloud_enabled(self):
         try:
-            list_general_path = ZAPRET_CORE_DIR / "lists" / "list-general.txt"
+            list_general_path = LISTS_DIR / "list-custom.txt"
             
             if not list_general_path.exists():
                 return False
@@ -2715,8 +2715,8 @@ class ZapretLauncher:
         
     def add_facebook_instagram_unblock(self):
         try:
-            list_general_path = ZAPRET_CORE_DIR / "lists" / "list-general.txt"
-            ipset_all_path = ZAPRET_CORE_DIR / "lists" / "ipset-all.txt"
+            list_general_path = LISTS_DIR / "list-custom.txt"
+            ipset_all_path = LISTS_DIR / "ipset-all.txt"
             
             meta_domains = [
                 "facebook.com", "www.facebook.com", "fb.com", "www.fb.com",
@@ -2812,7 +2812,7 @@ class ZapretLauncher:
                         f.write(f"{ip}\n")
             
             self.show_notification(tr('meta_unblocked'), 3000)
-            self.log_event("info", f"Meta rules added to list-general.txt and ipset-all.txt")
+            self.log_event("info", f"Meta rules added to list-custom.txt and ipset-all.txt")
             return True
         except Exception as e:
             self.log_event("error", f"Error adding Meta rules: {str(e)}")
@@ -2820,8 +2820,8 @@ class ZapretLauncher:
 
     def remove_facebook_instagram_unblock(self):
         try:
-            list_general_path = ZAPRET_CORE_DIR / "lists" / "list-general.txt"
-            ipset_all_path = ZAPRET_CORE_DIR / "lists" / "ipset-all.txt"
+            list_general_path = LISTS_DIR / "list-custom.txt"
+            ipset_all_path = LISTS_DIR / "ipset-all.txt"
             
             meta_domains = [
                 "facebook.com", "www.facebook.com", "fb.com", "www.fb.com",
@@ -2895,7 +2895,7 @@ class ZapretLauncher:
                         f.write(f"{ip}\n")
             
             self.show_notification(tr('meta_removed'), 3000)
-            self.log_event("info", f"Meta rules have been removed from list-general.txt and ipset-all.txt")
+            self.log_event("info", f"Meta rules have been removed from list-custom.txt and ipset-all.txt")
             return True
         except Exception as e:
             self.log_event("error", f"Error removing Meta rules: {str(e)}")
@@ -2903,7 +2903,7 @@ class ZapretLauncher:
 
     def check_meta_enabled(self):
         try:
-            list_general_path = ZAPRET_CORE_DIR / "lists" / "list-general.txt"
+            list_general_path = LISTS_DIR / "list-custom.txt"
             
             if not list_general_path.exists():
                 return False
