@@ -91,10 +91,11 @@ class SettingsPage:
                 )
                 
                 if result == 'ok':
+                    self.app.show_notification(tr('please_wait'), 2000)
                     self.app.log_event("info", f"Theme changed: {current_theme} -> {new_theme}")
                     self.app.current_theme = new_theme
                     self.app.save_settings()
-                    self.app.root.after(1000, self._restart_launcher)
+                    self.app.root.after(2500, self._restart_launcher)
                 else:
                     theme_var.set(current_theme)
         theme_combo.bind("<<ComboboxSelected>>", on_theme_change)
@@ -128,10 +129,11 @@ class SettingsPage:
                 )
                 
                 if result == 'ok':
+                    self.app.show_notification(tr('please_wait'), 2000)
                     self.app.log_event("info", f"Interface language changed: {current_lang} -> {new_lang}")
                     self.app.languages.set_language(new_lang)
                     self.app.save_settings()
-                    self.app.root.after(1000, self._restart_launcher)
+                    self.app.root.after(2500, self._restart_launcher)
                 else:
                     lang_var.set(current_lang)
         lang_combo.bind("<<ComboboxSelected>>", on_language_change)
@@ -175,11 +177,18 @@ class SettingsPage:
         def copy_current_link():
             secret = getattr(self.app, '_tg_secret', None)
             if secret:
-                link = f"{secret}"
+                if self.app.tg_fake_tls and self.app.tg_fake_tls_domain:
+                    domain_hex = self.app.tg_fake_tls_domain.encode('ascii').hex()
+                    link = f"ee{secret}{domain_hex}"
+                    notification = tr('notification_copied_secret')
+                else:
+                    link = secret
+                    notification = tr('notification_copied_secret')
+                
                 self.app.root.clipboard_clear()
                 self.app.root.clipboard_append(link)
                 self.app.root.update()
-                self.app.show_notification(tr('notification_copied_secret'))
+                self.app.show_notification(notification, 2000)
             else:
                 messagebox.showwarning(tr('error_secret_not_found'), tr('error_telegram_proxy_start'))
 
@@ -448,8 +457,9 @@ class SettingsPage:
                 return
             self.app.disconnect()
             time.sleep(1)
-        
-        threading.Thread(target=self._download_and_install_zapret_core, daemon=True).start()
+
+        self.app.show_notification(tr('please_wait'), 5000)
+        self.app.root.after(500, lambda: threading.Thread(target=self._download_and_install_zapret_core, daemon=True).start())
 
     def _check_all_files_exist(self):
         missing_files = []
