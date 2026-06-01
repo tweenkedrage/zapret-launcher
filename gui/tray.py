@@ -121,7 +121,7 @@ class ModernSystemTray:
             ),
             pystray.MenuItem(
                 tr('menu_help_release'),
-                lambda: webbrowser.open("https://github.com/tweenkedrage/zapret-launcher/releases"),
+                lambda: webbrowser.open("https://github.com/tweenkedrage/zapret-launcher/blob/main/docs/changelog.md"),
                 enabled=True
             ),
             pystray.MenuItem(
