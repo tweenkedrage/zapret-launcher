@@ -4,7 +4,7 @@ from pathlib import Path
 from PIL import Image, ImageTk
 from utils.languages import tr
 from gui.theme import get_theme
-from config import BASE_DIR
+from config import BASE_DIR, APPDATA_DIR
 import urllib.request
 import subprocess
 import sys
@@ -50,12 +50,12 @@ class SplashWindow:
         self._is_closing = False
 
         self.zapret_version_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/zapret_version.txt"
-        self.build_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt" # build_number.txt | test.txt
+        self.build_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt" # build_number.txt | test/test.txt
         self.exe_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/Zapret%20Launcher.exe" # Zapret%20Launcher.exe
         self.zip_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/_internal.zip"
         self.zapret_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/zapret_core.zip"
         
-        self.appdata_path = Path(os.environ.get('APPDATA', '')) / "Zapret Launcher"
+        self.appdata_path = APPDATA_DIR
         self.internal_path = self.appdata_path / "_internal"
 
         self._target_progress = 0
@@ -93,7 +93,6 @@ class SplashWindow:
         try:
             icon_paths = [
                 BASE_DIR / "resources" / "icon.ico",
-                BASE_DIR / "resources" / "icon.png",
                 Path("resources/icon.ico"),
                 Path("icon.ico"),
             ]
@@ -104,12 +103,6 @@ class SplashWindow:
                     try:
                         if path.suffix.lower() == '.ico':
                             self.window.iconbitmap(default=str(path))
-                            icon_loaded = True
-                            break
-                        elif path.suffix.lower() == '.png':
-                            icon_img = tk.PhotoImage(file=str(path))
-                            self.window.iconphoto(True, icon_img)
-                            self.icon_image = icon_img
                             icon_loaded = True
                             break
                     except:
@@ -215,9 +208,7 @@ class SplashWindow:
                 base_path = Path(__file__).parent.parent
             
             icon_paths = [
-                base_path / "resources" / "icon.png",
                 base_path / "resources" / "icon.ico",
-                base_path / "icon.png",
             ]
             
             for path in icon_paths:
@@ -740,7 +731,7 @@ class SplashWindow:
 
     def cleanup_old_internal_folders(self):
         try:
-            appdata_path = Path(os.environ.get('APPDATA', '')) / "Zapret Launcher"
+            appdata_path = APPDATA_DIR
             if not appdata_path.exists():
                 return
             
