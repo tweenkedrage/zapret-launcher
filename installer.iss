@@ -36,7 +36,6 @@ Name: "ukrainian"; MessagesFile: "compiler:Languages\Ukrainian.isl"
 [Files]
 Source: "dist\updater\*"; DestDir: "{userappdata}\Zapret Launcher"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "resources\icon.ico"; DestDir: "{userappdata}\Zapret Launcher\resources"; Flags: ignoreversion
-Source: "resources\icon.png"; DestDir: "{userappdata}\Zapret Launcher\resources"; Flags: ignoreversion
 Source: "zapret_core\*"; DestDir: "{userappdata}\Zapret Launcher\zapret_core"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
