@@ -8,7 +8,12 @@ LISTS_DIR = APPDATA_DIR / "zapret_core" / "lists"
 ZAPRET_CORE_DIR = APPDATA_DIR / "zapret_core"
 
 CURRENT_VERSION = "3.2.1.9"
-CURRENT_BUILD = "3366"
+CURRENT_BUILD = "3367"
+
+TG_HOST = "127.0.0.1"
+TG_PORT = 1443
+TG_FAKE_TLS = True
+TG_FAKE_TLS_DOMAIN = "www.google.com"
 
 ZAPRET_VERSION_URL = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/zapret_version.txt"
 ZAPRET_CORE_URL = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/full_zapret_core.zip"
