@@ -18,7 +18,7 @@ def get_theme(theme_name='Default'):
             'button_bg': '#2D2D35',
             'button_hover': '#3D3D45',
             
-            'separator': '#2D2D35',
+            'separator': "#2D2D35",
         },
         'Pink': {
             'accent': "#D4438C",
@@ -38,7 +38,7 @@ def get_theme(theme_name='Default'):
             'button_bg': '#4D4A6B',
             'button_hover': '#5D5A7B',
             
-            'separator': '#3D3A55',
+            'separator': "#46435A",
         },
         'Light': { #pre-release
             'accent': '#6c5579',
