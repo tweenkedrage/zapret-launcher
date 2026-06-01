@@ -2,6 +2,7 @@ import tkinter as tk
 import pywinstyles
 from tkinter import messagebox, ttk
 from gui.pages import Pages
+from tg_proxy.config import proxy_config
 from gui.page.lists_page import check_zapret_folder
 from gui.tray import ModernSystemTray
 from utils.languages import tr, get_languages
@@ -33,7 +34,7 @@ import ctypes
 import urllib.request
 from ctypes import windll, byref, c_int
 from typing import Optional, List, Tuple
-from config import CURRENT_VERSION, CURRENT_BUILD, BASE_DIR, APPDATA_DIR, CONFIG_FILE, ZAPRET_CORE_DIR, LISTS_DIR
+from config import CURRENT_VERSION, CURRENT_BUILD, BASE_DIR, APPDATA_DIR, CONFIG_FILE, ZAPRET_CORE_DIR, LISTS_DIR, TG_HOST, TG_PORT, TG_FAKE_TLS, TG_FAKE_TLS_DOMAIN
 
 def check_single_instance():
     mutex_name = "ZapretLauncher_SingleInstance"
@@ -188,11 +189,12 @@ class StatsMonitor:
         }
 
 class TGProxyServer:
-    def __init__(self):
+    def __init__(self, host=None, port=None, fake_tls_domain=None):
         self._thread = None
         self._running = False
-        self._port = 1443
-        self._host = '127.0.0.1'
+        self._port = port if port is not None else 1443
+        self._host = host if host is not None else '127.0.0.1'
+        self._fake_tls_domain = fake_tls_domain if fake_tls_domain is not None else ''
         self._secret = None
         self._stop_event = None
         self._log_callback = None
@@ -212,6 +214,18 @@ class TGProxyServer:
             time.sleep(1)
             self.start()
     
+    def update_config(self, host, port):
+        was_running = self._running
+        if was_running:
+            self.stop()
+            time.sleep(1)
+        
+        self._host = host
+        self._port = port
+        
+        if was_running:
+            self.start()
+    
     def _is_port_open(self, port):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(0.5)
@@ -224,7 +238,7 @@ class TGProxyServer:
     def wait_for_start(self, timeout=5):
         start_time = time.time()
         while time.time() - start_time < timeout:
-            if self._is_port_open(1443):
+            if self._is_port_open(self._port):
                 return True
             time.sleep(0.2)
         return False
@@ -241,6 +255,12 @@ class TGProxyServer:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 self._stop_event = asyncio.Event()
+                
+                proxy_config.fake_tls_domain = self._fake_tls_domain if hasattr(self, '_fake_tls_domain') else ''
+                run_proxy(self._host, self._port, self._secret, self._stop_event)
+            except Exception:
+                pass
+
                 run_proxy(self._host, self._port, self._secret, self._stop_event)
             except Exception:
                 pass
@@ -290,7 +310,15 @@ class TGProxyServer:
 
     @property
     def is_running(self):
-        return self._running and self._is_port_open(1443)
+        return self._running and self._is_port_open(self._port)
+    
+    @property
+    def host(self):
+        return self._host
+    
+    @property
+    def port(self):
+        return self._port
     
 class ZapretCore:
     def __init__(self, parent):
@@ -515,6 +543,11 @@ class ZapretLauncher:
         self.stats_speed_down_label = None
         self.stats_rtt_label = None
 
+        self.tg_host = TG_HOST
+        self.tg_port = TG_PORT
+        self.tg_fake_tls = TG_FAKE_TLS
+        self.tg_fake_tls_domain = TG_FAKE_TLS_DOMAIN
+
         self._shutdown_update_timer = None
         self._shutdown_first_update_done = False
 
@@ -624,7 +657,7 @@ class ZapretLauncher:
         self.current_page = "main"
 
         self.zapret = ZapretCore(self)
-        self.tg_proxy = TGProxyServer()
+        self.tg_proxy = TGProxyServer(host=self.tg_host, port=self.tg_port, fake_tls_domain=self.tg_fake_tls_domain if self.tg_fake_tls else '')
         self.tg_proxy.set_log_callback(self.log_event)
         
         self.ensure_appdata_dir()
@@ -1437,11 +1470,18 @@ class ZapretLauncher:
         if hasattr(self, 'pages') and hasattr(self.pages, 'settings_page_obj'):
             self.pages.settings_page_obj.update_secret_display()
         
-        link = f"{self._tg_secret}"
+        if self.tg_fake_tls and self.tg_fake_tls_domain:
+            domain_hex = self.tg_fake_tls_domain.encode('ascii').hex()
+            link = f"ee{self._tg_secret}{domain_hex}"
+            notification_text = tr('notification_updated_secret')
+        else:
+            link = self._tg_secret
+            notification_text = tr('notification_updated_secret')
+        
         self.root.clipboard_clear()
         self.root.clipboard_append(link)
         self.root.update()
-        self.show_notification(tr('notification_updated_secret'), 3000)
+        self.show_notification(notification_text, 3000)
         
     def _do_start_tg_proxy(self):
         self._reset_traffic_history()
@@ -1480,6 +1520,9 @@ class ZapretLauncher:
             self.save_settings()
             self.root.after(100, self.update_stats_display)
             self.log_event("connect", "", "Telegram Proxy")
+
+            if self.tg_fake_tls:
+                self.root.after(1000, self.copy_tg_link_to_clipboard)
 
             if not self._tg_instruction:
                 self.root.after(500, self.show_tg_proxy_instruction)
@@ -2444,6 +2487,11 @@ class ZapretLauncher:
                     self._tg_secret = data.get('tg_secret', None)
                     self.shown_tg_notification = data.get('shown_tg_notification', {})
 
+                    self.tg_host = data.get('tg_host', TG_HOST)
+                    self.tg_port = data.get('tg_port', TG_PORT)
+                    self.tg_fake_tls = data.get('tg_fake_tls', TG_FAKE_TLS)
+                    self.tg_fake_tls_domain = data.get('tg_fake_tls_domain', TG_FAKE_TLS_DOMAIN)
+
                     saved_theme = data.get('theme', 'Default')
                     if saved_theme in get_theme_names():
                         self.current_theme = saved_theme
@@ -2459,6 +2507,10 @@ class ZapretLauncher:
             self._tg_secret = os.urandom(16).hex()
             self.current_theme = 'Default'
             self.shown_tg_notification = {}
+            self.tg_host = TG_HOST
+            self.tg_port = TG_PORT
+            self.tg_fake_tls = TG_FAKE_TLS
+            self.tg_fake_tls_domain = TG_FAKE_TLS_DOMAIN
 
     def save_settings(self):
         try:
@@ -2471,6 +2523,10 @@ class ZapretLauncher:
                 'tg_secret': getattr(self, '_tg_secret', None),
                 'theme': self.current_theme,
                 'shown_tg_notification': getattr(self, 'shown_tg_notification', {}),
+                'tg_host': getattr(self, 'tg_host', TG_HOST),
+                'tg_port': getattr(self, 'tg_port', TG_PORT),
+                'tg_fake_tls': getattr(self, 'tg_fake_tls', TG_FAKE_TLS),
+                'tg_fake_tls_domain': getattr(self, 'tg_fake_tls_domain', TG_FAKE_TLS_DOMAIN),
             }
             with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
                 json.dump(settings, f, indent=2, ensure_ascii=False)
@@ -2917,6 +2973,27 @@ class ZapretLauncher:
         self.traffic_speed_vpn_history = {}
         self.traffic_speed_direct_history = {}
         self.traffic_last_update = time.time()
+
+    def copy_tg_link_to_clipboard(self):
+        secret = getattr(self, '_tg_secret', '')
+        fake_tls = getattr(self, 'tg_fake_tls', False)
+        fake_tls_domain = getattr(self, 'tg_fake_tls_domain', '')
+        
+        if not secret:
+            return
+        
+        if fake_tls and fake_tls_domain:
+            domain_hex = fake_tls_domain.encode('ascii').hex()
+            link = f"ee{secret}{domain_hex}"
+        else:
+            link = f"{secret}"
+        
+        self.root.clipboard_clear()
+        self.root.clipboard_append(link)
+        self.root.update()
+        
+        self.show_notification(tr('notification_copied_secret'), 3000)
+        self.log_event("info", f"TG secret-key with fake tls copied to clipboard")
     
     def get_process_traffic(self):
         self._cleanup_traffic_history()
@@ -3837,11 +3914,20 @@ github.community"""
             secret = getattr(self, '_tg_secret', None)
             if not secret:
                 secret = tr('error_secret_not_found')
+            
+            if self.tg_fake_tls and self.tg_fake_tls_domain:
+                domain_hex = self.tg_fake_tls_domain.encode('ascii').hex()
+                link = f"ee{secret}{domain_hex}"
+                notification = tr('notification_copied_secret')
+            else:
+                link = f"{secret}"
+                notification = tr('notification_copied_secret')
+            
             self.root.clipboard_clear()
-            self.root.clipboard_append(f"{secret}")
+            self.root.clipboard_append(link)
             self.root.update()
             copy_label.config(text=tr('tg_copied'), fg=self.colors['accent_green'])
-            self.show_notification(tr('notification_copied_secret'), 1500)
+            self.show_notification(notification, 1500)
         
         copy_label.bind("<Button-1>", copy_link)
         
@@ -3924,6 +4010,9 @@ github.community"""
         self.root.after(100, self.update_stats_display)
         if hasattr(self, 'connect_btn') and self.connect_btn:
             self.connect_btn.set_enabled(True)
+
+        if self.tg_fake_tls:
+            self.root.after(1000, self.copy_tg_link_to_clipboard)
 
         if not self._tg_instruction:
             self.root.after(500, self.show_tg_proxy_instruction)
