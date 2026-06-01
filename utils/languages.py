@@ -134,7 +134,6 @@ class Languages:
 
             'mode_standard': 'Стандартний',
             'mode_standard_desc': 'Обхід блокувань через Zapret',
-            'mode_tgproxy': 'Telegram Proxy',
             'mode_tgproxy_desc': 'Прискорення роботи Telegram',
             'mode_zapret_tgproxy': 'Спільний',
             'mode_zapret_tgproxy_desc': 'Zapret та Telegram Proxy',
@@ -198,7 +197,7 @@ class Languages:
 
             'ghub_instruction_title': 'Доступ до GitHub',
             'ghub_instruction_subtitle': 'Повернення доступу до сервісу:',
-            'ghub_step1': 'Перейдіть до сторінки Редактор і відкрийте General-lists',
+            'ghub_step1': 'Перейдіть до сторінки Редактор і відкрийте list-custom',
             'ghub_step2': 'Вставте до кінця файлу домени, які можна скопіювати нижче',
             'ghub_step3': 'Збережіть файл і запустіть командний рядок без імені адміністратора',
             'ghub_step4': 'Введіть: ping github.com та після скопіюйте IP, який був виведений',
@@ -424,7 +423,6 @@ class Languages:
             
             'mode_standard': 'Стандартный',
             'mode_standard_desc': 'Обход блокировок через Zapret',
-            'mode_tgproxy': 'Telegram Proxy',
             'mode_tgproxy_desc': 'Ускорение работы Telegram',
             'mode_zapret_tgproxy': 'Совместный',
             'mode_zapret_tgproxy_desc': 'Zapret и Telegram Proxy',
@@ -488,7 +486,7 @@ class Languages:
 
             'ghub_instruction_title': 'Доступ к GitHub',
             'ghub_instruction_subtitle': 'Возвращение доступа к сервису:',
-            'ghub_step1': 'Перейдите в страницу Редактор и откройте General-lists',
+            'ghub_step1': 'Перейдите в страницу Редактор и откройте list-custom',
             'ghub_step2': 'Вставьте в конец файла домены, которые вы можете скопировать ниже',
             'ghub_step3': 'Сохраните файл и запустите командную строку без имени администратора',
             'ghub_step4': 'Введите: ping github.com и после скопируйте IP, который был выведен',
@@ -527,7 +525,6 @@ class Languages:
                         
             'status_connecting': 'Запуск...',
             'status_disconnecting': 'Отключение...',
-            'status_starting_tg': 'Запуск Telegram Proxy...',
             'status_starting': 'Запуск...',
             'status_error': 'Ошибка запуска',
             'status_strategy_started': 'Запущена стратегия:',
@@ -716,7 +713,6 @@ class Languages:
             
             'mode_standard': 'Standard',
             'mode_standard_desc': 'Bypass blocks via Zapret',
-            'mode_tgproxy': 'Telegram Proxy',
             'mode_tgproxy_desc': 'Telegram acceleration',
             'mode_zapret_tgproxy': 'Combined',
             'mode_zapret_tgproxy_desc': 'Zapret and Telegram Proxy',
@@ -779,7 +775,7 @@ class Languages:
 
             'ghub_instruction_title': 'Unblock GitHub',
             'ghub_instruction_subtitle': 'Restoring access to the service:',
-            'ghub_step1': 'Go to the Editor page and open General-lists',
+            'ghub_step1': 'Go to the Editor page and open list-custom',
             'ghub_step2': 'Paste the domains you can copy below at the end of the file',
             'ghub_step3': 'Save file and run the command prompt without administrator name',
             'ghub_step4': 'Type: ping github.com and then copy the IP that was displayed',
@@ -815,20 +811,9 @@ class Languages:
             'tg_secret_new': 'New secret:',
             'tg_paste_instruction': 'Paste it into Telegram to connect.',
             'tg_proxy_restarted': 'Proxy restarted with new secret.',
-
-            'fake_tls_desc': 'Masking traffic under TLS',
-            'fake_tls_enabled': 'Disable',
-            'fake_tls_disabled': 'Enable',
-            'fake_tls_domain_label': 'Domain',
-            'fake_tls_apply': 'Apply',
-            'fake_tls_status_enabled': 'Included with domain:',
-            'fake_tls_status_disabled': 'Fake TLS is disabled',
-            'fake_tls_error_no_domain': 'Please enter a domain',
-            'fake_tls_domain_updated': 'Domain updated',
                         
             'status_connecting': 'Starting...',
             'status_disconnecting': 'Disconnecting...',
-            'status_starting_tg': 'Starting Telegram Proxy...',
             'status_starting': 'Starting...',
             'status_error': 'Startup error',
             'status_strategy_started': 'Strategy started:',
