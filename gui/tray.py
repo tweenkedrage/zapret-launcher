@@ -37,7 +37,6 @@ class ModernSystemTray:
         try:
             icon_paths = [
                 BASE_DIR / "resources" / "icon.ico",
-                BASE_DIR / "resources" / "icon.png",
                 Path("resources/icon.ico"),
                 Path("icon.ico"),
             ]
@@ -335,7 +334,6 @@ class ModernSystemTray:
             
             icon_paths = [
                 BASE_DIR / "resources" / "icon.ico",
-                BASE_DIR / "resources" / "icon.png",
                 Path("resources/icon.ico"),
                 Path("icon.ico"),
             ]
