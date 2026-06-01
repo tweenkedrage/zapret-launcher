@@ -417,8 +417,7 @@ class ZapretCore:
                 self.parent.log_event("winws", f"Launching winws.exe with strategy {strategy_name}")
 
             self.current_process = subprocess.Popen(
-                [str(strategy_path)],
-                shell=True,
+                ["cmd.exe", "/c", str(strategy_path)],
                 cwd=str(self.zapret_dir),
                 creationflags=subprocess.CREATE_NO_WINDOW,
                 stdout=subprocess.DEVNULL,
@@ -570,7 +569,6 @@ class ZapretLauncher:
         try:
             icon_paths = [
                 BASE_DIR / "resources" / "icon.ico",
-                BASE_DIR / "resources" / "icon.png",
                 Path("resources/icon.ico"),
                 Path("icon.ico"),
             ]
@@ -581,11 +579,6 @@ class ZapretLauncher:
                     try:
                         if path.suffix.lower() == '.ico':
                             self.root.iconbitmap(default=str(path))
-                            icon_loaded = True
-                            break
-                        elif path.suffix.lower() == '.png':
-                            icon_img = tk.PhotoImage(file=str(path))
-                            self.root.iconphoto(True, icon_img)
                             icon_loaded = True
                             break
                     except:
@@ -833,7 +826,6 @@ class ZapretLauncher:
         try:
             subprocess.run(
                 'sc stop windivert > nul 2>&1',
-                shell=True,
                 capture_output=True,
                 creationflags=subprocess.CREATE_NO_WINDOW
             )
@@ -919,10 +911,6 @@ class ZapretLauncher:
         try:
             icon_paths = [
                 BASE_DIR / "resources" / "icon.png",
-                BASE_DIR / "resources" / "icon.ico",
-                Path(sys._MEIPASS) / "resources" / "icon.ico",
-                Path("resources/icon.png"),
-                Path("icon.png")
             ]
             
             icon_image = None
@@ -1180,7 +1168,7 @@ class ZapretLauncher:
         modes = [
             {"name": tr('mode_standard'), "desc": tr('mode_standard_desc'), 
             "zapret": True, "tgproxy": False},
-            {"name": tr('mode_tgproxy'), "desc": tr('mode_tgproxy_desc'), 
+            {"name": "Telegram Proxy", "desc": tr('mode_tgproxy_desc'), 
             "zapret": False, "tgproxy": True},
             {"name": tr('mode_zapret_tgproxy'), "desc": tr('mode_zapret_tgproxy_desc'), 
             "zapret": True, "tgproxy": True},
@@ -1380,7 +1368,7 @@ class ZapretLauncher:
             self.select_strategy_for_mode(mode["name"])
             return
         
-        if mode["name"] == tr('mode_tgproxy'):
+        if mode["name"] == "Telegram Proxy":
             self._start_tg_proxy_direct()
             return
         
@@ -1486,12 +1474,12 @@ class ZapretLauncher:
             self.stats.start_session()
             self.start_stats_monitoring()
             
-            self.mode_label.config(text=tr('mode_tgproxy'), fg=self.colors['accent_green'])
+            self.mode_label.config(text="Telegram Proxy", fg=self.colors['accent_green'])
             self.update_status(tr('status_connected'), self.colors['accent_green'])
             self.update_ui_state()
             self.save_settings()
             self.root.after(100, self.update_stats_display)
-            self.log_event("connect", "", tr('mode_tgproxy'))
+            self.log_event("connect", "", "Telegram Proxy")
 
             if not self._tg_instruction:
                 self.root.after(500, self.show_tg_proxy_instruction)
@@ -2133,6 +2121,7 @@ class ZapretLauncher:
     def check_initial_status(self):
         if not check_zapret_folder():
             return
+        
         if self.zapret.is_winws_running():
             self.is_connected = True
             self.update_status(tr('status_connected'), self.colors['accent_green'])
@@ -2277,7 +2266,11 @@ class ZapretLauncher:
                 time.sleep(0.5)
                 
                 try:
-                    subprocess.run('taskkill /F /IM winws.exe', shell=True, capture_output=True)
+                    subprocess.run(
+                        ['taskkill', '/F', '/IM', 'winws.exe'],
+                        capture_output=True,
+                        creationflags=subprocess.CREATE_NO_WINDOW
+                    )
                 except:
                     pass
                 
