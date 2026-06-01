@@ -142,6 +142,7 @@ class Languages:
             'mode_select_button': 'Вибрати',
             'mode_cancel': 'Скасування',
             
+            'notification_save_settings': 'Установки збережені',
             'notification_copied': 'Посилання скопійоване',
             'notification_copied_secret': 'Секрет-ключ скопійовано',
             'notification_updated_secret': 'Секрет-ключ оновлено',
@@ -170,8 +171,8 @@ class Languages:
             'tg_step2_desc': 'Використовувати власний проксі',
             'tg_step3': 'Заповніть поля проксі:',
             'tg_type': 'Тип: MTPROTO',
-            'tg_host': 'Хост: 127.0.0.1',
-            'tg_port': 'Порт: 1443',
+            'tg_host': 'Хост: вказано на головній сторінці',
+            'tg_port': 'Порт: вказано на головній сторінці',
             'tg_secret': 'Secret: (Генерується автоматично)',
             'tg_copy_link': 'Копіювати посилання на підключення',
             'tg_copied': 'Скопійовано',
@@ -226,6 +227,7 @@ class Languages:
             'error_icon_not_found': 'Іконку не знайдено',
             'error_unknown_command': 'Невідома команда',
             'error_autostart': 'Помилка налаштування автозапуску',
+            'error_port_have_words': 'Порт повинен містити число',
             'error_no_connection': 'Помилка',
             'error_occurred': 'Сталася помилка',
 
@@ -244,6 +246,10 @@ class Languages:
             'restart_zapret': 'Перезапустіть zapret',
 
             'tg_show_once_notification': 'Порт Telegram Proxy змінено на 1443',
+
+            'main_page_tg_proxy_host': 'Хост',
+            'main_page_tg_proxy_port': 'Порт',
+            'main_page_tg_proxy_domain': 'Домен',
             
             'autostart_enabled': 'Автозапуск увімкнено',
             'autostart_disabled': 'Автозапуск вимкнено',
@@ -431,6 +437,7 @@ class Languages:
             'mode_select_button': 'Выбрать',
             'mode_cancel': 'Отмена',
             
+            'notification_save_settings': 'Настройки сохранены',
             'notification_copied': 'Ссылка скопирована',
             'notification_copied_secret': 'Секрет-ключ скопирован',
             'notification_updated_secret': 'Секрет-ключ обновлен',
@@ -459,8 +466,8 @@ class Languages:
             'tg_step2_desc': 'Использовать собственный прокси',
             'tg_step3': 'Заполните поля прокси:',
             'tg_type': 'Тип: MTPROTO',
-            'tg_host': 'Хост: 127.0.0.1',
-            'tg_port': 'Порт: 1443',
+            'tg_host': 'Хост: указан на главной странице',
+            'tg_port': 'Порт: указан на главной странице',
             'tg_secret': 'Secret: (Генерируется автоматически)',
             'tg_copy_link': 'Скопировать ссылку подключения',
             'tg_copied': 'Скопировано',
@@ -515,6 +522,7 @@ class Languages:
             'error_icon_not_found': 'Иконка не найдена',
             'error_unknown_command': 'Неизвестная команда',
             'error_autostart': 'Ошибка настройки автозапуска',
+            'error_port_have_words': 'Порт должен содержать число',
             'error_no_connection': 'Ошибка',
             'error_occurred': 'Произошла ошибка',
 
@@ -531,6 +539,10 @@ class Languages:
             'status_enabled': 'включен',
             'status_disabled': 'выключен',
             'restart_zapret': 'Перезапустите zapret',
+            
+            'main_page_tg_proxy_host': 'Хост',
+            'main_page_tg_proxy_port': 'Порт',
+            'main_page_tg_proxy_domain': 'Домен',
 
             'tg_show_once_notification': 'Порт Telegram Proxy изменен на 1443',
             
@@ -721,6 +733,7 @@ class Languages:
             'mode_select_button': 'Select',
             'mode_cancel': 'Cancel',
             
+            'notification_save_settings': 'Settings saved',
             'notification_copied': 'Link copied',
             'notification_copied_secret': 'Secret-key copied',
             'notification_updated_secret': 'Secret-key updated',
@@ -749,8 +762,8 @@ class Languages:
             'tg_step2_desc': 'Use custom proxy',
             'tg_step3': 'Fill in the proxy fields:',
             'tg_type': 'Type: MTPROTO',
-            'tg_host': 'Host: 127.0.0.1',
-            'tg_port': 'Port: 1443',
+            'tg_host': 'Host: listed on the main page',
+            'tg_port': 'Port: listed on the main page',
             'tg_secret': 'Secret: (auto-generated)',
             'tg_copied': 'Copied',
             'tg_dont_show': 'Don\'t show again',
@@ -803,6 +816,7 @@ class Languages:
             'error_startup': 'Startup error',
             'error_unknown_command': 'Unknown command',
             'error_autostart': 'Autostart configuration error',
+            'error_port_have_words': 'Port must contain numbers',
             'error_no_connection': 'Error',
             'error_occurred': 'Error occurred',
 
@@ -820,6 +834,10 @@ class Languages:
             'status_enabled': 'enabled',
             'status_disabled': 'disabled',
             'restart_zapret': 'Restart the zapret',
+
+            'main_page_tg_proxy_host': 'Host',
+            'main_page_tg_proxy_port': 'Port',
+            'main_page_tg_proxy_domain': 'Domain',
 
             'tg_show_once_notification': 'Telegram Proxy port changed to 1443',
             
