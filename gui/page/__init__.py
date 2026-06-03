@@ -1,3 +1,11 @@
+# Zapret Launcher - GUI for zapret
+# Copyright (C) 2026 trimansberg
+#
+# This is free software: you can redistribute it and/or modify it
+# under the terms of the GNU GPL v3 or any later version.
+#
+# Distributed WITHOUT ANY WARRANTY.
+
 from .main_page import MainPage
 from .service_page import ServicePage
 from .lists_page import ListsPage
