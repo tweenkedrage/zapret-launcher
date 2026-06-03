@@ -1,3 +1,11 @@
+# Zapret Launcher - GUI for zapret
+# Copyright (C) 2026 trimansberg
+#
+# This is free software: you can redistribute it and/or modify it
+# under the terms of the GNU GPL v3 or any later version.
+#
+# Distributed WITHOUT ANY WARRANTY.
+
 from .run import run_proxy
 from .config import proxy_config
 import sys
