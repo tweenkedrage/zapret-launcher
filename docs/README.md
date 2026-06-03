@@ -87,4 +87,4 @@
 - После установки откройте лаунчер и пользуйтесь
 
 ### 💡 Идея по улучшению/Нашли баг? — Discord (@uyolookatme)
-## [MIT](https://github.com/tweenkedrage/zapret-launcher/blob/main/docs/LICENSE)
+## [GPL-3.0](https://github.com/tweenkedrage/zapret-launcher/blob/main/LICENSE)
