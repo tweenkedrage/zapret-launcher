@@ -1,20 +1,12 @@
-<p align="center">
-  <a href="https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/zapret-launcher-installer.exe">
-    <img src="https://img.shields.io/badge/DOWNLOAD-2ea44f?style=for-the-badge&logo=github" alt="DOWNLOAD">
-  </a>
-  <a href="https://github.com/tweenkedrage/zapret-launcher/issues">
-    <img src="https://img.shields.io/badge/REPORT-79553D?style=for-the-badge&logo=github" alt="REPORT">
-  </a>
-  <a href="https://github.com/tweenkedrage/zapret-launcher/blob/main/docs/changelog.md">
-    <img src="https://img.shields.io/badge/CHANGELOG-1D76DB?style=for-the-badge&logo=github" alt="CHANGELOG">
-  </a>
-  <a href="https://www.youtube.com/watch?v=vr56osqQDJg&t">
-    <img src="https://img.shields.io/badge/REVIEW-CD5C5C?style=for-the-badge&logo=youtube" alt="REVIEW">
-  </a>
-  <a href="https://t.me/zapret_launcher">
-    <img src="https://img.shields.io/badge/TELEGRAM-87CEFA?style=for-the-badge&logo=telegram" alt="TELEGRAM">
-  </a>
-</p>
+<div align="center">
+  
+[![DOWNLOAD](https://img.shields.io/badge/DOWNLOAD-2ea44f?style=for-the-badge&logo=github)](https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/zapret-launcher-installer.exe)
+[![REPORT](https://img.shields.io/badge/REPORT-79553D?style=for-the-badge&logo=github)](https://github.com/tweenkedrage/zapret-launcher/issues)
+[![CHANGELOG](https://img.shields.io/badge/CHANGELOG-1D76DB?style=for-the-badge&logo=github)](https://github.com/tweenkedrage/zapret-launcher/blob/main/docs/changelog.md)
+[![REVIEW](https://img.shields.io/badge/REVIEW-CD5C5C?style=for-the-badge&logo=youtube)](https://www.youtube.com/watch?v=vr56osqQDJg&t)
+[![TELEGRAM](https://img.shields.io/badge/TELEGRAM-87CEFA?style=for-the-badge&logo=telegram)](https://t.me/zapret_launcher)
+
+</div>
 
 # Zapret Launcher
 <img width="1190" height="820" alt="Снимок экрана 2026-05-29 002018" src="https://github.com/user-attachments/assets/1907925e-8899-4b95-addb-f88e2f67b477" />
