@@ -253,8 +253,6 @@ class Languages:
             'status_disabled': 'вимкнено',
             'restart_zapret': 'Перезапустіть zapret',
 
-            'tg_show_once_notification': 'Порт Telegram Proxy змінено на 1443',
-
             'main_page_tg_proxy_host': 'Хост',
             'main_page_tg_proxy_port': 'Порт',
             'main_page_tg_proxy_domain': 'Домен',
@@ -551,8 +549,6 @@ class Languages:
             'main_page_tg_proxy_host': 'Хост',
             'main_page_tg_proxy_port': 'Порт',
             'main_page_tg_proxy_domain': 'Домен',
-
-            'tg_show_once_notification': 'Порт Telegram Proxy изменен на 1443',
             
             'autostart_enabled': 'Автозапуск включен',
             'autostart_disabled': 'Автозапуск отключен',
@@ -846,8 +842,6 @@ class Languages:
             'main_page_tg_proxy_host': 'Host',
             'main_page_tg_proxy_port': 'Port',
             'main_page_tg_proxy_domain': 'Domain',
-
-            'tg_show_once_notification': 'Telegram Proxy port changed to 1443',
             
             'autostart_enabled': 'Autostart enabled',
             'autostart_disabled': 'Autostart disabled',
