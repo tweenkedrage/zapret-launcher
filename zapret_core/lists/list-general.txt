@@ -55,7 +55,16 @@ ghcr.io
 github.io
 github.new
 github.dev
+api.github.com
 github.blog
 github.community
 dependabot.com
 githubapp.com
+twitch.tv
+twitchcdn.net
+live-video.net
+jtvnw.net
+amazon-adsystem.com
+scorecardresearch.com
+clifl.com
+ttvnw.net
