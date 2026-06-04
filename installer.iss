@@ -4,7 +4,7 @@ AppName=Zapret Launcher
 AppVersion=3.2.1.9
 AppVerName=Zapret Launcher 3.2.1.9
 AppPublisher=trimansberg
-AppPublisherURL=https://github.com/tweenkedrage/zapret-launcher
+AppPublisherURL=https://zapret-launcher.ru/
 AppSupportURL=https://github.com/tweenkedrage/zapret-launcher
 AppUpdatesURL=https://github.com/tweenkedrage/zapret-launcher/releases
 
