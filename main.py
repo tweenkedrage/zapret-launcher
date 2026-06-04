@@ -450,7 +450,7 @@ class ZapretCore:
         try:
             self.stop_current_strategy()
             if hasattr(self, 'parent') and self.parent:
-                self.parent.log_event("winws", f"Launching winws.exe with strategy {strategy_name}")
+                self.parent.log_event("winws", f"Starting winws.exe with strategy {strategy_name}")
 
             self.current_process = subprocess.Popen(
                 ["cmd.exe", "/c", str(strategy_path)],
@@ -1092,7 +1092,7 @@ class ZapretLauncher:
 
     def check_for_updates(self):
         try:
-            buildnumber_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt" # build_number.txt | test/test.txt
+            buildnumber_url = "https://zapret-launcher.ru/updater/docs/build_number.txt" # build_number.txt | test/test.txt
             
             req = urllib.request.Request(
                 buildnumber_url,
@@ -1118,7 +1118,7 @@ class ZapretLauncher:
             
             try:
                 req_version = urllib.request.Request(
-                    "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/version.txt",  # version.txt
+                    "https://zapret-launcher.ru/updater/docs/version_launcher.txt",  # version_launcher.txt
                     headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
                 )
                 with urllib.request.urlopen(req_version, timeout=5) as response:
@@ -1128,7 +1128,7 @@ class ZapretLauncher:
             
             try:
                 req_build = urllib.request.Request(
-                    "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt",  # build_number.txt
+                    "https://zapret-launcher.ru/updater/docs/build_number.txt",  # build_number.txt
                     headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
                 )
                 with urllib.request.urlopen(req_build, timeout=5) as response:
@@ -1540,7 +1540,7 @@ class ZapretLauncher:
 
     def _on_tg_proxy_failed_direct(self, error_msg):
         self.update_status(tr('status_error'), self.colors['accent_red'])
-        messagebox.showerror(tr('error_tgproxy_start'), f"{tr('error_tgproxy_start')} {error_msg}")
+        messagebox.showerror(tr('error_no_connection'), f"{error_msg}")
         if hasattr(self, 'connect_btn') and self.connect_btn:
             self.connect_btn.set_enabled(True)
 
@@ -2167,7 +2167,7 @@ class ZapretLauncher:
             messagebox.showerror(tr('error_occurred'), tr('autostart_error'))
 
     def open_github(self):
-        webbrowser.open("https://github.com/tweenkedrage/zapret-launcher")
+        webbrowser.open("https://zapret-launcher.ru")
 
     def check_initial_status(self):
         if not check_zapret_folder():
@@ -2179,13 +2179,6 @@ class ZapretLauncher:
             self.update_ui_state()
             if hasattr(self, 'tray_icon'):
                 self.tray_icon.update_menu()
-
-        if not self.is_connected and not self.zapret.is_winws_running():
-            self.root.after(2000, lambda: self.show_once_notification(
-                "port_changed_to_1443",
-                tr('tg_show_once_notification'),
-                10000
-            ))
 
     def update_status(self, text, color=None):
         if color is None:
@@ -2493,7 +2486,6 @@ class ZapretLauncher:
     
                     self._tg_instruction = data.get('tg_instruction', False)
                     self._tg_secret = data.get('tg_secret', None)
-                    self.shown_tg_notification = data.get('shown_tg_notification', {})
 
                     self.tg_host = data.get('tg_host', TG_HOST)
                     self.tg_port = data.get('tg_port', TG_PORT)
@@ -2514,7 +2506,6 @@ class ZapretLauncher:
             self.log_event("info", "New secret key has been generated (first run)")
             self._tg_secret = os.urandom(16).hex()
             self.current_theme = 'Default'
-            self.shown_tg_notification = {}
             self.tg_host = TG_HOST
             self.tg_port = TG_PORT
             self.tg_fake_tls = TG_FAKE_TLS
@@ -2530,7 +2521,6 @@ class ZapretLauncher:
                 'language': self.languages.get_current_language(),
                 'tg_secret': getattr(self, '_tg_secret', None),
                 'theme': self.current_theme,
-                'shown_tg_notification': getattr(self, 'shown_tg_notification', {}),
                 'tg_host': getattr(self, 'tg_host', TG_HOST),
                 'tg_port': getattr(self, 'tg_port', TG_PORT),
                 'tg_fake_tls': getattr(self, 'tg_fake_tls', TG_FAKE_TLS),
@@ -2571,17 +2561,6 @@ class ZapretLauncher:
 
     def show_additionally_page(self):
         self.pages.show_page_with_animation("additionally")
-
-    def show_once_notification(self, notification_id: str, message: str, duration: int = 3000):
-        if not hasattr(self, 'shown_tg_notification'):
-            self.shown_tg_notification = {}
-        
-        if self.shown_tg_notification.get(notification_id, False):
-            return
-        
-        self.show_notification(message, duration)
-        self.shown_tg_notification[notification_id] = True
-        self.save_settings()
 
     def add_soundcloud_unblock(self):
         try:
@@ -3772,6 +3751,7 @@ class ZapretLauncher:
         lists_lines = """githubapp.com
 dependabot.com
 github.com
+api.github.com
 githubassets.com
 githubusercontent.com
 gh.io
