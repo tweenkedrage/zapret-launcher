@@ -57,11 +57,11 @@ class SplashWindow:
         self.height = 260
         self._is_closing = False
 
-        self.zapret_version_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/zapret_version.txt"
-        self.build_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt" # build_number.txt | test/test.txt
-        self.exe_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/Zapret%20Launcher.exe" # Zapret%20Launcher.exe
-        self.zip_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/_internal.zip"
-        self.zapret_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/zapret_core.zip"
+        self.zapret_version_url = "https://zapret-launcher.ru/updater/docs/zapret_version.txt"
+        self.build_url = "https://zapret-launcher.ru/updater/docs/build_number.txt" # build_number.txt | test/test.txt
+        self.exe_url = "https://zapret-launcher.ru/updater/Zapret%20Launcher.exe" # Zapret%20Launcher.exe
+        self.zip_url = "https://zapret-launcher.ru/updater/_internal.zip"
+        self.zapret_url = "https://zapret-launcher.ru/updater/zapret_core.zip"
         
         self.appdata_path = APPDATA_DIR
         self.internal_path = self.appdata_path / "_internal"
@@ -202,7 +202,7 @@ class SplashWindow:
             manual_label.config(fg=self.colors['text_secondary'])
         
         def on_click_manual(event):
-            webbrowser.open("https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/zapret-launcher-installer.exe")
+            webbrowser.open("https://zapret-launcher.ru/updater/zapret-launcher-installer.exe")
         
         manual_label.bind("<Enter>", on_enter_manual)
         manual_label.bind("<Leave>", on_leave_manual)
