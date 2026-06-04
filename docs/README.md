@@ -1,8 +1,8 @@
 <div align="center">
   
-[![DOWNLOAD](https://img.shields.io/badge/DOWNLOAD-2ea44f?style=for-the-badge&logo=github)](https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/zapret-launcher-installer.exe)
+[![DOWNLOAD](https://img.shields.io/badge/DOWNLOAD-2ea44f?style=for-the-badge&logo=github)](https://zapret-launcher.ru/#download)
 [![REPORT](https://img.shields.io/badge/REPORT-79553D?style=for-the-badge&logo=github)](https://github.com/tweenkedrage/zapret-launcher/issues)
-[![CHANGELOG](https://img.shields.io/badge/CHANGELOG-1D76DB?style=for-the-badge&logo=github)](https://github.com/tweenkedrage/zapret-launcher/blob/main/docs/changelog.md)
+[![CHANGELOG](https://img.shields.io/badge/CHANGELOG-1D76DB?style=for-the-badge&logo=github)](https://zapret-launcher.ru/changelog.html)
 [![REVIEW](https://img.shields.io/badge/REVIEW-CD5C5C?style=for-the-badge&logo=youtube)](https://www.youtube.com/watch?v=vr56osqQDJg&t)
 [![TELEGRAM](https://img.shields.io/badge/TELEGRAM-87CEFA?style=for-the-badge&logo=telegram)](https://t.me/zapret_launcher)
 
