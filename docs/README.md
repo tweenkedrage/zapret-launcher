@@ -74,7 +74,7 @@
 - Права администратора (для работы **Zapret**)
 
 ## 📦 Установка
-- Скачайте [установщик](https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/zapret-launcher-installer.exe)
+- Скачайте [установщик](https://zapret-launcher.ru/updater/zapret-launcher-installer.exe)
 - Запустите `.exe` файл
 - После установки откройте лаунчер и пользуйтесь
 
