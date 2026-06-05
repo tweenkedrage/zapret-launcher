@@ -69,12 +69,10 @@
 - 2 темы оформления: **Default** (Black), **Pink**
 - Поддержка 3 языков: **Русский**, **Українська**, **English**
 
-## 🖥️ Системные требования
-- ОС: Windows **10**/**11** (64-bit)
-- Права администратора (для работы **Zapret**)
+## [🖥️ Системные требования](https://zapret-launcher.ru/#requirements)
 
 ## 📦 Установка
-- Скачайте [установщик](https://zapret-launcher.ru/updater/zapret-launcher-installer.exe)
+- Скачайте [установщик](https://zapret-launcher.ru/#download)
 - Запустите `.exe` файл
 - После установки откройте лаунчер и пользуйтесь
 
