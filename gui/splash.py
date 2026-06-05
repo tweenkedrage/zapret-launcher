@@ -57,11 +57,23 @@ class SplashWindow:
         self.height = 260
         self._is_closing = False
 
-        self.zapret_version_url = "https://zapret-launcher.ru/updater/docs/zapret_version.txt"
-        self.build_url = "https://zapret-launcher.ru/updater/docs/build_number.txt" # build_number.txt | test/test.txt
-        self.exe_url = "https://zapret-launcher.ru/updater/Zapret%20Launcher.exe" # Zapret%20Launcher.exe
-        self.zip_url = "https://zapret-launcher.ru/updater/_internal.zip"
-        self.zapret_url = "https://zapret-launcher.ru/updater/zapret_core.zip"
+        self.zapret_version_url_main = "https://zapret-launcher.ru/updater/docs/zapret_version.txt"
+        self.build_url_main = "https://zapret-launcher.ru/updater/docs/build_number.txt" # build_number.txt | test/test.txt
+        self.exe_url_main = "https://zapret-launcher.ru/updater/Zapret%20Launcher.exe" # Zapret%20Launcher.exe
+        self.zip_url_main = "https://zapret-launcher.ru/updater/_internal.zip"
+        self.zapret_url_main = "https://zapret-launcher.ru/updater/zapret_core.zip"
+
+        self.zapret_version_url_alt = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/zapret_version.txt"
+        self.build_url_alt = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt" # build_number.txt | test/test
+        self.exe_url_alt = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/Zapret%20Launcher.exe" # Zapret%20Launcher.exe
+        self.zip_url_alt = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/_internal.zip"
+        self.zapret_url_alt = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/zapret_core.zip"
+
+        self.zapret_version_url = self.zapret_version_url_main
+        self.build_url = self.build_url_main
+        self.exe_url = self.exe_url_main
+        self.zip_url = self.zip_url_main
+        self.zapret_url = self.zapret_url_main
         
         self.appdata_path = APPDATA_DIR
         self.internal_path = self.appdata_path / "_internal"
@@ -293,7 +305,49 @@ class SplashWindow:
                 self.after(0, self._check_for_update)
             except Exception:
                 self.after(0, lambda: self.update_status(tr('splash_check_connect_error'), 20))
-                self.after(2000, self._launch_main_app)
+                self.after(0, self._switch_to_alternative_urls)
+                self.after(2000, self._check_for_update_with_retry)
+        threading.Thread(target=check, daemon=True).start()
+
+    def _check_for_update_with_retry(self):
+        def check():
+            try:
+                req = urllib.request.Request(
+                    self.build_url,
+                    headers={'User-Agent': 'Mozilla/5.0'}
+                )
+                try:
+                    with urllib.request.urlopen(req, timeout=10) as response:
+                        latest_build = response.read().decode('utf-8').strip()
+                except Exception:
+                    if self.build_url == self.build_url_main:
+                        self._switch_to_alternative_urls()
+                        req = urllib.request.Request(
+                            self.build_url,
+                            headers={'User-Agent': 'Mozilla/5.0'}
+                        )
+                        with urllib.request.urlopen(req, timeout=10) as response:
+                            latest_build = response.read().decode('utf-8').strip()
+                    else:
+                        raise
+                
+                latest_build = re.sub(r'[^\d]', '', latest_build)
+                current_build = self.current_build
+                need_launcher_update = self._compare_builds(current_build, latest_build)
+                need_zapret_update, latest_zapret = self._check_zapret_core_update()
+                
+                if need_launcher_update:
+                    self.after(1000, lambda: self._start_update(latest_build))
+                elif need_zapret_update:
+                    self.after(1000, lambda: self._update_zapret_core_only(latest_zapret))
+                else:
+                    self.after(0, lambda: self.update_status(tr('splash_starting_exe'), 100))
+                    self.after(1500, self._launch_main_app)
+                    
+            except Exception:
+                self.after(0, lambda: self.update_status(tr('splash_starting_exe'), 100))
+                self.after(1500, self._launch_main_app)
+        
         threading.Thread(target=check, daemon=True).start()
 
     def _version_to_tuple(self, ver_str):
@@ -382,6 +436,32 @@ class SplashWindow:
                 return False
         
         return latest_letter > current_letter
+    
+    def _switch_to_alternative_urls(self):
+        self.zapret_version_url = self.zapret_version_url_alt
+        self.build_url = self.build_url_alt
+        self.exe_url = self.exe_url_alt
+        self.zip_url = self.zip_url_alt
+        self.zapret_url = self.zapret_url_alt
+
+    def _download_file_with_fallback(self, url, dest_path, start_progress=0, end_progress=100, use_alternative_on_error=True):
+        try:
+            return self._download_with_progress(url, dest_path, start_progress, end_progress)
+        except Exception as e:
+            if use_alternative_on_error and url in [self.exe_url_main, self.zip_url_main, self.zapret_url_main]:
+                if url == self.exe_url_main:
+                    alt_url = self.exe_url_alt
+                elif url == self.zip_url_main:
+                    alt_url = self.zip_url_alt
+                elif url == self.zapret_url_main:
+                    alt_url = self.zapret_url_alt
+                else:
+                    raise
+                
+                self.update_status(tr('splash_retry_alternative'), start_progress)
+                time.sleep(1)
+                return self._download_with_progress(alt_url, dest_path, start_progress, end_progress)
+            raise
 
     def _check_for_update(self):
         self.update_status(tr('splash_check_updates'), 30)
@@ -392,10 +472,22 @@ class SplashWindow:
                     self.build_url,
                     headers={'User-Agent': 'Mozilla/5.0'}
                 )
-                with urllib.request.urlopen(req, timeout=10) as response:
-                    latest_build = response.read().decode('utf-8').strip()
-                    latest_build = re.sub(r'[^\d]', '', latest_build)
+                try:
+                    with urllib.request.urlopen(req, timeout=10) as response:
+                        latest_build = response.read().decode('utf-8').strip()
+                except Exception:
+                    if self.build_url == self.build_url_main:
+                        self._switch_to_alternative_urls()
+                        req = urllib.request.Request(
+                            self.build_url,
+                            headers={'User-Agent': 'Mozilla/5.0'}
+                        )
+                        with urllib.request.urlopen(req, timeout=10) as response:
+                            latest_build = response.read().decode('utf-8').strip()
+                    else:
+                        raise
                 
+                latest_build = re.sub(r'[^\d]', '', latest_build)
                 current_build = self.current_build
                 need_launcher_update = self._compare_builds(current_build, latest_build)
                 need_zapret_update, latest_zapret = self._check_zapret_core_update()
@@ -420,8 +512,20 @@ class SplashWindow:
                 self.zapret_version_url,
                 headers={'User-Agent': 'Mozilla/5.0'}
             )
-            with urllib.request.urlopen(req, timeout=10) as response:
-                latest_version = response.read().decode('utf-8').strip()
+            try:
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    latest_version = response.read().decode('utf-8').strip()
+            except Exception:
+                if self.zapret_version_url == self.zapret_version_url_main:
+                    self.zapret_version_url = self.zapret_version_url_alt
+                    req = urllib.request.Request(
+                        self.zapret_version_url,
+                        headers={'User-Agent': 'Mozilla/5.0'}
+                    )
+                    with urllib.request.urlopen(req, timeout=10) as response:
+                        latest_version = response.read().decode('utf-8').strip()
+                else:
+                    raise
             
             current_version = self.get_current_zapret_version()
             need_update = self._compare_zapret_versions(current_version, latest_version)
