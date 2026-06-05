@@ -1175,7 +1175,6 @@ class ZapretLauncher:
     def show_mode_selector(self):
         dialog = tk.Toplevel(self.root)
         dialog.title(tr('mode_select_title'))
-        dialog.geometry("500x550")
         dialog.resizable(False, False)
         dialog.configure(bg=self.colors['bg_medium'])
         dialog.transient(self.root)
@@ -1186,7 +1185,8 @@ class ZapretLauncher:
         
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 250
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 275
-        dialog.geometry(f"+{x}+{y}")
+        
+        dialog.geometry(f"500x550+{x}+{y}")
         
         tk.Label(dialog, text=tr('mode_select'), font=("Segoe UI Variable", 16, "bold"),
                 fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(pady=(20, 10))
@@ -1547,7 +1547,6 @@ class ZapretLauncher:
     def select_strategy_for_mode(self, mode_name):
         dialog = tk.Toplevel(self.root)
         dialog.title(tr('select_strategy_title'))
-        dialog.geometry("550x550")
         dialog.resizable(False, False)
         dialog.configure(bg=self.colors['bg_medium'])
         dialog.transient(self.root)
@@ -1558,7 +1557,8 @@ class ZapretLauncher:
         
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 275
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 275
-        dialog.geometry(f"+{x}+{y}")
+        
+        dialog.geometry(f"550x550+{x}+{y}")
         
         if mode_name == tr('mode_zapret_tgproxy'):
             title_text = f"{tr('select_strategy')}"
@@ -2329,7 +2329,6 @@ class ZapretLauncher:
                     pass
                 
                 self.is_connected = False
-                self.current_strategy = None
                 self.root.after(0, self.finish_disconnect)
                 
             except Exception:
@@ -2471,6 +2470,7 @@ class ZapretLauncher:
                     saved_strategy = data.get('current_strategy')
                     if saved_strategy and saved_strategy in self.zapret.available_strategies:
                         self.current_strategy = saved_strategy
+                        self.strategy_var.set(saved_strategy)
                     
                     autostart_enabled = data.get('autostart_enabled', False)
                     if autostart_enabled != self.check_autostart_status():
@@ -3434,7 +3434,6 @@ class ZapretLauncher:
     def show_hosts_instruction(self):
         dialog = tk.Toplevel(self.root)
         dialog.title(tr('instruction_title_window'))
-        dialog.geometry("600x480")
         dialog.resizable(False, False)
         dialog.configure(bg=self.colors['bg_medium'])
         dialog.transient(self.root)
@@ -3443,7 +3442,8 @@ class ZapretLauncher:
         
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 300
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 240
-        dialog.geometry(f"+{x}+{y}")
+        
+        dialog.geometry(f"600x480+{x}+{y}")
 
         dialog.update_idletasks()
         self.set_dialog_header_color(dialog)
@@ -3609,7 +3609,6 @@ class ZapretLauncher:
     def show_github_instruction(self):
         dialog = tk.Toplevel(self.root)
         dialog.title(tr('instruction_title_window'))
-        dialog.geometry("700x500")
         dialog.resizable(False, False)
         dialog.configure(bg=self.colors['bg_medium'])
         dialog.transient(self.root)
@@ -3618,7 +3617,8 @@ class ZapretLauncher:
         
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 300
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 200
-        dialog.geometry(f"+{x}+{y}")
+        
+        dialog.geometry(f"700x500+{x}+{y}")
 
         dialog.update_idletasks()
         self.set_dialog_header_color(dialog)
@@ -3801,7 +3801,6 @@ github.community"""
     def show_tg_proxy_instruction(self):
         dialog = tk.Toplevel(self.root)
         dialog.title(tr('instruction_title_window'))
-        dialog.geometry("500x520")
         dialog.resizable(False, False)
         dialog.configure(bg=self.colors['bg_medium'])
         dialog.transient(self.root)
@@ -3814,7 +3813,8 @@ github.community"""
         
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 250
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 310
-        dialog.geometry(f"+{x}+{y}")
+        
+        dialog.geometry(f"500x520+{x}+{y}")
         
         dialog.update_idletasks()
         self.set_dialog_header_color(dialog)
