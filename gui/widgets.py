@@ -89,8 +89,10 @@ class RoundedButton(tk.Canvas):
         self.hover_color = hover_color
         self.corner_radius = corner_radius
         self._text = text
-        self.animation_steps = animation_steps
+        self._animating = False
+        self._is_animating = False
         self._animation_id = None
+        self.animation_steps = animation_steps
         self.theme_name = theme_name
         
         self.original_width = width
@@ -112,10 +114,29 @@ class RoundedButton(tk.Canvas):
             self.tag_bind(item, "<Leave>", self.on_leave)
 
     def on_click(self, event):
-        if self.enabled and self.command:
-            self._animate_press(step=0)
-            self.after(120, lambda: self._animate_release(step=0))
-            self.after(150, self.command)
+        if not self.enabled:
+            return
+        
+        if not self._command:
+            return
+        
+        if hasattr(self, '_is_animating') and self._is_animating:
+            return
+        
+        self._is_animating = True
+        cmd = self._command
+        
+        self._animate_press(step=0)
+        self.after(120, lambda: self._animate_release(step=0))
+        self.after(150, lambda: self._execute_command(cmd))
+
+    def _execute_command(self, cmd):
+        self._is_animating = False
+        if cmd and self.enabled:
+            try:
+                cmd()
+            except Exception:
+                pass
 
     def _animate_press(self, step):
         if step >= self.animation_steps:
