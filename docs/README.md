@@ -78,4 +78,3 @@
 
 ### 💡 Идея по улучшению/Нашли баг? — Discord (`@uyolookatme`)
 ## Форк: [zapret-discord-youtube](https://github.com/Flowseal/zapret-discord-youtube), [tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy)
-## [GPL-3.0](https://github.com/tweenkedrage/zapret-launcher/blob/main/LICENSE)
