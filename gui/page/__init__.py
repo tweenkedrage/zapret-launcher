@@ -1,4 +1,4 @@
-# Zapret Launcher - GUI for zapret
+# Zapret Launcher - Bypass restrictions
 # Copyright (C) 2026 trimansberg
 #
 # This is free software: you can redistribute it and/or modify it
