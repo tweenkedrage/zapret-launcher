@@ -1092,7 +1092,7 @@ class ZapretLauncher:
 
     def check_for_updates(self):
         try:
-            buildnumber_url = "https://zapret-launcher.ru/updater/docs/build_number.txt" # build_number.txt | test/test.txt
+            buildnumber_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt" # build_number.txt | test/test.txt
             
             req = urllib.request.Request(
                 buildnumber_url,
@@ -1118,7 +1118,7 @@ class ZapretLauncher:
             
             try:
                 req_version = urllib.request.Request(
-                    "https://zapret-launcher.ru/updater/docs/version_launcher.txt",  # version_launcher.txt
+                    "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/version.txt",  # version.txt
                     headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
                 )
                 with urllib.request.urlopen(req_version, timeout=5) as response:
@@ -1128,7 +1128,7 @@ class ZapretLauncher:
             
             try:
                 req_build = urllib.request.Request(
-                    "https://zapret-launcher.ru/updater/docs/build_number.txt",  # build_number.txt
+                    "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt",  # build_number.txt
                     headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
                 )
                 with urllib.request.urlopen(req_build, timeout=5) as response:
@@ -2078,19 +2078,21 @@ class ZapretLauncher:
     def set_autostart(self, enabled):
         try:
             exe_path = sys.executable if getattr(sys, 'frozen', False) else sys.argv[0]
-            
             key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
             
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE) as key:
                 if enabled:
                     winreg.SetValueEx(key, "Zapret Launcher", 0, winreg.REG_SZ, exe_path)
+                    self.log_event("info", f"Autostart enabled: {exe_path}")
                 else:
                     try:
                         winreg.DeleteValue(key, "Zapret Launcher")
+                        self.log_event("info", f"Autostart disabled: {exe_path}")
                     except:
                         pass
             return True
-        except Exception:
+        except Exception as e:
+            self.log_event("error", f"Unexpected error in autostart launcher: {e}")
             return False
 
     def check_autostart_status(self):
@@ -2502,7 +2504,8 @@ class ZapretLauncher:
                         self._tg_secret = os.urandom(16).hex()
                         self.save_settings()
                         
-        except Exception:
+        except Exception as e:
+            self.log_event("error", f"Failed to load settings: {e}")
             self.log_event("info", "New secret key has been generated (first run)")
             self._tg_secret = os.urandom(16).hex()
             self.current_theme = 'Default'
