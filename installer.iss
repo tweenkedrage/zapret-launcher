@@ -20,8 +20,6 @@ SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=commandline
-ArchitecturesAllowed=x64
-ArchitecturesInstallIn64BitMode=x64
 
 OutputDir=dist
 OutputBaseFilename=zapret-launcher-installer
