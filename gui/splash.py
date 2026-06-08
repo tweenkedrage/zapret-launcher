@@ -110,6 +110,12 @@ class SplashWindow:
         self.window.configure(bg=self.colors['bg_dark'])
         self.window.resizable(False, False)
 
+        screen_width = self.window.winfo_screenwidth()
+        screen_height = self.window.winfo_screenheight()
+        x = (screen_width - self.width) // 2
+        y = (screen_height - self.height) // 2
+        self.window.geometry(f"{self.width}x{self.height}+{x}+{y}")
+
         try:
             icon_paths = [
                 BASE_DIR / "resources" / "icon.ico",
@@ -131,7 +137,6 @@ class SplashWindow:
             pass
 
         self._update_window_title_color()
-        self.center_window()
 
     def _update_window_title_color(self):
         try:
@@ -292,6 +297,7 @@ class SplashWindow:
             return
         
         threading.Thread(target=self.cleanup_old_internal_folders, daemon=True).start()
+        threading.Thread(target=self.cleanup_old_exclude_files, daemon=True).start()
     
         self._check_internet()
         self.window.mainloop()
@@ -458,7 +464,6 @@ class SplashWindow:
                 else:
                     raise
                 
-                self.update_status(tr('splash_retry_alternative'), start_progress)
                 time.sleep(1)
                 return self._download_with_progress(alt_url, dest_path, start_progress, end_progress)
             raise
@@ -871,6 +876,34 @@ class SplashWindow:
         except Exception:
             pass
     
+    def cleanup_old_exclude_files(self):
+        try:
+            lists_dir = APPDATA_DIR / "zapret_core" / "lists"
+            if not lists_dir.exists():
+                return
+            
+            files_to_remove = [
+                "ipset-exclude-user.txt",
+                "ipset-exclude.txt", 
+                "list-exclude-user.txt",
+                "list-exclude.txt",
+                "list-general-user.txt"
+            ]
+            
+            removed_count = 0
+            for filename in files_to_remove:
+                file_path = lists_dir / filename
+                if file_path.exists():
+                    try:
+                        os.chmod(file_path, 0o666)
+                        file_path.unlink()
+                        removed_count += 1
+                    except Exception:
+                        pass
+                
+        except Exception:
+            pass
+
     def _launch_main_app(self):
         if self._is_closing:
             return
