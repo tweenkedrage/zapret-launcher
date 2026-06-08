@@ -356,7 +356,6 @@ class SettingsPage:
             ("zapret_core/general (SIMPLE FAKE ALT2).bat", "general (SIMPLE FAKE ALT2).bat"),
 
             ("resources/icon.ico", "icon.ico"),
-            ("resources/icon.png", "icon.png"),
             ("config.json", "config.json"),
         ]
         
@@ -371,12 +370,10 @@ class SettingsPage:
         if lists_dir.exists():
             list_files = ["ipset-all.txt", 
                         "ipset-all.txt.backup", 
-                        "ipset-exclude.txt",
-                        "ipset-exclude-user.txt", 
-                        "list-exclude-user.txt", 
-                        "list-exclude.txt",
+                        "ipset-white.txt",
+                        "ipset-white-user.txt", 
+                        "list-white.txt",
                         "list-custom.txt",
-                        "list-general-user.txt", 
                         "list-general.txt", 
                         "list-google.txt"]
             
@@ -505,7 +502,6 @@ class SettingsPage:
             "zapret_core/general (SIMPLE FAKE ALT).bat",
             "zapret_core/general (SIMPLE FAKE ALT2).bat",
             "resources/icon.ico",
-            "resources/icon.png",
             "config.json",
         ]
         
@@ -519,12 +515,10 @@ class SettingsPage:
             list_files = [
                 "ipset-all.txt",
                 "ipset-all.txt.backup",
-                "ipset-exclude.txt",
-                "ipset-exclude-user.txt",
-                "list-exclude-user.txt",
-                "list-exclude.txt",
+                "ipset-white.txt",
+                "ipset-white-user.txt",
+                "list-white.txt",
                 "list-custom.txt",
-                "list-general-user.txt",
                 "list-general.txt",
                 "list-google.txt"
             ]
