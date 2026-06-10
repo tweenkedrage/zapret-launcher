@@ -704,7 +704,27 @@ class SplashWindow:
             if source_core.exists():
                 for item in source_core.iterdir():
                     dest = zapret_dir / item.name
-                    if item.is_dir():
+                    
+                    if item.is_dir() and item.name == "lists":
+                        if dest.exists():
+                            files_to_update = [
+                                "ipset-all.txt",
+                                "ipset-all.txt.backup",
+                                "ipset-white.txt",
+                                "list-general.txt",
+                                "list-google.txt",
+                                "list-white.txt"
+                            ]
+                            
+                            for file_name in files_to_update:
+                                source_file = item / file_name
+                                dest_file = dest / file_name
+                                if source_file.exists():
+                                    try:
+                                        shutil.copy2(source_file, dest_file)
+                                    except Exception:
+                                        pass
+                    elif item.is_dir():
                         if dest.exists():
                             shutil.rmtree(dest)
                         shutil.copytree(item, dest)
@@ -771,7 +791,7 @@ class SplashWindow:
                 if not zip_success:
                     raise Exception("Failed to download zip file")
                 
-                self.after(0, lambda: self.update_status(tr('splash_extracting_files'), 60))
+                self.after(0, lambda: self.update_status(tr('splash_downloading_zip'), 60))
                 extract_success = self._extract_zip_with_progress(temp_zip, self.appdata_path, 60, 80)
                 
                 if not extract_success:
@@ -783,14 +803,23 @@ class SplashWindow:
                 
                 bat_content = f'''@echo off
     timeout /t 2 /nobreak > nul
-    copy /y "{temp_exe}" "{current_exe}" > nul
+    set "source_exe={temp_exe}"
+    set "target_exe={current_exe}"
+    set "temp_zip={temp_zip}"
+
+    :retry_copy
+    copy /y "%source_exe%" "%target_exe%" > nul
     if errorlevel 1 (
-        echo Failed to copy file
-    ) else (
-        del /f /q "{temp_exe}" 2>nul
-        del /f /q "{temp_zip}" 2>nul
-        start "" "{current_exe}" --no-splash --from-splash
+        echo Waiting for file...
+        timeout /t 1 /nobreak > nul
+        goto retry_copy
     )
+
+    if exist "%source_exe%" del /f /q "%source_exe%" 2>nul
+    if exist "%temp_zip%" del /f /q "%temp_zip%" 2>nul
+
+    timeout /t 1 /nobreak > nul
+    start "" "%target_exe%"
     del /f /q "%~f0" 2>nul
     '''
                 
@@ -804,7 +833,7 @@ class SplashWindow:
                 subprocess.Popen(
                     ['cmd.exe', '/c', str(update_script)],
                     startupinfo=startupinfo,
-                    creationflags=subprocess.DETACHED_PROCESS,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL
                 )
