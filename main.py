@@ -1044,7 +1044,7 @@ class ZapretLauncher:
         
         self.credit_label = tk.Label(
             self.credit_frame,
-            text="by trimansberg",
+            text="zapret-launcher.ru",
             font=("Segoe UI Variable", 8),
             fg=self.colors['text_secondary'],
             bg=self.colors['bg_medium'],
@@ -1054,7 +1054,7 @@ class ZapretLauncher:
 
         self.credit_label.bind("<Enter>", lambda e: self.credit_label.config(fg=self.colors['accent']))
         self.credit_label.bind("<Leave>", lambda e: self.credit_label.config(fg=self.colors['text_secondary']))
-        self.credit_label.bind("<Button-1>", lambda e: self.open_github())
+        self.credit_label.bind("<Button-1>", lambda e: self.open_website())
 
     def show_update_label(self):
         try:
@@ -2168,7 +2168,7 @@ class ZapretLauncher:
         else:
             messagebox.showerror(tr('error_occurred'), tr('autostart_error'))
 
-    def open_github(self):
+    def open_website(self):
         webbrowser.open("https://zapret-launcher.ru")
 
     def check_initial_status(self):
@@ -3523,7 +3523,7 @@ class ZapretLauncher:
                         fg=self.colors['accent'], bg=self.colors['bg_light'])
         bullet.pack(side=tk.LEFT, padx=(10, 3))
         
-        copy_label = tk.Label(copy_frame_block, text=tr('hosts_copy_lines'), font=("Segoe UI Variable", 9),
+        copy_label = tk.Label(copy_frame_block, text=tr('ghub_copy_lines'), font=("Segoe UI Variable", 9),
                             fg=self.colors['accent'], bg=self.colors['bg_light'], cursor="hand2")
         copy_label.pack(side=tk.LEFT)
         
@@ -3556,8 +3556,8 @@ class ZapretLauncher:
             self.root.clipboard_append(hosts_lines)
             self.root.update()
             copy_label.config(text=tr('tg_copied'), fg=self.colors['accent_green'])
-            self.show_notification(tr('hosts_copied_notification'), 2000)
-            self.root.after(2000, lambda: copy_label.config(text=tr('hosts_copy_lines'), fg=self.colors['accent']))
+            self.show_notification(tr('ghub_copied_notification'), 2000)
+            self.root.after(2000, lambda: copy_label.config(text=tr('ghub_copied_notification'), fg=self.colors['accent']))
         
         copy_label.bind("<Button-1>", copy_hosts_lines)
         
@@ -3770,7 +3770,7 @@ github.community"""
             self.root.clipboard_append(lists_lines)
             self.root.update()
             copy_label.config(text=tr('tg_copied'), fg=self.colors['accent_green'])
-            self.show_notification(tr('ghub_copied_notification'), 2000)
+            self.show_notification(tr('ghub_copy_lines'), 2000)
             self.root.after(2000, lambda: copy_label.config(text=tr('ghub_copy_lines'), fg=self.colors['accent']))
         
         copy_label.bind("<Button-1>", copy_lists_lines)
