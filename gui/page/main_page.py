@@ -12,7 +12,6 @@ import webbrowser
 from pathlib import Path
 from PIL import Image, ImageTk, ImageEnhance
 import sys
-import time
 from utils.languages import tr
 
 class MainPage:
@@ -76,58 +75,58 @@ class MainPage:
                                     fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
         self.app.mode_label.pack(side=tk.LEFT, padx=15, pady=10)
         
-        self.app.stats_frame = tk.Frame(left_column, bg=self.colors['bg_medium'])
+        self.app.stats_frame = tk.Frame(left_column, bg=self.colors['bg_light'])
         self.app.stats_frame.pack(fill=tk.X, pady=(0, 15), ipadx=20, ipady=15)
         
         tk.Label(self.app.stats_frame, text=tr('stats_session'), font=("Inter", 14, "bold"),
-            fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(anchor='w', padx=15, pady=(8, 5))
+            fg=self.colors['text_primary'], bg=self.colors['bg_light']).pack(anchor='w', padx=15, pady=(8, 5))
         
-        stats_row1 = tk.Frame(self.app.stats_frame, bg=self.colors['bg_medium'])
+        stats_row1 = tk.Frame(self.app.stats_frame, bg=self.colors['bg_light'])
         stats_row1.pack(fill=tk.X, padx=15, pady=2)
         
         self.app.stats_time_label = tk.Label(stats_row1, text="00:00:00", font=("Inter", 18, "bold"),
-                                            fg=self.colors['accent'], bg=self.colors['bg_medium'])
+                                            fg=self.colors['accent'], bg=self.colors['bg_light'])
         self.app.stats_time_label.pack(side=tk.LEFT)
         
         tk.Label(stats_row1, text=tr('stats_time'), font=self.font_primary,
-                fg=self.colors['text_secondary'], bg=self.colors['bg_medium']).pack(side=tk.LEFT, padx=(5, 20))
+                fg=self.colors['text_secondary'], bg=self.colors['bg_light']).pack(side=tk.LEFT, padx=(5, 20))
         
         self.app.stats_traffic_label = tk.Label(stats_row1, text="⬇ 0 B  |  ⬆ 0 B", font=("Inter", 12),
-                                                fg=self.colors['text_primary'], bg=self.colors['bg_medium'])
+                                                fg=self.colors['text_primary'], bg=self.colors['bg_light'])
         self.app.stats_traffic_label.pack(side=tk.LEFT, padx=(0, 20))
         self.app.stats_total_label = tk.Label(stats_row1, text="0 B", font=("Inter", 12),
-                                            fg=self.colors['text_secondary'], bg=self.colors['bg_medium'])
+                                            fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
         self.app.stats_total_label.pack(side=tk.LEFT)
         
-        stats_speed_frame = tk.Frame(self.app.stats_frame, bg=self.colors['bg_medium'])
+        stats_speed_frame = tk.Frame(self.app.stats_frame, bg=self.colors['bg_light'])
         stats_speed_frame.pack(fill=tk.X, padx=15, pady=(10, 5))
 
-        stats_container = tk.Frame(stats_speed_frame, bg=self.colors['bg_medium'], width=550, height=80)
+        stats_container = tk.Frame(stats_speed_frame, bg=self.colors['bg_light'], width=550, height=80)
         stats_container.pack(anchor='w')
         stats_container.pack_propagate(False)
 
-        speed_frame = tk.Frame(stats_container, bg=self.colors['bg_medium'])
+        speed_frame = tk.Frame(stats_container, bg=self.colors['bg_light'])
         speed_frame.place(x=0, y=0, width=300, height=80)
         
         tk.Label(speed_frame, text=tr('stats_speed'), font=self.font_bold,
-                fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(anchor='w')
+                fg=self.colors['text_primary'], bg=self.colors['bg_light']).pack(anchor='w')
         
         self.app.stats_speed_up_label = tk.Label(speed_frame, text="⬆ 0 B/s", font=self.font_primary,
-                                                fg=self.colors['accent'], bg=self.colors['bg_medium'])
+                                                fg=self.colors['accent'], bg=self.colors['bg_light'])
         self.app.stats_speed_up_label.pack(anchor='w', pady=(5, 2))
         
         self.app.stats_speed_down_label = tk.Label(speed_frame, text="⬇ 0 B/s", font=self.font_primary,
-                                                fg=self.colors['accent'], bg=self.colors['bg_medium'])
+                                                fg=self.colors['accent'], bg=self.colors['bg_light'])
         self.app.stats_speed_down_label.pack(anchor='w', pady=2)
 
-        rtt_frame = tk.Frame(stats_container, bg=self.colors['bg_medium'])
+        rtt_frame = tk.Frame(stats_container, bg=self.colors['bg_light'])
         rtt_frame.place(x=320, y=0, width=230, height=80)
         
         tk.Label(rtt_frame, text=tr('stats_rtt'), font=self.font_bold,
-                fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(anchor='w')
+                fg=self.colors['text_primary'], bg=self.colors['bg_light']).pack(anchor='w')
         
         self.app.stats_rtt_label = tk.Label(rtt_frame, text="-- ms", font=("Inter", 16, "bold"),
-                                            fg=self.colors['accent'], bg=self.colors['bg_medium'])
+                                            fg=self.colors['accent'], bg=self.colors['bg_light'])
         self.app.stats_rtt_label.pack(anchor='w', pady=(5, 0))
         
         button_frame = tk.Frame(left_column, bg=self.colors['bg_dark'])
