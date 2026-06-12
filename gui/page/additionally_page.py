@@ -39,13 +39,13 @@ class AdditionallyPage:
         )
         desc_label.pack(anchor='w', pady=(0, 20), padx=30)
 
-        hosts_card = tk.Frame(self.frame, bg=self.colors['bg_medium'], relief=tk.FLAT, bd=0)
+        hosts_card = tk.Frame(self.frame, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
         hosts_card.pack(fill=tk.X, padx=30, pady=5)
-        hosts_inner = tk.Frame(hosts_card, bg=self.colors['bg_medium'])
+        hosts_inner = tk.Frame(hosts_card, bg=self.colors['bg_light'])
         hosts_inner.pack(fill=tk.X, padx=20, pady=10)
         
         hosts_title = tk.Label(hosts_inner, text="Telegram Web", font=("Inter", 16, "bold"),
-                               fg=self.colors['accent'], bg=self.colors['bg_medium'], cursor="hand2")
+                               fg=self.colors['accent'], bg=self.colors['bg_light'], cursor="hand2")
         hosts_title.pack(anchor='w')
         
         def on_enter_tgweb(event):
@@ -60,7 +60,7 @@ class AdditionallyPage:
         hosts_title.bind("<Button-1>", on_click_tgweb)
         
         hosts_desc = tk.Label(hosts_inner, text=tr('hosts_desc_on_page'), font=("Inter", 10),
-                                fg=self.colors['text_secondary'], bg=self.colors['bg_medium'],
+                                fg=self.colors['text_secondary'], bg=self.colors['bg_light'],
                                 wraplength=800, justify=tk.LEFT)
         hosts_desc.pack(anchor='w', pady=(5, 10))
         
@@ -71,14 +71,14 @@ class AdditionallyPage:
                                 hover_color=self.colors['accent'], theme_name=self.app.current_theme)
         hosts_btn.pack(side=tk.LEFT)
         
-        soundcloud_card = tk.Frame(self.frame, bg=self.colors['bg_medium'], relief=tk.FLAT, bd=0)
+        soundcloud_card = tk.Frame(self.frame, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
         soundcloud_card.pack(fill=tk.X, padx=30, pady=10)
         
-        inner = tk.Frame(soundcloud_card, bg=self.colors['bg_medium'])
+        inner = tk.Frame(soundcloud_card, bg=self.colors['bg_light'])
         inner.pack(fill=tk.X, padx=20, pady=15)
         
         sc_title = tk.Label(inner, text="SoundCloud", font=("Inter", 16, "bold"),
-                                fg=self.colors['accent'], bg=self.colors['bg_medium'], cursor="hand2")
+                                fg=self.colors['accent'], bg=self.colors['bg_light'], cursor="hand2")
         sc_title.pack(anchor='w')
         
         def on_enter(event):
@@ -93,15 +93,15 @@ class AdditionallyPage:
         sc_title.bind("<Button-1>", on_click)
         
         sc_desc = tk.Label(inner, text=tr('soundcloud_description'), font=("Inter", 10),
-                           fg=self.colors['text_secondary'], bg=self.colors['bg_medium'],
+                           fg=self.colors['text_secondary'], bg=self.colors['bg_light'],
                            wraplength=800, justify=tk.LEFT)
         sc_desc.pack(anchor='w', pady=(5, 15))
         
-        btn_frame = tk.Frame(inner, bg=self.colors['bg_medium'])
+        btn_frame = tk.Frame(inner, bg=self.colors['bg_light'])
         btn_frame.pack(fill=tk.X, pady=5)
         
         status_label = tk.Label(inner, text="", font=("Inter", 10),
-                                fg=self.colors['text_secondary'], bg=self.colors['bg_medium'])
+                                fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
         status_label.pack(anchor='w', pady=(10, 0))
         
         def update_buttons():
@@ -125,13 +125,13 @@ class AdditionallyPage:
                 enable_btn.pack(side=tk.LEFT)
                 status_label.config(text=tr('disabled_additionally'), fg=self.colors['text_secondary'])
 
-        ghub_card = tk.Frame(self.frame, bg=self.colors['bg_medium'], relief=tk.FLAT, bd=0)
+        ghub_card = tk.Frame(self.frame, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
         ghub_card.pack(fill=tk.X, padx=30, pady=5)
-        ghub_inner = tk.Frame(ghub_card, bg=self.colors['bg_medium'])
+        ghub_inner = tk.Frame(ghub_card, bg=self.colors['bg_light'])
         ghub_inner.pack(fill=tk.X, padx=20, pady=10)
         
         ghub_title = tk.Label(ghub_inner, text="GitHub", font=("Inter", 16, "bold"),
-                               fg=self.colors['accent'], bg=self.colors['bg_medium'], cursor="hand2")
+                               fg=self.colors['accent'], bg=self.colors['bg_light'], cursor="hand2")
         ghub_title.pack(anchor='w')
         
         def on_enter_ghub(event):
@@ -146,7 +146,7 @@ class AdditionallyPage:
         ghub_title.bind("<Button-1>", on_click_ghub)
         
         ghub_desc = tk.Label(ghub_inner, text=tr('ghub_desc_on_page'), font=("Inter", 10),
-                              fg=self.colors['text_secondary'], bg=self.colors['bg_medium'],
+                              fg=self.colors['text_secondary'], bg=self.colors['bg_light'],
                               wraplength=800, justify=tk.LEFT)
         ghub_desc.pack(anchor='w', pady=(5, 10))
         
@@ -157,13 +157,13 @@ class AdditionallyPage:
                                   hover_color=self.colors['accent'], theme_name=self.app.current_theme)
         ghub_btn.pack(side=tk.LEFT)
         
-        meta_card = tk.Frame(self.frame, bg=self.colors['bg_medium'], relief=tk.FLAT, bd=0)
+        meta_card = tk.Frame(self.frame, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
         meta_card.pack(fill=tk.X, padx=30, pady=5)
-        meta_inner = tk.Frame(meta_card, bg=self.colors['bg_medium'])
+        meta_inner = tk.Frame(meta_card, bg=self.colors['bg_light'])
         meta_inner.pack(fill=tk.X, padx=20, pady=10)
         
         meta_title = tk.Label(meta_inner, text="Meta", font=("Inter", 16, "bold"),
-                              fg=self.colors['accent'], bg=self.colors['bg_medium'], cursor="hand2")
+                              fg=self.colors['accent'], bg=self.colors['bg_light'], cursor="hand2")
         meta_title.pack(anchor='w')
         
         def on_enter_meta(event):
@@ -178,15 +178,15 @@ class AdditionallyPage:
         meta_title.bind("<Button-1>", on_click_meta)
         
         meta_desc = tk.Label(meta_inner, text=tr('meta_description'), font=("Inter", 10),
-                             fg=self.colors['text_secondary'], bg=self.colors['bg_medium'],
+                             fg=self.colors['text_secondary'], bg=self.colors['bg_light'],
                              wraplength=800, justify=tk.LEFT)
         meta_desc.pack(anchor='w', pady=(5, 10))
         
-        meta_btn_frame = tk.Frame(meta_inner, bg=self.colors['bg_medium'])
+        meta_btn_frame = tk.Frame(meta_inner, bg=self.colors['bg_light'])
         meta_btn_frame.pack(fill=tk.X, pady=5)
         
         meta_status_label = tk.Label(meta_inner, text="", font=("Inter", 10),
-                                     fg=self.colors['text_secondary'], bg=self.colors['bg_medium'])
+                                     fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
         meta_status_label.pack(anchor='w', pady=(5, 0))
         
         def update_meta_buttons():
