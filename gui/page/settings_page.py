@@ -553,11 +553,62 @@ class SettingsPage:
                     with open(temp_zip, 'wb') as f:
                         f.write(response.read())
                 
-                user_files = []
-                lists_dir = zapret_dir / "lists"
-                if lists_dir.exists():
-                    for file in lists_dir.glob("*-user.txt"):
-                        user_files.append(file)
+                if zapret_dir.exists():
+                    version_file = zapret_dir / "version.txt"
+                    if version_file.exists():
+                        version_file.unlink()
+                    
+                    bat_files_to_delete = [
+                        "service.bat",
+                        "general.bat",
+                        "general (ALT).bat",
+                        "general (ALT2).bat",
+                        "general (ALT3).bat",
+                        "general (ALT4).bat",
+                        "general (ALT5).bat",
+                        "general (ALT6).bat",
+                        "general (ALT7).bat",
+                        "general (ALT8).bat",
+                        "general (ALT9).bat",
+                        "general (ALT10).bat",
+                        "general (ALT11).bat",
+                        "general (ALT12).bat",
+                        "general (FAKE TLS AUTO).bat",
+                        "general (FAKE TLS AUTO ALT2).bat",
+                        "general (FAKE TLS AUTO ALT3).bat",
+                        "general (SIMPLE FAKE).bat",
+                        "general (SIMPLE FAKE ALT).bat",
+                        "general (SIMPLE FAKE ALT2).bat"
+                    ]
+                    
+                    for bat_file in bat_files_to_delete:
+                        bat_path = zapret_dir / bat_file
+                        if bat_path.exists():
+                            bat_path.unlink()
+                    
+                    lists_dir = zapret_dir / "lists"
+                    if lists_dir.exists():
+                        list_files_to_delete = [
+                            "ipset-all.txt",
+                            "ipset-all.txt.backup",
+                            "ipset-white.txt",
+                            "list-general.txt",
+                            "list-google.txt",
+                            "list-white.txt"
+                        ]
+                        
+                        for list_file in list_files_to_delete:
+                            list_path = lists_dir / list_file
+                            if list_path.exists():
+                                list_path.unlink()
+                    
+                    utils_dir = zapret_dir / "utils"
+                    if utils_dir.exists():
+                        shutil.rmtree(utils_dir)
+                    
+                    bin_dir = zapret_dir / "bin"
+                    if bin_dir.exists():
+                        shutil.rmtree(bin_dir)
                 
                 with zipfile.ZipFile(temp_zip, 'r') as zf:
                     temp_extract = tempfile.mkdtemp()
@@ -567,27 +618,36 @@ class SettingsPage:
                     if not extracted_core.exists():
                         extracted_core = Path(temp_extract)
                     
-                    if zapret_dir.exists():
-                        for attempt in range(3):
-                            try:
-                                shutil.rmtree(zapret_dir)
-                                break
-                            except PermissionError:
-                                time.sleep(1)
-                    
                     for item in extracted_core.iterdir():
                         dest = zapret_dir / item.name
-                        if item.is_dir():
+                        
+                        if item.is_dir() and item.name == "lists":
+                            lists_dest = dest
+                            lists_dest.mkdir(parents=True, exist_ok=True)
+                            
+                            system_list_files = [
+                                "ipset-all.txt",
+                                "ipset-all.txt.backup",
+                                "ipset-white.txt",
+                                "list-general.txt",
+                                "list-google.txt",
+                                "list-white.txt"
+                            ]
+                            
+                            for system_file in system_list_files:
+                                source_file = item / system_file
+                                dest_file = lists_dest / system_file
+                                if source_file.exists():
+                                    shutil.copy2(source_file, dest_file)
+                        
+                        elif item.is_dir():
+                            if dest.exists():
+                                shutil.rmtree(dest)
                             shutil.copytree(item, dest)
                         else:
                             shutil.copy2(item, dest)
                     
                     shutil.rmtree(temp_extract)
-                
-                for user_file in user_files:
-                    dest = zapret_dir / "lists" / user_file.name
-                    dest.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(user_file, dest)
                 
                 if temp_zip and Path(temp_zip).exists():
                     Path(temp_zip).unlink()
