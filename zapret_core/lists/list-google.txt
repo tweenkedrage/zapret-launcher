@@ -16,3 +16,11 @@ yt-video-upload.l.google.com
 ytimg.com
 ytimg.l.google.com
 play.google.com
+twitch.tv
+twitchcdn.net
+live-video.net
+jtvnw.net
+amazon-adsystem.com
+scorecardresearch.com
+clifl.com
+ttvnw.net
