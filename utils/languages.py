@@ -100,7 +100,7 @@ class Languages:
             'splash_starting_exe': 'Запуск лаунчера..',
             'splash_update_error': 'Помилка поновлення!',
             'splash_help_update': 'Помилка оновлення? Ручне встановлення',
-            'splash_check_connect_error': 'Не вдалося встановити мережеве з\'єднання',
+            'splash_check_connect_error': 'Помилка підключення до мережі',
                         
             'settings_title': 'Налаштування',
             'settings_desc': 'Налаштування інтерфейсу та параметрів роботи',
@@ -246,7 +246,7 @@ class Languages:
                         
             'status_connecting': 'Запуск...',
             'status_disconnecting': 'Вимкнення...',
-            'status_starting': 'Запуск...',
+            'status_starting': 'Підключення...',
             'status_error': 'Помилка запуску',
             'status_strategy_started': 'Запущено стратегію:',
             'status_enabled': 'увімкнено',
@@ -394,7 +394,7 @@ class Languages:
             'splash_starting_exe': 'Запуск лаунчера..',
             'splash_update_error': 'Ошибка обновления!',
             'splash_help_update': 'Ошибка обновления? Ручная установка',
-            'splash_check_connect_error': 'Не удалось установить сетевое соединение',
+            'splash_check_connect_error': 'Ошибка подключения к сети',
                         
             'settings_title': 'Настройки',
             'settings_desc': 'Настройка интерфейса и параметров работы',
@@ -540,7 +540,7 @@ class Languages:
                         
             'status_connecting': 'Запуск...',
             'status_disconnecting': 'Отключение...',
-            'status_starting': 'Запуск...',
+            'status_starting': 'Подключение...',
             'status_error': 'Ошибка запуска',
             'status_strategy_started': 'Запущена стратегия:',
             'status_enabled': 'включен',
@@ -689,7 +689,7 @@ class Languages:
             'splash_stopping_processes': 'Stopping processes...',
             'splash_update_error': 'Update error!',
             'splash_help_update': 'Update error? Manual installation',
-            'splash_check_connect_error': 'Unable to establish connection network!',
+            'splash_check_connect_error': 'Network connection error',
             
             'settings_title': 'Settings',
             'settings_desc': 'Interface and operation settings',
@@ -834,7 +834,7 @@ class Languages:
                         
             'status_connecting': 'Starting...',
             'status_disconnecting': 'Disconnecting...',
-            'status_starting': 'Starting...',
+            'status_starting': 'Connecting...',
             'status_error': 'Startup error',
             'status_strategy_started': 'Strategy started:',
             'status_enabled': 'enabled',
