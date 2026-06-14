@@ -17,6 +17,7 @@ from utils.languages import tr
 import urllib.request
 import threading
 import re
+import time
 from config import BASE_DIR, CURRENT_BUILD
 
 class ModernSystemTray:
@@ -128,8 +129,13 @@ class ModernSystemTray:
                 enabled=True
             ),
             pystray.MenuItem(
+                tr('menu_help_idea'),
+                lambda: webbrowser.open("https://github.com/tweenkedrage/zapret-launcher/discussions"),
+                enabled=True
+            ),
+            pystray.MenuItem(
                 tr('menu_help_release'),
-                lambda: webbrowser.open("https://github.com/tweenkedrage/zapret-launcher/blob/main/docs/changelog.md"),
+                lambda: webbrowser.open("https://zapret-launcher.ru/changelog"),
                 enabled=True
             ),
             pystray.MenuItem(
@@ -156,6 +162,31 @@ class ModernSystemTray:
             ),
         )
         
+        is_connecting = hasattr(self.app, '_connecting') and self.app._connecting
+        is_disconnecting = hasattr(self.app, '_disconnecting') and self.app._disconnecting
+        is_busy = is_connecting or is_disconnecting
+        
+        if is_busy:
+            if is_connecting:
+                connect_text = tr('status_starting')
+            else:
+                connect_text = tr('status_disconnecting')
+            connect_item = pystray.MenuItem(
+                connect_text,
+                None,
+                enabled=False
+            )
+        else:
+            if self.app.is_connected:
+                connect_text = tr('menu_disconnect')
+            else:
+                connect_text = tr('menu_connect')
+            connect_item = pystray.MenuItem(
+                connect_text,
+                self.toggle_connection,
+                enabled=True
+            )
+        
         menu = pystray.Menu(
             pystray.MenuItem(
                 tr('menu_open'),
@@ -163,10 +194,7 @@ class ModernSystemTray:
                 default=True
             ),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem(
-                tr('menu_connect') if not self.app.is_connected else tr('menu_disconnect'),
-                self.toggle_connection
-            ),
+            connect_item,
             pystray.MenuItem(
                 tr('menu_settings'),
                 settings_menu
@@ -394,7 +422,19 @@ class ModernSystemTray:
         except Exception:
             pass
 
+    def force_update_menu(self):
+        if self.icon:
+            try:
+                self.update_menu()
+                self.icon.update_menu()
+            except Exception:
+                pass
+
     def quit_from_tray(self):
+        if hasattr(self.app, '_disconnecting') and self.app._disconnecting:
+            self.app.root.after(500, self.quit_from_tray)
+            return
+        
         is_any_running = False
         if hasattr(self.app, 'zapret') and self.app.zapret:
             if self.app.zapret.is_winws_running():
@@ -411,35 +451,54 @@ class ModernSystemTray:
                 tr('dialog_exit_message')
             )
             if result:
-                if self.icon:
-                    self.icon.stop()
-                self.app.quit_from_tray()
+                self._prepare_and_quit()
         else:
-            if self.icon:
-                self.icon.stop()
-            self.app.quit_from_tray()
+            self._prepare_and_quit()
+
+    def _prepare_and_quit(self):
+        if self.icon:
+            self.icon.stop()
+
+        if hasattr(self.app, 'zapret') and self.app.zapret:
+            self.app.zapret.stop_current_strategy()
+        if hasattr(self.app, 'tg_proxy') and self.app.tg_proxy:
+            self.app.tg_proxy.stop()
+        self.app.root.after(500, self.app.quit_from_tray)
 
     def show_window(self):
         try:
             if not self.app.root.winfo_exists():
                 return
             
+            if self.app.root.state() == 'normal' and self.app.root.winfo_viewable():
+                self.app.root.lift()
+                self.app.root.focus_force()
+                return
+                
             self.app.root.deiconify()
             self.app.root.lift()
             self.app.root.focus_force()
             self.app.root.state('normal')
-            self.app.root.attributes('-alpha', 1.0)
             
             try:
-                hwnd = ctypes.windll.user32.GetParent(self.app.root.winfo_id())
-                ctypes.windll.user32.ShowWindow(hwnd, 5)
-                ctypes.windll.user32.SetForegroundWindow(hwnd)
-            except Exception:
+                self.app.root.attributes('-alpha', 0.0)
+                for i in range(0, 101, 10):
+                    self.app.root.attributes('-alpha', i / 100)
+                    self.app.root.update()
+                    time.sleep(0.01)
+                self.app.root.attributes('-alpha', 1.0)
+            except:
                 pass
         except Exception:
             pass
 
     def toggle_connection(self):
+        is_connecting = hasattr(self.app, '_connecting') and self.app._connecting
+        is_disconnecting = hasattr(self.app, '_disconnecting') and self.app._disconnecting
+        
+        if is_connecting or is_disconnecting:
+            return
+        
         if self.app.is_connected:
             self._do_toggle_connection()
         else:
