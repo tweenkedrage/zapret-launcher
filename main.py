@@ -865,20 +865,18 @@ class ZapretLauncher:
 
     def _stop_windivert_before_restart(self):
         try:
-            subprocess.run(
-                'sc stop windivert > nul 2>&1',
-                capture_output=True,
-                creationflags=subprocess.CREATE_NO_WINDOW
-            )
+            subprocess.run(['sc', 'stop', 'WinDivert'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
             time.sleep(0.5)
         except:
             pass
 
     def quit_from_tray(self):
-        self._stop_windivert_before_restart()
         self.zapret.stop_current_strategy()
+        self._stop_windivert_before_restart()
         if hasattr(self, 'tg_proxy'):
             self.tg_proxy.stop()
+
+        self.stop_update_checker()
         
         try:
             self.root.quit()
@@ -886,6 +884,13 @@ class ZapretLauncher:
         except:
             pass
         sys.exit(0)
+
+    def force_tray_menu_update(self):
+        if hasattr(self, 'tray_icon') and self.tray_icon:
+            try:
+                self.tray_icon.force_update_menu()
+            except Exception:
+                pass
 
     def setup_ui(self):
         self.main_container = tk.Frame(self.root, bg=self.colors['bg_dark'])
@@ -1400,52 +1405,68 @@ class ZapretLauncher:
         if self.is_connected:
             return
         
-        if mode["name"] == tr('mode_zapret_tgproxy'):
-            if not self.zapret.available_strategies:
-                messagebox.showerror(tr('error_no_strategies'), tr('error_no_strategies'))
+        self._connecting = True
+        self.force_tray_menu_update()
+        
+        try:
+            if mode["name"] == tr('mode_zapret_tgproxy'):
+                if not self.zapret.available_strategies:
+                    messagebox.showerror(tr('error_no_strategies'), tr('error_no_strategies'))
+                    self._connecting = False
+                    self.force_tray_menu_update()
+                    return
+                
+                self._pending_mode = mode
+                self.select_strategy_for_mode(mode["name"])
                 return
             
-            self._pending_mode = mode
-            self.select_strategy_for_mode(mode["name"])
-            return
-        
-        if mode["name"] == "Telegram Proxy":
-            self._start_tg_proxy_direct()
-            return
-        
-        if mode["name"] == tr('mode_standard') or mode["name"] == tr('mode_game'):
-            if not self.zapret.available_strategies:
-                messagebox.showerror(tr('error_no_strategies'), tr('error_no_strategies'))
+            if mode["name"] == "Telegram Proxy":
+                self._start_tg_proxy_direct()
                 return
             
-            self._pending_mode = mode
-            self.select_strategy_for_mode(mode["name"])
-            return
+            if mode["name"] == tr('mode_standard') or mode["name"] == tr('mode_game'):
+                if not self.zapret.available_strategies:
+                    messagebox.showerror(tr('error_no_strategies'), tr('error_no_strategies'))
+                    self._connecting = False
+                    self.force_tray_menu_update()
+                    return
+                
+                self._pending_mode = mode
+                self.select_strategy_for_mode(mode["name"])
+                return
 
-        self._reset_traffic_history()
+            self._reset_traffic_history()
 
-        self.update_status(tr('status_starting'), self.colors['accent'])
-        if hasattr(self, 'connect_btn') and self.connect_btn:
-            self.connect_btn.set_enabled(False)
-        self.root.update()
-        
-        if mode.get("tgproxy", False):
-            self.tg_proxy.start()
-        
-        self.is_connected = True
-        self.stats.start_session()
-        self.start_stats_monitoring()
-        
-        mode_name = mode["name"]
-        if hasattr(self, 'mode_label') and self.mode_label:
-            self.mode_label.config(text=mode_name, fg=self.colors['accent_green'])
-        self.update_status(f"{tr('status_connected')}", self.colors['accent_green'])
-        self.update_ui_state()
-        self.save_settings()
-        self.root.after(100, self.update_stats_display)
-        self.root.after(500, self.update_tray_icon_state)
-        if hasattr(self, 'connect_btn') and self.connect_btn:
-            self.connect_btn.set_enabled(True)
+            self.update_status(tr('status_starting'), self.colors['accent'])
+            if hasattr(self, 'connect_btn') and self.connect_btn:
+                self.connect_btn.set_enabled(False)
+            self.root.update()
+            
+            if mode.get("tgproxy", False):
+                self.tg_proxy.start()
+            
+            self.is_connected = True
+            self.stats.start_session()
+            self.start_stats_monitoring()
+            
+            mode_name = mode["name"]
+            if hasattr(self, 'mode_label') and self.mode_label:
+                self.mode_label.config(text=mode_name, fg=self.colors['accent_green'])
+            self.update_status(f"{tr('status_connected')}", self.colors['accent_green'])
+            self.update_ui_state()
+            self.save_settings()
+            self.root.after(100, self.update_stats_display)
+            self.root.after(500, self.update_tray_icon_state)
+            if hasattr(self, 'connect_btn') and self.connect_btn:
+                self.connect_btn.set_enabled(True)
+            
+            self._connecting = False
+            self.force_tray_menu_update()
+            
+        except Exception as e:
+            self._connecting = False
+            self.force_tray_menu_update()
+            raise
 
     def _start_tg_proxy_direct(self):
         if self.is_connected:
@@ -1513,6 +1534,10 @@ class ZapretLauncher:
                     self.root.after(0, lambda: self._on_tg_proxy_failed_direct(tr('error_tgproxy_start')))
             except Exception as e:
                 self.root.after(0, lambda: self._on_tg_proxy_failed_direct(str(e)))
+            finally:
+                if not self.is_connected:
+                    self._connecting = False
+                    self.force_tray_menu_update()
         
         threading.Thread(target=start_thread, daemon=True).start()
 
@@ -1534,6 +1559,9 @@ class ZapretLauncher:
 
             if not self._tg_instruction:
                 self.root.after(500, self.show_tg_proxy_instruction)
+
+            self._connecting = False
+            self.force_tray_menu_update()
         
         self.connect_btn.set_enabled(True)
         self.root.after(500, self.update_tray_icon_state)
@@ -1686,6 +1714,8 @@ class ZapretLauncher:
             selection = strategy_listbox.curselection()
             if not selection:
                 messagebox.showerror(tr('error_select_strategy'), tr('error_select_strategy'))
+                self._connecting = False
+                self.force_tray_menu_update()
                 return
             selected_strategy = self.zapret.available_strategies[selection[0]]
             self.strategy_var.set(selected_strategy)
@@ -1733,6 +1763,8 @@ class ZapretLauncher:
                     messagebox.showerror(tr('error_startup'), msg)
                     if hasattr(self, 'connect_btn') and self.connect_btn:
                         self.connect_btn.set_enabled(True)
+                    self._connecting = False
+                    self.force_tray_menu_update()
                     return
                 
                 self.current_strategy = selected_strategy
@@ -1753,6 +1785,9 @@ class ZapretLauncher:
                 self.root.after(500, self.update_tray_icon_state)
                 if hasattr(self, 'connect_btn') and self.connect_btn:
                     self.connect_btn.set_enabled(True)
+
+                self._connecting = False
+                self.force_tray_menu_update()
         
         start_btn = RoundedButton(btn_frame, text=tr('button_start'), command=start_with_strategy,
                                 width=120, height=35, bg=self.colors['accent'],
@@ -1760,11 +1795,16 @@ class ZapretLauncher:
                                 hover_color=self.colors['accent'], theme_name=self.current_theme)
         start_btn.pack(side=tk.LEFT, padx=5)
         
-        cancel_btn = RoundedButton(btn_frame, text=tr('mode_cancel'), command=dialog.destroy,
+        cancel_btn = RoundedButton(btn_frame, text=tr('mode_cancel'), command=lambda: self._cancel_strategy_selection(dialog),
                                 width=80, height=35, bg=self.colors['button_bg'],
                                 font=("Segoe UI Variable", 10), corner_radius=8,
                                 hover_color=self.colors['accent'], theme_name=self.current_theme)
         cancel_btn.pack(side=tk.LEFT, padx=5)
+
+    def _cancel_strategy_selection(self, dialog):
+        dialog.destroy()
+        self._connecting = False
+        self.force_tray_menu_update()
 
     def update_stats_display(self):
         if not hasattr(self, 'stats_frame'):
@@ -2274,15 +2314,24 @@ class ZapretLauncher:
         mode_name = strategy.replace(".bat", "").replace("general", "").strip() or "Стандартный"
         self.log_event("connect", "", mode_name)
 
+        self._connecting = False
+        self.force_tray_menu_update()
+
     def _on_connect_failed(self, msg):
         self.update_status(tr('status_error'), self.colors['accent_red'])
         messagebox.showerror(tr('error_startup'), msg)
         if hasattr(self, 'connect_btn') and self.connect_btn:
             self.connect_btn.set_enabled(True)
 
+        self._connecting = False
+        self.force_tray_menu_update()
+
     def disconnect(self):
         if not self.is_connected and not self.zapret.is_winws_running():
             return
+        
+        self._disconnecting = True
+        self.force_tray_menu_update()
         
         if self.mode_label and hasattr(self.mode_label, 'cget'):
             current_mode = self.mode_label.cget('text')
@@ -2331,10 +2380,12 @@ class ZapretLauncher:
                     pass
                 
                 self.is_connected = False
+                self._disconnecting = False
                 self.root.after(0, self.finish_disconnect)
                 
             except Exception:
                 self.is_connected = False
+                self._disconnecting = False
                 self.root.after(0, self.finish_disconnect)
         
         threading.Thread(target=stop_all, daemon=True).start()
@@ -2415,7 +2466,10 @@ class ZapretLauncher:
                         self.root.after(500, self.update_traffic_table)
             
             self.root.after(500, self.update_tray_icon_state)
+            self._disconnecting = False
+            self.force_tray_menu_update()
         except Exception:
+            self._disconnecting = False
             pass
 
     def run_service_command(self, command):
@@ -4009,6 +4063,8 @@ github.community"""
             self.root.after(500, self.show_tg_proxy_instruction)
 
         self.root.after(500, self.update_tray_icon_state)
+        self._connecting = False
+        self.force_tray_menu_update()
         self.log_event("connect", "", mode_name)
 
     def _on_combined_start_failed(self, error_msg):
