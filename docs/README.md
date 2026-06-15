@@ -74,5 +74,5 @@
 - Запустите `.exe` файл
 - После установки откройте лаунчер и пользуйтесь
 
-### 💡 Идея по улучшению/Нашли баг? — Discord (`@uyolookatme`)
+### 💡 Идея по улучшению/Нашли баг? — [**Zapret Technical**](https://t.me/zapret_technical)
 ## ❤️ Форк: [zapret-discord-youtube](https://github.com/Flowseal/zapret-discord-youtube), [tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy)
