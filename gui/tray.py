@@ -45,9 +45,7 @@ class ModernSystemTray:
     def create_icon(self):
         try:
             icon_paths = [
-                BASE_DIR / "resources" / "icon.ico",
-                Path("resources/icon.ico"),
-                Path("icon.ico"),
+                BASE_DIR / "resources" / "icon.ico"
             ]
             
             image = None
@@ -125,17 +123,17 @@ class ModernSystemTray:
         help_menu = pystray.Menu(
             pystray.MenuItem(
                 tr('menu_help_report'),
-                lambda: webbrowser.open("https://github.com/tweenkedrage/zapret-launcher/issues"),
-                enabled=True
-            ),
-            pystray.MenuItem(
-                tr('menu_help_idea'),
-                lambda: webbrowser.open("https://github.com/tweenkedrage/zapret-launcher/discussions"),
+                lambda: webbrowser.open("https://t.me/zapret_technical"),
                 enabled=True
             ),
             pystray.MenuItem(
                 tr('menu_help_release'),
                 lambda: webbrowser.open("https://zapret-launcher.ru/changelog"),
+                enabled=True
+            ),
+            pystray.MenuItem(
+                tr('menu_help_idea'),
+                lambda: webbrowser.open("https://t.me/zapret_technical"),
                 enabled=True
             ),
             pystray.MenuItem(
@@ -369,9 +367,7 @@ class ModernSystemTray:
                 is_connected = self.app.is_connected
             
             icon_paths = [
-                BASE_DIR / "resources" / "icon.ico",
-                Path("resources/icon.ico"),
-                Path("icon.ico"),
+                BASE_DIR / "resources" / "icon.ico"
             ]
             
             image = None
