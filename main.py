@@ -269,10 +269,6 @@ class TGProxyServer:
             except Exception:
                 pass
 
-                run_proxy(self._host, self._port, self._secret, self._stop_event)
-            except Exception:
-                pass
-
         self._thread = threading.Thread(target=run_tg_proxy, daemon=True)
         self._thread.start()
         
