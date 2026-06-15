@@ -537,6 +537,7 @@ class SettingsPage:
     def _download_and_install_zapret_core(self):
         def install_thread():
             temp_zip = None
+            saved_custom_files = {}
             
             try:
                 subprocess.run(['taskkill', '/F', '/IM', 'winws.exe'], 
@@ -546,6 +547,18 @@ class SettingsPage:
                 time.sleep(1.5)
                 
                 zapret_dir = APPDATA_DIR / "zapret_core"
+                
+                lists_dir = zapret_dir / "lists"
+                if lists_dir.exists():
+                    custom_file = lists_dir / "list-custom.txt"
+                    if custom_file.exists():
+                        with open(custom_file, 'r', encoding='utf-8') as f:
+                            saved_custom_files['list-custom.txt'] = f.read()
+                    
+                    white_user_file = lists_dir / "ipset-white-user.txt"
+                    if white_user_file.exists():
+                        with open(white_user_file, 'r', encoding='utf-8') as f:
+                            saved_custom_files['ipset-white-user.txt'] = f.read()
                 
                 req = urllib.request.Request(ZAPRET_CORE_URL, headers={'User-Agent': 'Mozilla/5.0'})
                 with urllib.request.urlopen(req, timeout=30) as response:
@@ -586,21 +599,11 @@ class SettingsPage:
                         if bat_path.exists():
                             bat_path.unlink()
                     
-                    lists_dir = zapret_dir / "lists"
                     if lists_dir.exists():
-                        list_files_to_delete = [
-                            "ipset-all.txt",
-                            "ipset-all.txt.backup",
-                            "ipset-white.txt",
-                            "list-general.txt",
-                            "list-google.txt",
-                            "list-white.txt"
-                        ]
-                        
-                        for list_file in list_files_to_delete:
-                            list_path = lists_dir / list_file
-                            if list_path.exists():
-                                list_path.unlink()
+                        for file in lists_dir.iterdir():
+                            if file.is_file():
+                                if file.name not in ['list-custom.txt', 'ipset-white-user.txt']:
+                                    file.unlink()
                     
                     utils_dir = zapret_dir / "utils"
                     if utils_dir.exists():
@@ -625,20 +628,11 @@ class SettingsPage:
                             lists_dest = dest
                             lists_dest.mkdir(parents=True, exist_ok=True)
                             
-                            system_list_files = [
-                                "ipset-all.txt",
-                                "ipset-all.txt.backup",
-                                "ipset-white.txt",
-                                "list-general.txt",
-                                "list-google.txt",
-                                "list-white.txt"
-                            ]
-                            
-                            for system_file in system_list_files:
-                                source_file = item / system_file
-                                dest_file = lists_dest / system_file
-                                if source_file.exists():
-                                    shutil.copy2(source_file, dest_file)
+                            for file_in_archive in item.iterdir():
+                                if file_in_archive.is_file():
+                                    if file_in_archive.name not in ['list-custom.txt', 'ipset-white-user.txt']:
+                                        dest_file = lists_dest / file_in_archive.name
+                                        shutil.copy2(file_in_archive, dest_file)
                         
                         elif item.is_dir():
                             if dest.exists():
@@ -648,6 +642,15 @@ class SettingsPage:
                             shutil.copy2(item, dest)
                     
                     shutil.rmtree(temp_extract)
+                
+                if saved_custom_files:
+                    lists_dest = zapret_dir / "lists"
+                    lists_dest.mkdir(parents=True, exist_ok=True)
+                    
+                    for filename, content in saved_custom_files.items():
+                        dest_file = lists_dest / filename
+                        with open(dest_file, 'w', encoding='utf-8') as f:
+                            f.write(content)
                 
                 if temp_zip and Path(temp_zip).exists():
                     Path(temp_zip).unlink()
