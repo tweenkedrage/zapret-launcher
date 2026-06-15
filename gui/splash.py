@@ -118,9 +118,7 @@ class SplashWindow:
 
         try:
             icon_paths = [
-                BASE_DIR / "resources" / "icon.ico",
-                Path("resources/icon.ico"),
-                Path("icon.ico"),
+                BASE_DIR / "resources" / "icon.ico"
             ]
             
             icon_loaded = False
