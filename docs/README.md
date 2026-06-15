@@ -1,7 +1,7 @@
 <div align="center">
   
 [![DOWNLOAD](https://img.shields.io/badge/DOWNLOAD-2ea44f?style=for-the-badge)](https://zapret-launcher.ru/#download)
-[![REPORT](https://img.shields.io/badge/REPORT-79553D?style=for-the-badge)](https://github.com/tweenkedrage/zapret-launcher/issues)
+[![REPORT](https://img.shields.io/badge/REPORT-79553D?style=for-the-badge)](https://t.me/zapret_technical)
 [![HELP](https://img.shields.io/badge/HELP-808000?style=for-the-badge)](https://zapret-launcher.ru/help)
 [![CHANGELOG](https://img.shields.io/badge/CHANGELOG-1D76DB?style=for-the-badge)](https://zapret-launcher.ru/changelog)
 [![REVIEW](https://img.shields.io/badge/REVIEW-CD5C5C?style=for-the-badge)](https://www.youtube.com/watch?v=vr56osqQDJg&t)
