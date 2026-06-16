@@ -112,3 +112,12 @@ spotify.messaging.com
 static.spotify.com
 st.spotify.com
 status.spotify.com
+ru.pinterest.com
+pinterest.com
+developers.pinterest.com
+careers.pinterest.com
+www.pinterest.com
+help.pinterest.com
+rutracker.org
+counter.yadro.ru
+static.rutracker.cc
