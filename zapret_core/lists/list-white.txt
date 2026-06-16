@@ -972,7 +972,6 @@ ozon.com
 ozon.com.by
 ozon.com.kz
 ozon.kz
-ozon.ru
 ozon.tm
 ozone.ru
 ozonru.me
@@ -990,6 +989,7 @@ rshb.ru
 sber.ru
 sberbank.com
 cdn-tinkoff.ru
+t-bank-app.ru
 tbank-online.com
 tbank.ru
 tochka-tech.com
