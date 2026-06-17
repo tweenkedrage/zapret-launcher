@@ -13,10 +13,12 @@ from gui.pages import Pages
 from tg_proxy.config import proxy_config
 from gui.page.lists_page import check_zapret_folder
 from gui.tray import ModernSystemTray
+from typing import Optional, Tuple, List, Dict
 from utils.languages import tr, get_languages
 from typing import List, Optional
 from gui.theme import get_theme, get_theme_names
 from datetime import datetime
+from utils.check_vpn import VPNChecker
 from gui.splash import SplashWindow
 from gui.widgets import RoundedButton
 try:
@@ -260,12 +262,25 @@ class TGProxyServer:
         
         def run_tg_proxy():
             try:
+                from tg_proxy.tg_ws_proxy import _run
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 self._stop_event = asyncio.Event()
                 
-                proxy_config.fake_tls_domain = self._fake_tls_domain if hasattr(self, '_fake_tls_domain') else ''
-                run_proxy(self._host, self._port, self._secret, self._stop_event)
+                proxy_config.host = self._host
+                proxy_config.port = self._port
+                proxy_config.secret = self._secret or os.urandom(16).hex()
+                proxy_config.fake_tls_domain = self._fake_tls_domain
+                proxy_config.dc_redirects = {
+                    2: '149.154.167.220',
+                    4: '149.154.167.220',
+                }
+                proxy_config.buffer_size = 2 * 1024 * 1024
+                proxy_config.pool_size = 12
+                proxy_config.fallback_cfproxy = True
+                proxy_config.fallback_cfproxy_priority = True
+                
+                loop.run_until_complete(_run(self._stop_event))
             except Exception:
                 pass
 
@@ -698,7 +713,7 @@ class ZapretLauncher:
                 custom_list_path.touch()
                 
                 with open(custom_list_path, 'w', encoding='utf-8') as f:
-                    f.write("# example.com\n")
+                    f.write("zapret-launcher.ru\n")
                 
         except Exception:
             pass
@@ -1420,7 +1435,7 @@ class ZapretLauncher:
                 self._start_tg_proxy_direct()
                 return
             
-            if mode["name"] == tr('mode_standard') or mode["name"] == tr('mode_game'):
+            if mode["name"] == tr('mode_standard'):
                 if not self.zapret.available_strategies:
                     messagebox.showerror(tr('error_no_strategies'), tr('error_no_strategies'))
                     self._connecting = False
@@ -1459,7 +1474,7 @@ class ZapretLauncher:
             self._connecting = False
             self.force_tray_menu_update()
             
-        except Exception as e:
+        except Exception:
             self._connecting = False
             self.force_tray_menu_update()
             raise
@@ -2189,7 +2204,7 @@ class ZapretLauncher:
             
             for child in widget.winfo_children():
                 self.update_widget_colors(child)
-        except Exception as e:
+        except Exception:
             pass
 
     def toggle_autostart(self):
@@ -2213,10 +2228,19 @@ class ZapretLauncher:
         
         if self.zapret.is_winws_running():
             self.is_connected = True
+
+            if hasattr(self, 'mode_label') and self.mode_label:
+                self.mode_label.config(text=tr('mode_standard'), fg=self.colors['accent_green'])
+
             self.update_status(tr('status_connected'), self.colors['accent_green'])
             self.update_ui_state()
             if hasattr(self, 'tray_icon'):
                 self.tray_icon.update_menu()
+            
+            if self.is_connected and not self.stats.is_monitoring:
+                self.stats.start_session()
+                self.start_stats_monitoring()
+                self.root.after(100, self.update_stats_display)
 
     def update_status(self, text, color=None):
         if color is None:
@@ -2262,7 +2286,8 @@ class ZapretLauncher:
         else:
             self._connecting = True
             try:
-                self.show_mode_selector()
+                if self.check_vpn_before_connect():
+                    self.show_mode_selector()
             finally:
                 self.root.after(500, lambda: setattr(self, '_connecting', False))
         self.root.after(500, self.update_tray_icon_state)
@@ -3484,6 +3509,24 @@ class ZapretLauncher:
             ]
         )
 
+    def check_vpn_before_connect(self):
+        try:
+            checker = VPNChecker()
+            has_vpn, processes = checker.check_vpn_processes()
+            
+            if has_vpn:
+                vpn_data = {
+                    'vpn_detected': True,
+                    'vpn_processes': processes,
+                    'vpn_interfaces': []
+                }
+                self.show_vpn_detected_dialog(vpn_data)
+                return False
+            return True
+        except Exception as e:
+            self.log_event("error", f"VPN check error: {e}")
+            return True
+
     def show_hosts_instruction(self):
         dialog = tk.Toplevel(self.root)
         dialog.title(tr('instruction_title_window'))
@@ -4016,6 +4059,129 @@ github.community"""
         )
         close_btn.pack(side=tk.RIGHT)
 
+    def show_vpn_detected_dialog(self, vpn_data: Dict = None):
+        dialog = tk.Toplevel(self.root)
+        dialog.title(tr('error_warning'))
+        dialog.resizable(False, False)
+        dialog.configure(bg=self.colors['bg_medium'])
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.focus_force()
+
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 250
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 150
+        
+        dialog.geometry(f"500x300+{x}+{y}")
+        
+        dialog.update_idletasks()
+        self.set_dialog_header_color(dialog)
+        
+        title_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
+        title_frame.pack(fill=tk.X, pady=(20, 5))
+        
+        title_label = tk.Label(
+            title_frame, 
+            text=tr('vpn_detected_title'), 
+            font=("Segoe UI Variable", 20, "bold"),
+            fg=self.colors['accent'], 
+            bg=self.colors['bg_medium']
+        )
+        title_label.pack()
+        
+        separator = tk.Frame(dialog, bg=self.colors['separator'], height=2)
+        separator.pack(fill=tk.X, padx=30, pady=10)
+        
+        message_frame = tk.Frame(dialog, bg=self.colors['bg_light'])
+        message_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=5)
+        
+        inner = tk.Frame(message_frame, bg=self.colors['bg_light'])
+        inner.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
+        
+        message_text = tr('vpn_detected_message')
+        
+        if vpn_data and vpn_data.get('vpn_processes'):
+            procs = ', '.join(vpn_data['vpn_processes'][:3])
+            message_text += f"\n\n{tr('vpn_detected_processes')}: {procs}"
+        
+        if vpn_data and vpn_data.get('vpn_interfaces'):
+            ifaces = ', '.join(vpn_data['vpn_interfaces'][:3])
+            message_text += f"\n{tr('vpn_detected_interfaces')}: {ifaces}"
+        
+        message_label = tk.Label(
+            inner,
+            text=message_text,
+            font=("Segoe UI Variable", 10),
+            fg=self.colors['text_primary'],
+            bg=self.colors['bg_light'],
+            wraplength=400,
+            justify=tk.LEFT
+        )
+        message_label.pack(pady=10)
+        
+        bottom_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
+        bottom_frame.pack(fill=tk.X, padx=30, pady=15)
+
+        def on_ignore():
+            dialog.destroy()
+            self.log_event("info", "VPN detection ignored by user")
+            self.show_mode_selector()
+
+        def on_disable():
+            dialog.destroy()
+            self.log_event("info", "User requested to disable VPN")
+            
+            if vpn_data and vpn_data.get('vpn_processes'):
+                killed_count = 0
+                for proc_name in vpn_data['vpn_processes']:
+                    try:
+                        for proc in psutil.process_iter(['name', 'pid']):
+                            try:
+                                if proc.info['name'] and proc_name.lower() in proc.info['name'].lower():
+                                    proc.kill()
+                                    killed_count += 1
+                            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                continue
+                    except Exception:
+                        pass
+                
+                if killed_count > 0:
+                    self.show_notification(tr('vpn_disabled_notification', killed_count), 3000)
+                else:
+                    self.show_notification(tr('vpn_no_processes_to_kill'), 2000)
+            
+            self.show_mode_selector()
+
+        button_frame = tk.Frame(bottom_frame, bg=self.colors['bg_medium'])
+        button_frame.pack(side=tk.RIGHT)
+
+        ignore_btn = RoundedButton(
+            button_frame,
+            text=tr('vpn_ignore'),
+            command=on_ignore,
+            width=120, height=35,
+            bg=self.colors['button_bg'],
+            fg=self.colors['text_secondary'],
+            font=("Segoe UI Variable", 10),
+            corner_radius=8,
+            hover_color=self.colors['accent'],
+            theme_name=self.current_theme
+        )
+        ignore_btn.pack(side=tk.LEFT, padx=5)
+
+        disable_btn = RoundedButton(
+            button_frame,
+            text=tr('vpn_disable'),
+            command=on_disable,
+            width=120, height=35,
+            bg=self.colors['accent'],
+            fg=self.colors['text_primary'],
+            font=("Segoe UI Variable", 10),
+            corner_radius=8,
+            hover_color=self.colors['accent'],
+            theme_name=self.current_theme
+        )
+        disable_btn.pack(side=tk.LEFT, padx=5)
+
     def _start_tg_proxy_mode(self, dialog, dont_show=False):
         if dialog:
             dialog.destroy()
@@ -4147,8 +4313,6 @@ github.community"""
             if log_file.exists():
                 with open(log_file, 'r', encoding='utf-8') as f:
                     logs = f.readlines()
-                    if len(logs) > 1000:
-                        logs = logs[-1000:]
         except Exception:
             pass
         return logs
