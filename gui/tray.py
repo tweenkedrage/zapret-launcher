@@ -8,9 +8,7 @@
 
 import pystray
 from PIL import Image, ImageDraw
-import ctypes
 import webbrowser
-from pathlib import Path
 from tkinter import messagebox
 import subprocess
 from utils.languages import tr
@@ -499,9 +497,12 @@ class ModernSystemTray:
             self._do_toggle_connection()
         else:
             self.show_window()
-            self.app.root.after(200, self._do_toggle_connection)
+            self.app.root.after(200, self._check_and_connect)
         
         self.update_icon_state()
+
+    def _check_and_connect(self):
+        self.app.toggle_connection()
 
     def _do_toggle_connection(self):
         if self.app.is_connected:
