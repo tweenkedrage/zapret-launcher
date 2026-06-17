@@ -168,6 +168,15 @@ class Languages:
             'restart_manual_title': 'Потрібний перезапуск',
             'restart_manual_message': 'Установки збережені\nНатисніть "Ок", щоб перезапустити лаунчер',
 
+            'vpn_detected_title': 'Виявлено VPN',
+            'vpn_detected_message': 'Виявлено активне підключення до VPN-клієнта, рекомендується його вимкнути',
+            'vpn_detected_processes': 'Знайдені процеси',
+            'vpn_detected_interfaces': 'Знайдені інтерфейси',
+            'vpn_ignore': 'Ігнорувати',
+            'vpn_disable': 'Вимкнути VPN',
+            'vpn_disabled_notification': 'Зупинено {} VPN процесів',
+            'vpn_no_processes_to_kill': 'Не знайдено процесів VPN для зупинки',
+
             'tg_instruction_title': 'Налаштування Telegram',
             'tg_instruction_subtitle': 'Для використання проксі виконайте такі кроки:',
             'tg_generate_secret': 'Згенерувати секрет-ключ',
@@ -237,6 +246,7 @@ class Languages:
             'error_autostart': 'Помилка налаштування автозапуску',
             'error_port_have_words': 'Порт повинен містити число',
             'error_no_connection': 'Помилка',
+            'error_warning': 'Попередження',
             'error_occurred': 'Сталася помилка',
 
             'tg_secret_required_message': 'Для роботи Telegram Proxy потрібен секрет-ключ. Створити новий секрет і продовжити?',
@@ -461,7 +471,16 @@ class Languages:
             'dialog_admin_message': 'Лаунчер требует прав администратора для работы\nЗапустить от имени администратора?',
             'restart_manual_title': 'Требуется перезапуск',
             'restart_manual_message': 'Настройки сохранены\nНажмите "Ок", чтобы перезапустить лаунчер',
-            
+
+            'vpn_detected_title': 'Обнаружен VPN',
+            'vpn_detected_message': 'Обнаружен активное подключение к VPN-клиенту, рекомендуется его отключить',
+            'vpn_detected_processes': 'Найденные процессы',
+            'vpn_detected_interfaces': 'Найденные интерфейсы',
+            'vpn_ignore': 'Игнорировать',
+            'vpn_disable': 'Отключить VPN',
+            'vpn_disabled_notification': 'Остановлено {} VPN процессов',
+            'vpn_no_processes_to_kill': 'Не найдено процессов VPN для остановки',
+                        
             'tg_instruction_title': 'Настройка Telegram',
             'tg_instruction_subtitle': 'Для использования прокси выполните следующие шаги:',
             'tg_generate_secret': 'Сгенерировать секрет-ключ',
@@ -531,6 +550,7 @@ class Languages:
             'error_autostart': 'Ошибка настройки автозапуска',
             'error_port_have_words': 'Порт должен содержать число',
             'error_no_connection': 'Ошибка',
+            'error_warning': 'Предупреждение',
             'error_occurred': 'Произошла ошибка',
 
             'tg_secret_required_message': 'Для работы Telegram Proxy требуется секрет-ключ.\n\nСгенерировать новый секрет и продолжить?',
@@ -756,6 +776,15 @@ class Languages:
             'dialog_admin_message': 'Launcher requires administrator rights to run\nRun as administrator?',
             'restart_manual_title': 'Restart Required',
             'restart_manual_message': 'Settings has been saved\nClick "OK" to restart the launcher',
+
+            'vpn_detected_title': 'VPN Detected',
+            'vpn_detected_message': 'An active VPN client connection has been detected, it is recommended to disable it',
+            'vpn_detected_processes': 'Detected processes',
+            'vpn_detected_interfaces': 'Detected interfaces',
+            'vpn_ignore': 'Ignore',
+            'vpn_disable': 'Disable VPN',
+            'vpn_disabled_notification': 'Stopped {} VPN processes',
+            'vpn_no_processes_to_kill': 'No VPN processes found to stop',
             
             'tg_instruction_title': 'Telegram Setup',
             'tg_instruction_subtitle': 'To use the proxy, follow these steps:',
@@ -824,6 +853,7 @@ class Languages:
             'error_autostart': 'Autostart configuration error',
             'error_port_have_words': 'Port must contain numbers',
             'error_no_connection': 'Error',
+            'error_warning': 'Warning',
             'error_occurred': 'Error occurred',
 
             'tg_secret_required_message': 'A secret-key is required for Telegram Proxy to work.\n\nGenerate a new secret and continue?',
