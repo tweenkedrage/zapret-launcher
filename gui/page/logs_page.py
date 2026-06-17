@@ -140,6 +140,23 @@ class LogsPage:
         if not hasattr(self, 'logs_text') or not self.logs_text.winfo_exists():
             return
         
+        try:
+            if self.logs_text.tag_ranges(tk.SEL):
+                if not hasattr(self, '_delayed_update'):
+                    self._delayed_update = self.app.root.after(1000, self.update_logs_display)
+                return
+        except:
+            pass
+        
+        try:
+            sel_start = self.logs_text.index(tk.SEL_FIRST)
+            sel_end = self.logs_text.index(tk.SEL_LAST)
+            has_selection = True
+        except tk.TclError:
+            has_selection = False
+            sel_start = None
+            sel_end = None
+        
         current_view = self.logs_text.yview()
         was_at_bottom = (current_view[1] >= 0.99)
         current_position = current_view[0]
@@ -159,7 +176,14 @@ class LogsPage:
                 self.logs_text.insert(tk.END, log_line + "\n")
         
         self.logs_text.config(state=tk.DISABLED)
-
+        
+        if has_selection and sel_start and sel_end:
+            try:
+                self.logs_text.tag_add(tk.SEL, sel_start, sel_end)
+                self.logs_text.mark_set(tk.INSERT, sel_start)
+            except:
+                pass
+        
         if self.auto_scroll_enabled:
             self.logs_text.see(tk.END)
         else:
