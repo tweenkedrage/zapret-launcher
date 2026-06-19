@@ -81,7 +81,7 @@ def build_exe():
         '--add-data', f'gui{os.pathsep}gui',
         '--add-data', f'utils{os.pathsep}utils',
         '--add-data', f'resources{os.pathsep}resources',
-        #'--add-data', f'tg_proxy{os.pathsep}tg_proxy',
+        '--add-data', f'tg_proxy{os.pathsep}tg_proxy',
     ]
     
     cmd.extend(data_files)
