@@ -262,25 +262,12 @@ class TGProxyServer:
         
         def run_tg_proxy():
             try:
-                from tg_proxy.tg_ws_proxy import _run
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 self._stop_event = asyncio.Event()
                 
-                proxy_config.host = self._host
-                proxy_config.port = self._port
-                proxy_config.secret = self._secret or os.urandom(16).hex()
-                proxy_config.fake_tls_domain = self._fake_tls_domain
-                proxy_config.dc_redirects = {
-                    2: '149.154.167.220',
-                    4: '149.154.167.220',
-                }
-                proxy_config.buffer_size = 2 * 1024 * 1024
-                proxy_config.pool_size = 12
-                proxy_config.fallback_cfproxy = True
-                proxy_config.fallback_cfproxy_priority = True
-                
-                loop.run_until_complete(_run(self._stop_event))
+                proxy_config.fake_tls_domain = self._fake_tls_domain if hasattr(self, '_fake_tls_domain') else ''
+                run_proxy(self._host, self._port, self._secret, self._stop_event)
             except Exception:
                 pass
 
@@ -3628,11 +3615,16 @@ class ZapretLauncher:
 149.154.167.220 telegram.dog
 149.154.167.220 telegram.space
 149.154.167.220 telesco.pe
+149.154.167.220 core.telegram.org
+149.154.167.220 translations.telegram.org
+149.154.167.220 macos.telegram.org
 149.154.167.220 tg.dev
 149.154.167.220 telegram.org
 149.154.167.220 my.telegram.org
+149.154.167.220 telegra.ph
 149.154.167.220 t.me
 149.154.167.220 api.telegram.org
+149.154.167.220 desktop.telegram.org
 149.154.167.220 td.telegram.org
 149.154.167.220 venus.web.telegram.org
 149.154.167.220 web.telegram.org
