@@ -51,7 +51,10 @@ class VPNChecker:
             'wg-quick', 'ovpn', 'vpn.exe', 'vpnclient',
             'forticlient', 'cisco', 'anyconnect', 'pulse secure',
             'globalprotect', 'openconnect', 'wireguard.exe',
-            'protonvpn.exe', 'nordvpn.exe', 'expressvpn.exe'
+            'protonvpn.exe', 'nordvpn.exe', 'expressvpn.exe',
+            'planetvpn', 'planetvpn.exe', 'vpn', 'itopvpn', 
+            'itopvpn.exe', 'bebra.exe', 'bebravpn.exe',
+            'xray', 'amneziawg', 'surfshark', 'surfsharkvpn'
         ]
         
         self.vpn_interface_keywords = [
