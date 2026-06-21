@@ -59,7 +59,6 @@ def build_exe():
         '--windowed',
         '--name', 'updater',
         '--icon', 'resources/icon.ico',
-        '--version-file', 'version_info.txt',
         '--uac-admin',
         '--clean',
         '--noconfirm',
