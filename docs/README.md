@@ -10,7 +10,6 @@
 </div>
 
 # Zapret Launcher
-<img width="1190" height="820" alt="Снимок экрана 2026-05-29 002018" src="https://github.com/user-attachments/assets/1907925e-8899-4b95-addb-f88e2f67b477" />
 
 > [!WARNING]
 >
