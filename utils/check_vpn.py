@@ -47,7 +47,7 @@ class VPNChecker:
             'airvpn', 'perfectprivacy', 'zenmate', 'hidester',
             'slickvpn', 'fastestvpn', 'buffered', 'vpn.ac',
             'torguard', 'vpnunlimited', 'vpngate',
-            'softether', 'v2ray', 'shadowsocks',
+            'softether', 'v2ray', 'shadowsocks', 'trojan',
             'wg-quick', 'ovpn', 'vpn.exe', 'vpnclient',
             'forticlient', 'cisco', 'anyconnect', 'pulse secure',
             'globalprotect', 'openconnect', 'wireguard.exe',
