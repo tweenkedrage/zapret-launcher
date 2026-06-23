@@ -29,7 +29,6 @@ ShowLanguageDialog=yes
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
-Name: "ukrainian"; MessagesFile: "compiler:Languages\Ukrainian.isl"
 
 [Files]
 Source: "dist\updater\*"; DestDir: "{userappdata}\Zapret Launcher"; Flags: ignoreversion recursesubdirs createallsubdirs
