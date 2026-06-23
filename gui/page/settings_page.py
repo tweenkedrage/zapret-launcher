@@ -103,7 +103,7 @@ class SettingsPage:
                     self.app.log_event("info", f"Theme changed: {current_theme} -> {new_theme}")
                     self.app.current_theme = new_theme
                     self.app.save_settings()
-                    self.app.root.after(2500, self._restart_launcher)
+                    self.app.root.after(2000, self._restart_launcher)
                 else:
                     theme_var.set(current_theme)
         theme_combo.bind("<<ComboboxSelected>>", on_theme_change)
@@ -141,7 +141,7 @@ class SettingsPage:
                     self.app.log_event("info", f"Interface language changed: {current_lang} -> {new_lang}")
                     self.app.languages.set_language(new_lang)
                     self.app.save_settings()
-                    self.app.root.after(2500, self._restart_launcher)
+                    self.app.root.after(2000, self._restart_launcher)
                 else:
                     lang_var.set(current_lang)
         lang_combo.bind("<<ComboboxSelected>>", on_language_change)
@@ -666,7 +666,7 @@ class SettingsPage:
         threading.Thread(target=install_thread, daemon=True).start()
 
     def _show_success_and_restart(self):
-        self.app.root.after(2500, self._restart_launcher)
+        self.app.root.after(2000, self._restart_launcher)
 
     def _restart_launcher(self):
         try:
