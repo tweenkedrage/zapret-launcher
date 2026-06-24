@@ -97,4 +97,5 @@ We thank the users who help make Zapret Launcher more secure. Your contributions
 
 ---
 
-*Last updated: 06/24/2026*
+- Last updated: *06/24/2026*
+- © 2026 Zapret Launcher
