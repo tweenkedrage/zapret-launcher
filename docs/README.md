@@ -27,7 +27,7 @@
 > [!NOTE]
 > Если вы скачали лаунчер с [официального репозитория](https://github.com/tweenkedrage/zapret-launcher) **GitHub** или [**сайта**](https://zapret-launcher.ru/),
 > можете быть **уверены** в его **безопасности**
-> При необходимости проверьте файлы через [**VirusTotal**](https://www.virustotal.com/gui/home/upload)
+> - При необходимости проверьте файлы через [**VirusTotal**](https://www.virustotal.com/gui/home/upload)
 
 ## Основные возможности
 
