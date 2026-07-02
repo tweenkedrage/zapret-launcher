@@ -103,7 +103,7 @@ class SettingsPage:
                     self.app.log_event("info", f"Theme changed: {current_theme} -> {new_theme}")
                     self.app.current_theme = new_theme
                     self.app.save_settings()
-                    self.app.root.after(2000, self._restart_launcher)
+                    self.app.root.after(1500, self._restart_launcher)
                 else:
                     theme_var.set(current_theme)
         theme_combo.bind("<<ComboboxSelected>>", on_theme_change)
@@ -141,7 +141,7 @@ class SettingsPage:
                     self.app.log_event("info", f"Interface language changed: {current_lang} -> {new_lang}")
                     self.app.languages.set_language(new_lang)
                     self.app.save_settings()
-                    self.app.root.after(2000, self._restart_launcher)
+                    self.app.root.after(1500, self._restart_launcher)
                 else:
                     lang_var.set(current_lang)
         lang_combo.bind("<<ComboboxSelected>>", on_language_change)
@@ -281,10 +281,41 @@ class SettingsPage:
         reinstall_btn.pack(side=tk.LEFT)
 
         buttons_frame2 = tk.Frame(maintenance_inner, bg=self.colors['bg_light'])
-        buttons_frame2.pack(fill=tk.X)
+        buttons_frame2.pack(fill=tk.X, pady=(0, 3))
+
+        show_vpndetect_btn = RoundedButton(
+            buttons_frame2,
+            text=tr('settings_search_vpn'),
+            command=self.app.toggle_vpn_detection,
+            width=180, height=32,
+            bg=self.colors['button_bg'],
+            fg=self.colors['text_secondary'],
+            font=("Inter", 9),
+            corner_radius=6,
+            hover_color=self.colors['accent'],
+            theme_name=self.app.current_theme
+        )
+        show_vpndetect_btn.pack(side=tk.LEFT, padx=(0, 10))
+
+        show_dublicatedetect_btn = RoundedButton(
+            buttons_frame2,
+            text=tr('settings_search_dublicate'),
+            command=self.app.toggle_hide_duplicates_warning,
+            width=180, height=32,
+            bg=self.colors['button_bg'],
+            fg=self.colors['text_secondary'],
+            font=("Inter", 9),
+            corner_radius=6,
+            hover_color=self.colors['accent'],
+            theme_name=self.app.current_theme
+        )
+        show_dublicatedetect_btn.pack(side=tk.LEFT, padx=(0, 10))
+
+        buttons_frame3 = tk.Frame(maintenance_inner, bg=self.colors['bg_light'])
+        buttons_frame3.pack(fill=tk.X)
 
         appdata_btn = RoundedButton(
-            buttons_frame2,
+            buttons_frame3,
             text=tr('settings_open_folder'),
             command=self.app.open_appdata_folder,
             width=180, height=32,
@@ -298,7 +329,7 @@ class SettingsPage:
         appdata_btn.pack(side=tk.LEFT, padx=(0, 10))
 
         autostart_btn = RoundedButton(
-            buttons_frame2,
+            buttons_frame3,
             text=tr('settings_autostart'),
             command=self.app.toggle_autostart,
             width=180, height=32,
@@ -526,12 +557,12 @@ class SettingsPage:
                 if not (lists_dir / list_file).exists():
                     missing_files.append(f"zapret_core/lists/{list_file}")
         else:
-            missing_files.append("zapret_core/lists (папка отсутствует)")
+            missing_files.append("zapret_core/lists (Folder missing)")
         
         for folder in ["utils", "bin"]:
             folder_path = APPDATA_DIR / f"zapret_core/{folder}"
             if not folder_path.exists():
-                missing_files.append(f"zapret_core/{folder} (папка отсутствует)")
+                missing_files.append(f"zapret_core/{folder} (Folder missing)")
         return len(missing_files) == 0
 
     def _download_and_install_zapret_core(self):
@@ -666,7 +697,7 @@ class SettingsPage:
         threading.Thread(target=install_thread, daemon=True).start()
 
     def _show_success_and_restart(self):
-        self.app.root.after(2000, self._restart_launcher)
+        self.app.root.after(1500, self._restart_launcher)
 
     def _restart_launcher(self):
         try:
