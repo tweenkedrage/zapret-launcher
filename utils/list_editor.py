@@ -27,19 +27,24 @@ class ListEditor:
         
         self.dialog = tk.Toplevel(parent)
         self.dialog.title(f"{tr('edit_title_window')} {title}")
-        self.dialog.geometry("600x500")
         self.dialog.minsize(500, 400)
         self.dialog.transient(parent)
         self.dialog.grab_set()
 
         if app:
             self.dialog.configure(bg=app.colors['bg_medium'])
-            self._set_dialog_header_color(self.dialog)
-        
+
+        x = parent.winfo_x() + (parent.winfo_width() // 2) - 300
+        y = parent.winfo_y() + (parent.winfo_height() // 2) - 250
+        self.dialog.geometry(f"600x500+{x}+{y}")
+
         self.dialog.update_idletasks()
         x = parent.winfo_x() + (parent.winfo_width() // 2) - (600 // 2)
         y = parent.winfo_y() + (parent.winfo_height() // 2) - (500 // 2)
         self.dialog.geometry(f"+{x}+{y}")
+
+        if app:
+            self._set_dialog_header_color(self.dialog)
         
         main_frame = tk.Frame(self.dialog, padx=10, pady=10)
         if app:
@@ -260,17 +265,10 @@ class ListEditor:
             else:
                 header_color = "#0F0F12"
             
-            dialog.after(10, lambda: self._apply_header_color(dialog, header_color))
+            dialog.update_idletasks()
+            pywinstyles.change_header_color(dialog, header_color)
         except ImportError:
             pass
-        except Exception:
-            pass
-
-    def _apply_header_color(self, dialog, color):
-        try:
-            if dialog.winfo_exists():
-                pywinstyles.change_header_color(dialog, color)
-                dialog.update()
         except Exception:
             pass
         
