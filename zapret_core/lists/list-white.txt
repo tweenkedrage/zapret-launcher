@@ -132,7 +132,6 @@ afisha.mail.ru
 agent.mail.ru
 akashi.vk-portal.net
 alfa-mobile.alfabank.ru
-alfabank.ru
 alpha3.minigames.mail.ru
 alpha4.minigames.mail.ru
 amigo.mail.ru
@@ -950,7 +949,6 @@ gov.ru
 nalog.ru
 spb.ru
 mos.ru
-yandex.net
 vk.ru
 vk.me
 vkvideo.ru
@@ -958,7 +956,6 @@ ok.ru
 mycdn.me
 okcdn.ru
 odkl.ru
-wb.ru
 geobasket.ru
 paywb.com
 rwb.ru
