@@ -50,19 +50,6 @@ class Languages:
             'lists_ipset': 'IP-разрешенные',
             'lists_edit': 'Изменить',
             'lists_open_folder': 'Папка с листами',
-
-            'additionally_title': 'Дополнительно',
-            'additionally_desc': 'Дополнительные инструменты для разблокировки сервисов',
-            'soundcloud_description': 'Добавляет домены для разблокировки SoundCloud в list-custom.txt и ipset-all.txt',
-            'meta_description': 'Добавляет домены для разблокировки Facebook и Instagram в list-custom.txt и ipset-all.txt',
-            'soundcloud_unblocked': 'SoundCloud разблокирован',
-            'meta_unblocked': 'Meta разблокирована',
-            'soundcloud_removed': 'Домены SoundCloud удалены',
-            'meta_removed': 'Домены Meta удалены',
-            'enabled_additionally': 'Разблокирован',
-            'disabled_additionally': 'Не разблокирован',
-            'enable': 'Включить',
-            'disable': 'Отключить',
             
             'traffic_title': 'Трафик',
             'traffic_desc': 'Мониторинг сетевого трафика по процессам',
@@ -77,8 +64,15 @@ class Languages:
             'traffic_no_connections': 'Нет активных соединений',
             'error_traffic_collection': 'Ошибка сбора трафика',
 
+            'duplicates_title': 'Обнаружены дубликаты',
+            'duplicates_subtitle': 'В файлах списков найдены дублирующиеся записи',
+            'duplicates_total': 'Всего доменов',
+            'duplicates_unique': 'Уникальных',
+            'duplicates_count': 'Дубликатов',
+            'duplicates_lines': 'строки',
+
             'logs_title': 'Логи',
-            'logs_desc': 'Журнал событий лаунчера',
+            'logs_desc': 'Журнал событий',
             'logs_clear': 'Очистить',
             'logs_refresh': 'Обновить',
 
@@ -97,8 +91,8 @@ class Languages:
             'splash_updating_zapret': 'Обновление zapret...',
             'splash_stopping_processes': 'Остановка процессов...',
             'splash_install_update': 'Устанавливаем обновление...',
-            'splash_starting_exe': 'Запуск лаунчера..',
-            'splash_update_error': 'Ошибка обновления!',
+            'splash_starting_exe': 'Запускаем лаунчер..',
+            'splash_update_error': 'Ошибка обновления',
             'splash_help_update': 'Ошибка обновления? Ручная установка',
             'splash_check_connect_error': 'Ошибка подключения к сети',
                         
@@ -139,6 +133,8 @@ class Languages:
             'settings_current_tg_secret': 'Текущий секрет:',
             'settings_open_folder': 'Открыть папку',
             'settings_autostart': 'Автозапуск',
+            'settings_search_dublicate': 'Поиск дубликатов',
+            'settings_search_vpn': 'Поиск VPN-процессов',
             
             'mode_standard': 'Стандартный',
             'mode_standard_desc': 'Обход блокировок через Zapret',
@@ -168,14 +164,15 @@ class Languages:
             'restart_manual_title': 'Требуется перезапуск',
             'restart_manual_message': 'Настройки сохранены\nНажмите "Ок", чтобы перезапустить лаунчер',
 
-            'vpn_detected_title': 'Обнаружен VPN',
-            'vpn_detected_message': 'Обнаружен активное подключение к VPN-клиенту, рекомендуется его отключить',
+            'vpn_detected_title': 'Обнаружен VPN-клиент',
+            'vpn_detected_message': 'Обнаружено подключение к VPN-клиенту, рекомендуется его отключить',
             'vpn_detected_processes': 'Найденные процессы',
             'vpn_detected_interfaces': 'Найденные интерфейсы',
             'vpn_ignore': 'Игнорировать',
             'vpn_disable': 'Отключить VPN',
-            'vpn_disabled_notification': 'Остановлено {} VPN процессов',
-            'vpn_no_processes_to_kill': 'Не найдено процессов VPN для остановки',
+
+            'dialog_enabled': 'Окно будет показываться',
+            'dialog_disabled': 'Окно не будет показываться',
                         
             'tg_instruction_title': 'Настройка Telegram',
             'tg_instruction_subtitle': 'Для использования прокси выполните следующие шаги:',
@@ -199,34 +196,6 @@ class Languages:
 
             'instruction_title_window': 'Инструкция',
             'edit_title_window': 'Редактирование',
-
-            'hosts_instruction_title': 'Доступ к Telegram Web',
-            'hosts_instruction_subtitle': 'Для использования Web версии выполните следующие шаги:',
-            'hosts_step1': 'Откройте "Блокнот" от имени администратора',
-            'hosts_step2': 'Файл - Открыть:',
-            'hosts_step2_desc': 'Путь: C:\Windows\System32\drivers\etc\hosts',
-            'hosts_step3': 'Добавьте следующие домены в конец файла:',
-            'hosts_step4': 'Сохраните файл (Ctrl+S)',
-            'hosts_step5': 'Перезапустите браузер для применения изменений',
-            'hosts_desc_on_page': 'Добавляет IP адреса Telegram в файл hosts',
-            'hosts_copy_lines': 'Скопировать все строки',
-            'hosts_copied_notification': 'Строки скопированы в буфер обмена',
-            'hosts_button_unblock': 'Открыть',
-
-            'ghub_instruction_title': 'Доступ к GitHub',
-            'ghub_instruction_subtitle': 'Возвращение доступа к сервису:',
-            'ghub_step1': 'Перейдите в страницу Редактор и откройте list-custom',
-            'ghub_step2': 'Вставьте в конец файла домены, которые вы можете скопировать ниже',
-            'ghub_step3': 'Сохраните файл и запустите командную строку без имени администратора',
-            'ghub_step4': 'Введите: ping github.com и после скопируйте IP, который был выведен',
-            'ghub_step5': 'Вернитесь в страницу Редактор и откройте IPSet-all',
-            'ghub_step6': 'Вставьте IP в конец файла в таком формате: 127.0.0.1/32',
-            'ghub_step7': 'Сохраните файл, перейдите в страницу Сервис и там выберите IPSet - loaded',
-            'ghub_step8': 'Запустите любой режим где есть Zapret (Стандартный или Совместный)',
-            'ghub_desc_on_page': 'Восстановление доступа к GitHub через zapret',
-            'ghub_copy_lines': 'Скопировать домены',
-            'ghub_copied_notification': 'Домены скопированы в буфер обмена',
-            'ghub_button_unblock': 'Открыть',
             
             'error_update_check': 'Не удалось проверить обновления',
             'error_no_strategies': 'Нет доступных стратегий Zapret',
@@ -309,6 +278,7 @@ class Languages:
             'selected': 'Выбрано:',
 
             'update_title': 'Обновление Zapret Launcher',
+            'update_zapret_title': 'Обновление Zapret Core',
             'update_available_question': 'Доступна новая версия',
             'update_ask_now': 'Хотите обновиться прямо сейчас?',
 
@@ -356,19 +326,6 @@ class Languages:
             'lists_ipset': 'IP-allowed',
             'lists_edit': 'Edit',
             'lists_open_folder': 'Lists folder',
-
-            'additionally_title': 'Additionally',
-            'additionally_desc': 'Additional tools for unblocking services',
-            'soundcloud_description': 'Adds domains for unblocking SoundCloud to list-custom.txt and ipset-all.txt',
-            'meta_description': 'Adds domains to unblock Facebook and Instagram to list-custom.txt and ipset-all.txt',
-            'soundcloud_unblocked': 'SoundCloud is unblocked',
-            'meta_unblocked': 'Meta is unblocked',
-            'soundcloud_removed': 'SoundCloud domains removed',
-            'meta_removed': 'Meta domains removed',
-            'enabled_additionally': 'Unlocked',
-            'disabled_additionally': 'Not unlocked',
-            'enable': 'Enable',
-            'disable': 'Disable',
             
             'traffic_title': 'Traffic',
             'traffic_desc': 'Network traffic monitoring by process',
@@ -383,8 +340,16 @@ class Languages:
             'traffic_no_connections': 'No active connections',
             'error_traffic_collection': 'Traffic collection error',
 
+            'duplicates_title': 'Duplicates found',
+            'duplicates_subtitle': 'Duplicate entries found in the list files',
+            'duplicates_total': 'Total domains',
+            'duplicates_unique': 'Unique',
+            'duplicates_count': 'Duplicates',
+            'duplicates_lines': 'lines',
+
+
             'logs_title': 'Logs',
-            'logs_desc': 'Launcher event log',
+            'logs_desc': 'Event log',
             'logs_clear': 'Clear',
             'logs_refresh': 'Refresh',
 
@@ -404,7 +369,7 @@ class Languages:
             'splash_updating_zapret': 'Updating zapret...',
             'splash_extracting_zapret': 'Extracting zapret...',
             'splash_stopping_processes': 'Stopping processes...',
-            'splash_update_error': 'Update error!',
+            'splash_update_error': 'Update error',
             'splash_help_update': 'Update error? Manual installation',
             'splash_check_connect_error': 'Network connection error',
             
@@ -445,6 +410,8 @@ class Languages:
             'settings_current_tg_secret': 'Current secret:',
             'settings_open_folder': 'Open folder',
             'settings_autostart': 'Autostart',
+            'settings_search_dublicate': 'Duplicate search',
+            'settings_search_vpn': 'VPN search',
             
             'mode_standard': 'Standard',
             'mode_standard_desc': 'Bypass blocks via Zapret',
@@ -475,13 +442,14 @@ class Languages:
             'restart_manual_message': 'Settings has been saved\nClick "OK" to restart the launcher',
 
             'vpn_detected_title': 'VPN Detected',
-            'vpn_detected_message': 'An active VPN client connection has been detected, it is recommended to disable it',
+            'vpn_detected_message': 'An VPN client connection has been detected, it is recommended to disable it',
             'vpn_detected_processes': 'Detected processes',
             'vpn_detected_interfaces': 'Detected interfaces',
             'vpn_ignore': 'Ignore',
             'vpn_disable': 'Disable VPN',
-            'vpn_disabled_notification': 'Stopped {} VPN processes',
-            'vpn_no_processes_to_kill': 'No VPN processes found to stop',
+
+            'dialog_enabled': 'Window will be displayed',
+            'dialog_disabled': 'Window will not be displayed',
             
             'tg_instruction_title': 'Telegram Setup',
             'tg_instruction_subtitle': 'To use the proxy, follow these steps:',
@@ -504,34 +472,6 @@ class Languages:
 
             'instruction_title_window': 'Instruction',
             'edit_title_window': 'Editing',
-
-            'hosts_instruction_title': 'Unblock Telegram Web',
-            'hosts_instruction_subtitle': 'To use the Web version, follow these steps:',
-            'hosts_step1': 'Open Notepad as administrator',
-            'hosts_step2': 'File - Open:',
-            'hosts_step2_desc': 'Path: C:\Windows\System32\drivers\etc\hosts',
-            'hosts_step3': 'Add the following domains to the end of the file:',
-            'hosts_desc_on_page': 'Adds Telegram IP addresses to the hosts file',
-            'hosts_step4': 'Save the file (Ctrl+S)',
-            'hosts_step5': 'Restart your browser to apply changes',
-            'hosts_copy_lines': 'Copy all lines',
-            'hosts_copied_notification': 'Lines copied to clipboard',
-            'hosts_button_unblock': 'Open',
-
-            'ghub_instruction_title': 'Unblock GitHub',
-            'ghub_instruction_subtitle': 'Restoring access to the service:',
-            'ghub_step1': 'Go to the Editor page and open list-custom',
-            'ghub_step2': 'Paste the domains you can copy below at the end of the file',
-            'ghub_step3': 'Save file and run the command prompt without administrator name',
-            'ghub_step4': 'Type: ping github.com and then copy the IP that was displayed',
-            'ghub_step5': 'Return to the Editor page and open IPSet-all',
-            'ghub_step6': 'Paste the IP at the end of the file in this format: 127.0.0.1/32',
-            'ghub_step7': 'Save file, go to the Service page and select IPSet - loaded',
-            'ghub_step8': 'Launch any mode where there is Zapret (Standard or Combined)',
-            'ghub_desc_on_page': 'Restoring access to GitHub after a zapret',
-            'ghub_copy_lines': 'Copy domains',
-            'ghub_copied_notification': 'Domains copied to clipboard',
-            'ghub_button_unblock': 'Open',
             
             'error_update_check': 'Failed to check for updates',
             'error_no_strategies': 'No Zapret strategies available',
@@ -614,6 +554,7 @@ class Languages:
             'selected': 'Selected:',
 
             'update_title': 'Update Zapret Launcher',
+            'update_zapret_title': 'Update Zapret Core',
             'update_available_question': 'New version available',
             'update_ask_now': 'Want to upgrade now?',
 
