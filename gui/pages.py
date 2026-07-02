@@ -13,7 +13,6 @@ from .page.lists_page import ListsPage
 from .page.traffic_page import TrafficPage
 from .page.logs_page import LogsPage
 from .page.settings_page import SettingsPage
-from .page.additionally_page import AdditionallyPage
 
 class Pages:
     def __init__(self, app):
@@ -43,17 +42,13 @@ class Pages:
         self.settings_page_obj = SettingsPage(app.content_panel, app)
         self.settings_page = self.settings_page_obj.get_frame()
         
-        self.additionally_page_obj = AdditionallyPage(app.content_panel, app)
-        self.additionally_page = self.additionally_page_obj.get_frame()
-        
         self.pages = {
             "main": self.main_page,
             "service": self.service_page,
             "lists": self.lists_page,
             "traffic": self.traffic_page,
             "logs": self.logs_page,
-            "settings": self.settings_page,
-            "additionally": self.additionally_page
+            "settings": self.settings_page
         }
         
         self.main_page.place(x=0, y=0, width=950, height=800)
@@ -66,7 +61,7 @@ class Pages:
             self.pages[self.current_page].place_forget()
         
         if page_name in self.pages:
-            self.pages[page_name].place(x=0, y=0, width=950, height=800)
+            self.pages[page_name].place(x=0, y=0, relwidth=1, relheight=1)
             self.current_page = page_name
     
     def show_page_with_animation(self, page_name):
