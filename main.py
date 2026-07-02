@@ -16,9 +16,10 @@ from gui.tray import ModernSystemTray
 from typing import Optional, Tuple, List, Dict
 from utils.languages import tr, get_languages
 from typing import List, Optional
+from gui.dialogs import Dialogs
 from gui.theme import get_theme, get_theme_names
 from datetime import datetime
-from utils.check_vpn import VPNChecker
+from utils.check_lists import check_lists_for_duplicates
 from gui.splash import SplashWindow
 from gui.widgets import RoundedButton
 try:
@@ -33,6 +34,8 @@ import time
 import shutil
 import threading
 import webbrowser
+import getpass
+import tempfile
 import asyncio
 import psutil
 import socket
@@ -458,7 +461,7 @@ class ZapretCore:
                 stderr=subprocess.DEVNULL
             )
             
-            time.sleep(3.0)
+            time.sleep(1.0)
             for _ in range(10):
                 if self.is_winws_running():
                     return True, f"{tr('status_strategy_started')} {self.get_strategy_display_name(strategy_name)}"
@@ -563,6 +566,9 @@ class ZapretLauncher:
         self._tg_instruction = False
         self._tg_secret = None
 
+        self._show_vpn_detection = False
+        self._hide_duplicates_warning = False
+
         self._notification_queue = []
         self._notification_active = False
         self._current_notification = None
@@ -607,9 +613,7 @@ class ZapretLauncher:
 
         try:
             icon_paths = [
-                BASE_DIR / "resources" / "icon.ico",
-                Path("resources/icon.ico"),
-                Path("icon.ico"),
+                BASE_DIR / "resources" / "icon.ico"
             ]
             
             icon_loaded = False
@@ -671,6 +675,7 @@ class ZapretLauncher:
         self.languages = get_languages()
         self.current_theme = 'Default'
         self.load_settings()
+        self.root.after(100, self.check_lists_for_duplicates)
         self.apply_theme()
 
         if not self._tg_secret:
@@ -684,6 +689,7 @@ class ZapretLauncher:
         self.start_update_checker()
         self.root.after(100, self.check_initial_status)
         self.show_main_page()
+        self.dialogs = Dialogs(self)
                 
         self.tray_icon = ModernSystemTray(self)
         threading.Thread(target=self.tray_icon.run, daemon=True).start()
@@ -821,8 +827,7 @@ class ZapretLauncher:
             self.pages.colors = self.colors
             
             for page_name in ['main_page', 'service_page', 'lists_page', 
-                            'traffic_page', 'settings_page', 'additionally_page',
-                            'logs_page']:
+                            'traffic_page', 'settings_page', 'logs_page']:
                 if hasattr(self.pages, page_name):
                     page = getattr(self.pages, page_name)
                     if page:
@@ -869,6 +874,7 @@ class ZapretLauncher:
             pass
 
     def quit_from_tray(self):
+        self.save_settings()
         self.zapret.stop_current_strategy()
         self._stop_windivert_before_restart()
         if hasattr(self, 'tg_proxy'):
@@ -954,7 +960,7 @@ class ZapretLauncher:
         
         try:
             icon_paths = [
-                BASE_DIR / "resources" / "icon.png",
+                BASE_DIR / "resources" / "icon.png"
             ]
             
             icon_image = None
@@ -980,7 +986,6 @@ class ZapretLauncher:
             (tr('main_title'), self.show_main_page),
             (tr('service_title'), self.show_service_page),
             (tr('lists_title'), self.show_lists_page),
-            (tr('additionally_title'), self.show_additionally_page),
             (tr('traffic_title'), self.show_traffic_page),
             (tr('logs_title'), self.show_logs_page),
         ]
@@ -1035,15 +1040,6 @@ class ZapretLauncher:
             fg=self.colors['text_secondary'],
             bg=self.colors['bg_medium']
         ).pack(side=tk.LEFT)
-
-        beta_label = tk.Label(
-            version_frame,
-            text="beta",
-            font=("Segoe UI Variable", 8),
-            fg=self.colors['accent'],
-            bg=self.colors['bg_medium']
-        )
-        beta_label.pack(side=tk.LEFT)
         
         self.credit_label = tk.Label(
             self.credit_frame,
@@ -1095,34 +1091,144 @@ class ZapretLauncher:
 
     def check_for_updates(self):
         try:
-            buildnumber_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt" # build_number.txt | test/test.txt
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                'Accept': 'text/plain',
+                'Connection': 'close'
+            }
             
-            req = urllib.request.Request(
-                buildnumber_url,
-                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-            )
+            buildnumber_url = "https://zapret-launcher.ru/updater/docs/build_number.txt"
+            req = urllib.request.Request(buildnumber_url, headers=headers)
             
             with urllib.request.urlopen(req, timeout=10) as response:
                 latest_build = response.read().decode('utf-8').strip()
             
             current_build = CURRENT_BUILD
+            need_launcher_update = self._compare_builds(current_build, latest_build)
             
-            if self._compare_builds(current_build, latest_build):
+            if need_launcher_update:
                 self.root.after(0, self.show_update_label)
+                return
+            
+            current_zapret_version = self.get_current_zapret_version()
+            latest_zapret_version = None
+            
+            try:
+                zapret_version_url = "https://zapret-launcher.ru/updater/docs/zapret_version.txt"
+                req_zapret = urllib.request.Request(zapret_version_url, headers=headers)
+                with urllib.request.urlopen(req_zapret, timeout=10) as response:
+                    latest_zapret_version = response.read().decode('utf-8').strip()
+            except Exception:
+                self.root.after(0, self.hide_update_label)
+                return
+            
+            need_zapret_update = False
+            if latest_zapret_version and current_zapret_version:
+                need_zapret_update = self._compare_zapret_versions(current_zapret_version, latest_zapret_version)
+            
+            if need_zapret_update:
+                self.root.after(0, self.show_update_label_zapret)
             else:
                 self.root.after(0, self.hide_update_label)
-        except Exception:
+                
+        except Exception as e:
             self.root.after(0, self.hide_update_label)
+
+    def show_update_label_zapret(self):
+        try:
+            if not hasattr(self, 'foundupdates_frame_zapret'):
+                if hasattr(self, 'credit_frame'):
+                    self.foundupdates_frame_zapret = tk.Frame(self.credit_frame, bg=self.colors['bg_medium'])
+                    
+                    self.foundupdates_label_zapret = tk.Label(
+                        self.foundupdates_frame_zapret,
+                        text=tr('update_available'),
+                        font=("Segoe UI Variable", 8),
+                        fg=self.colors['accent_green'],
+                        bg=self.colors['bg_medium'],
+                        cursor="hand2"
+                    )
+                    self.foundupdates_label_zapret.pack(pady=(2, 0))
+                    
+                    self.foundupdates_label_zapret.bind("<Enter>", lambda e: self.foundupdates_label_zapret.config(fg=self.colors['accent_darkgreen']))
+                    self.foundupdates_label_zapret.bind("<Leave>", lambda e: self.foundupdates_label_zapret.config(fg=self.colors['accent_green']))
+                    self.foundupdates_label_zapret.bind("<Button-1>", lambda e: self.root.after(500, self.install_zapret_update))
+            else:
+                pass
+            
+            if hasattr(self, 'foundupdates_frame_zapret'):
+                self.foundupdates_frame_zapret.pack(pady=(5, 0))
+        except Exception:
+            pass
+
+    def install_zapret_update(self):
+        try:
+            latest_zapret_version = None
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                'Accept': 'text/plain',
+                'Connection': 'close'
+            }
+            
+            try:
+                req_zapret = urllib.request.Request(
+                    "https://zapret-launcher.ru/updater/docs/zapret_version.txt",
+                    headers=headers
+                )
+                with urllib.request.urlopen(req_zapret, timeout=5) as response:
+                    latest_zapret_version = response.read().decode('utf-8').strip()
+            except Exception:
+                latest_zapret_version = "?"
+            
+            if latest_zapret_version != "?":
+                version_text = f"v{latest_zapret_version}"
+            else:
+                version_text = tr('update_available')
+            
+            message = f"{tr('update_available_question')}: {version_text}\n{tr('update_ask_now')}"
+            
+            result = messagebox.askyesno(
+                tr('update_zapret_title'),
+                message
+            )
+            
+            if result:
+                self.save_settings()
+                
+                if getattr(sys, 'frozen', False):
+                    exe_path = sys.executable
+                else:
+                    exe_path = sys.argv[0]
+                
+                args = [exe_path, '--update-zapret-only']
+                for arg in sys.argv[1:]:
+                    if arg not in ['--no-splash', '--from-splash']:
+                        args.append(arg)
+                
+                subprocess.Popen(args)
+                self.root.quit()
+                self.root.destroy()
+                sys.exit(0)
+                
+        except Exception:
+            pass
 
     def install_update(self):
         try:
             latest_version = None
             latest_build = None
             
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                'Accept': 'text/plain',
+                'Connection': 'close'
+            }
+            
             try:
                 req_version = urllib.request.Request(
-                    "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/version.txt",  # version.txt
-                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+                    "https://zapret-launcher.ru/updater/docs/version_launcher.txt",
+                    headers=headers
                 )
                 with urllib.request.urlopen(req_version, timeout=5) as response:
                     latest_version = response.read().decode('utf-8').strip()
@@ -1131,8 +1237,8 @@ class ZapretLauncher:
             
             try:
                 req_build = urllib.request.Request(
-                    "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt",  # build_number.txt
-                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+                    "https://zapret-launcher.ru/updater/docs/build_number.txt",
+                    headers=headers
                 )
                 with urllib.request.urlopen(req_build, timeout=5) as response:
                     latest_build = response.read().decode('utf-8').strip()
@@ -1167,237 +1273,12 @@ class ZapretLauncher:
                         args.append(arg)
                 
                 subprocess.Popen(args)
-                
                 self.root.quit()
                 self.root.destroy()
                 sys.exit(0)
                 
         except Exception:
             pass
-
-    def show_mode_selector(self):
-        dialog = tk.Toplevel(self.root)
-        dialog.title(tr('mode_select_title'))
-        dialog.resizable(False, False)
-        dialog.configure(bg=self.colors['bg_medium'])
-        dialog.transient(self.root)
-        dialog.grab_set()
-        dialog.focus_force()
-
-        self.set_dialog_header_color(dialog)
-        
-        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 250
-        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 275
-        
-        dialog.geometry(f"500x550+{x}+{y}")
-        
-        tk.Label(dialog, text=tr('mode_select'), font=("Segoe UI Variable", 16, "bold"),
-                fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(pady=(20, 10))
-        
-        main_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
-        
-        canvas = tk.Canvas(main_frame, bg=self.colors['bg_medium'], highlightthickness=0)
-        scrollable_frame = tk.Frame(canvas, bg=self.colors['bg_medium'])
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw", width=440)
-        canvas.configure(yscrollcommand=None)
-        canvas.pack(side="left", fill="both", expand=True)
-        
-        modes = [
-            {"name": tr('mode_standard'), "desc": tr('mode_standard_desc'), 
-            "zapret": True, "tgproxy": False},
-            {"name": "Telegram Proxy", "desc": tr('mode_tgproxy_desc'), 
-            "zapret": False, "tgproxy": True},
-            {"name": tr('mode_zapret_tgproxy'), "desc": tr('mode_zapret_tgproxy_desc'), 
-            "zapret": True, "tgproxy": True},
-        ]
-        
-        selected_index = [0]
-        selected_mode = [None]
-        selected_widget = [None]
-        mode_frames = []
-        select_btn = [None]
-        
-        def update_select_button():
-            if select_btn[0]:
-                if selected_mode[0]:
-                    select_btn[0].set_enabled(True)
-                    select_btn[0].normal_color = self.colors['accent']
-                    select_btn[0].hover_color = self.colors['accent']
-                    select_btn[0].update_colors(
-                        self.colors['accent'],
-                        self.colors['text_primary'],
-                        self.colors['accent']
-                    )
-                    select_btn[0].config(cursor="hand2")
-                else:
-                    select_btn[0].set_enabled(False)
-                    select_btn[0].normal_color = self.colors['accent']
-                    select_btn[0].hover_color = self.colors['accent']
-                    select_btn[0].update_colors(
-                        self.colors['button_bg'],
-                        self.colors['text_secondary'],
-                        self.colors['button_bg']
-                    )
-                    select_btn[0].config(cursor="arrow")
-        
-        def on_single_click(mode, frame, name_label, desc_label, index):
-            if selected_widget[0]:
-                prev_frame, prev_name, prev_desc, _ = selected_widget[0]
-                prev_frame.configure(bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
-                prev_name.configure(fg=self.colors['accent'], bg=self.colors['bg_light'])
-                prev_desc.configure(fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
-            
-            frame.configure(bg=self.colors['accent'], relief=tk.RIDGE, bd=2)
-            name_label.configure(fg=self.colors['text_primary'], bg=self.colors['accent'])
-            desc_label.configure(fg=self.colors['text_secondary'], bg=self.colors['accent'])
-            
-            selected_widget[0] = (frame, name_label, desc_label, index)
-            selected_mode[0] = mode
-            selected_index[0] = index
-            update_select_button()
-            canvas.yview_moveto(index / len(modes) if len(modes) > 0 else 0)
-        
-        def on_double_click(mode):
-            if mode:
-                dialog.destroy()
-                self.start_with_mode(mode)
-        
-        def on_select_click():
-            if selected_mode[0]:
-                dialog.destroy()
-                self.start_with_mode(selected_mode[0])
-        
-        def move_selection(delta):
-            new_index = selected_index[0] + delta
-            if 0 <= new_index < len(modes):
-                selected_index[0] = new_index
-                mode = modes[new_index]
-                frame, name_label, desc_label = mode_frames[new_index]
-                on_single_click(mode, frame, name_label, desc_label, new_index)
-        
-        def on_key_press(event):
-            if event.keysym == 'Up':
-                move_selection(-1)
-                return "break"
-            elif event.keysym == 'Down':
-                move_selection(1)
-                return "break"
-            elif event.keysym == 'Return':
-                if selected_mode[0]:
-                    dialog.destroy()
-                    self.start_with_mode(selected_mode[0])
-                return "break"
-            elif event.keysym == 'Escape':
-                dialog.destroy()
-                return "break"
-        
-        dialog.bind('<Up>', on_key_press)
-        dialog.bind('<Down>', on_key_press)
-        dialog.bind('<Return>', on_key_press)
-        dialog.bind('<Escape>', on_key_press)
-        
-        for idx, mode in enumerate(modes):
-            mode_frame = tk.Frame(scrollable_frame, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0, cursor="hand2")
-            mode_frame.pack(fill=tk.X, padx=10, pady=5, ipady=8)
-            
-            original_bg = self.colors['bg_light']
-            name_label = tk.Label(mode_frame, text=mode["name"], font=("Segoe UI Variable", 12, "bold"),
-                                fg=self.colors['accent'], bg=original_bg)
-            name_label.pack(anchor='w', padx=15, pady=(8, 2))
-            desc_label = tk.Label(mode_frame, text=mode["desc"], font=("Segoe UI Variable", 9),
-                                fg=self.colors['text_secondary'], bg=original_bg)
-            desc_label.pack(anchor='w', padx=15, pady=(0, 8))
-            
-            mode_frames.append((mode_frame, name_label, desc_label))
-            
-            if idx == 0:
-                selected_index[0] = 0
-                selected_mode[0] = mode
-                selected_widget[0] = (mode_frame, name_label, desc_label, idx)
-                mode_frame.configure(bg=self.colors['accent'], relief=tk.RIDGE, bd=2)
-                name_label.configure(fg=self.colors['text_primary'], bg=self.colors['accent'])
-                desc_label.configure(fg=self.colors['text_secondary'], bg=self.colors['accent'])
-                update_select_button()
-
-            def make_on_click(m, f, nl, dl, i):
-                return lambda e: on_single_click(m, f, nl, dl, i)
-            
-            def make_on_double(m):
-                return lambda e: on_double_click(m)
-            
-            click_handler = make_on_click(mode, mode_frame, name_label, desc_label, idx)
-            double_handler = make_on_double(mode)
-            
-            mode_frame.bind("<Button-1>", click_handler)
-            mode_frame.bind("<Double-Button-1>", double_handler)
-            name_label.bind("<Button-1>", click_handler)
-            name_label.bind("<Double-Button-1>", double_handler)
-            desc_label.bind("<Button-1>", click_handler)
-            desc_label.bind("<Double-Button-1>", double_handler)
-            
-            def make_on_enter(frame, nl, dl, orig_bg, idx_local):
-                def on_enter_func(e):
-                    if selected_widget[0] and selected_widget[0][3] == idx_local:
-                        return
-                    frame.configure(bg=self.colors['bg_light_hover'])
-                    nl.configure(bg=self.colors['bg_light_hover'])
-                    dl.configure(bg=self.colors['bg_light_hover'])
-                return on_enter_func
-            
-            def make_on_leave(frame, nl, dl, orig_bg, idx_local):
-                def on_leave_func(e):
-                    if selected_widget[0] and selected_widget[0][3] == idx_local:
-                        return
-                    frame.configure(bg=orig_bg)
-                    nl.configure(bg=orig_bg)
-                    dl.configure(bg=orig_bg)
-                return on_leave_func
-            
-            mode_frame.bind("<Enter>", make_on_enter(mode_frame, name_label, desc_label, original_bg, idx))
-            mode_frame.bind("<Leave>", make_on_leave(mode_frame, name_label, desc_label, original_bg, idx))
-            name_label.bind("<Enter>", make_on_enter(mode_frame, name_label, desc_label, original_bg, idx))
-            name_label.bind("<Leave>", make_on_leave(mode_frame, name_label, desc_label, original_bg, idx))
-            desc_label.bind("<Enter>", make_on_enter(mode_frame, name_label, desc_label, original_bg, idx))
-            desc_label.bind("<Leave>", make_on_leave(mode_frame, name_label, desc_label, original_bg, idx))
-        
-        bottom_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
-        bottom_frame.pack(fill=tk.X, padx=20, pady=15)
-        
-        select_btn[0] = RoundedButton(
-            bottom_frame,
-            text=tr('mode_select_button'),
-            command=on_select_click,
-            width=100, height=35,
-            bg=self.colors['accent'],
-            font=("Segoe UI Variable", 10),
-            corner_radius=8
-        )
-        select_btn[0].normal_color = self.colors['accent']
-        select_btn[0].hover_color = self.colors['accent']
-        select_btn[0].set_enabled(True)
-        select_btn[0].config(cursor="hand2")
-        select_btn[0].pack(side=tk.RIGHT, padx=(10, 0))
-        
-        cancel_btn = RoundedButton(
-            bottom_frame,
-            text=tr('mode_cancel'),
-            command=dialog.destroy,
-            width=100, height=35,
-            bg=self.colors['button_bg'],
-            font=("Segoe UI Variable", 10),
-            corner_radius=8
-        )
-        cancel_btn.normal_color = self.colors['button_bg']
-        cancel_btn.hover_color = self.colors['accent']
-        cancel_btn.config(cursor="hand2")
-        cancel_btn.pack(side=tk.RIGHT)
 
     def start_with_mode(self, mode):
         if self.is_connected:
@@ -1415,7 +1296,7 @@ class ZapretLauncher:
                     return
                 
                 self._pending_mode = mode
-                self.select_strategy_for_mode(mode["name"])
+                self.dialogs.show_strategy_selector(mode["name"])
                 return
             
             if mode["name"] == "Telegram Proxy":
@@ -1430,7 +1311,7 @@ class ZapretLauncher:
                     return
                 
                 self._pending_mode = mode
-                self.select_strategy_for_mode(mode["name"])
+                self.dialogs.show_strategy_selector(mode["name"])
                 return
 
             self._reset_traffic_history()
@@ -1556,7 +1437,7 @@ class ZapretLauncher:
                 self.root.after(1000, self.copy_tg_link_to_clipboard)
 
             if not self._tg_instruction:
-                self.root.after(500, self.show_tg_proxy_instruction)
+                self.root.after(500, self.dialogs.show_tg_proxy_instruction)
 
             self._connecting = False
             self.force_tray_menu_update()
@@ -1569,235 +1450,6 @@ class ZapretLauncher:
         messagebox.showerror(tr('error_no_connection'), f"{error_msg}")
         if hasattr(self, 'connect_btn') and self.connect_btn:
             self.connect_btn.set_enabled(True)
-
-    def select_strategy_for_mode(self, mode_name):
-        dialog = tk.Toplevel(self.root)
-        dialog.title(tr('select_strategy_title'))
-        dialog.resizable(False, False)
-        dialog.configure(bg=self.colors['bg_medium'])
-        dialog.transient(self.root)
-        dialog.grab_set()
-        dialog.focus_force()
-
-        self.set_dialog_header_color(dialog)
-        
-        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 275
-        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 275
-        
-        dialog.geometry(f"550x550+{x}+{y}")
-        
-        if mode_name == tr('mode_zapret_tgproxy'):
-            title_text = f"{tr('select_strategy')}"
-            desc_text = ""
-        else:
-            title_text = tr('select_strategy')
-            desc_text = ""
-        
-        tk.Label(dialog, text=title_text, font=("Segoe UI Variable", 18, "bold"),
-                fg=self.colors['text_primary'], bg=self.colors['bg_medium']).pack(pady=(25, 15))
-        
-        if desc_text:
-            tk.Label(dialog, text=desc_text, font=("Segoe UI Variable", 10),
-                    fg=self.colors['text_secondary'], bg=self.colors['bg_medium'],
-                    wraplength=450).pack(pady=(0, 15))
-        
-        main_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=25, pady=5)
-        
-        list_card = tk.Frame(main_frame, bg=self.colors['bg_light'], relief=tk.FLAT, bd=0)
-        list_card.pack(fill=tk.BOTH, expand=True)
-        
-        list_inner = tk.Frame(list_card, bg=self.colors['bg_light'])
-        list_inner.pack(fill=tk.BOTH, expand=True, padx=15, pady=12)
-        
-        tk.Label(list_inner, text=tr('available_strategies'), font=("Segoe UI Variable", 12, "bold"),
-                fg=self.colors['accent'], bg=self.colors['bg_light']).pack(anchor='w', pady=(0, 10))
-        
-        list_frame = tk.Frame(list_inner, bg=self.colors['bg_light'])
-        list_frame.pack(fill=tk.BOTH, expand=True)
-        
-        scrollbar = ttk.Scrollbar(list_frame, style="Custom.Vertical.TScrollbar")
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        strategy_listbox = tk.Listbox(list_frame, height=10, font=("Segoe UI Variable", 10),
-                                    bg=self.colors['bg_light'], fg=self.colors['text_primary'],
-                                    selectbackground=self.colors['accent'],
-                                    yscrollcommand=scrollbar.set)
-        strategy_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.config(command=strategy_listbox.yview)
-        
-        for s in self.zapret.available_strategies:
-            strategy_listbox.insert(tk.END, s)
-        
-        desc_label = tk.Label(dialog, text="", font=("Segoe UI Variable", 9),
-                            fg=self.colors['text_secondary'], bg=self.colors['bg_medium'],
-                            wraplength=400, justify=tk.LEFT)
-        desc_label.pack(pady=5, padx=20)
-        
-        is_processing = False
-        
-        def on_select(event):
-            selection = strategy_listbox.curselection()
-            if selection:
-                strategy = self.zapret.available_strategies[selection[0]]
-                desc_label.config(text=f"{tr('selected')} {strategy}")
-        
-        strategy_listbox.bind("<<ListboxSelect>>", on_select)
-        
-        if self.current_strategy:
-            try:
-                idx = self.zapret.available_strategies.index(self.current_strategy)
-                strategy_listbox.selection_set(idx)
-                strategy_listbox.see(idx)
-                desc_label.config(text=f"{tr('selected')} {self.current_strategy}")
-            except ValueError:
-                pass
-        
-        def move_selection(delta):
-            nonlocal is_processing
-            if is_processing:
-                return
-            is_processing = True
-            
-            try:
-                current = strategy_listbox.curselection()
-                if current:
-                    new_idx = current[0] + delta
-                else:
-                    new_idx = 0 if delta > 0 else len(self.zapret.available_strategies) - 1
-                
-                if 0 <= new_idx < len(self.zapret.available_strategies):
-                    strategy_listbox.selection_clear(0, tk.END)
-                    strategy_listbox.selection_set(new_idx)
-                    strategy_listbox.see(new_idx)
-                    strategy = self.zapret.available_strategies[new_idx]
-                    desc_label.config(text=f"{tr('selected')} {strategy}")
-            finally:
-                dialog.after(100, lambda: setattr(move_selection, 'processing', False))
-                is_processing = False
-        
-        def on_key_press(event):
-            if event.keysym == 'Up':
-                move_selection(-1)
-                return "break"
-            elif event.keysym == 'Down':
-                move_selection(1)
-                return "break"
-            elif event.keysym == 'Return':
-                start_with_strategy()
-                return "break"
-            elif event.keysym == 'Escape':
-                dialog.destroy()
-                return "break"
-        
-        def on_double_click(event):
-            start_with_strategy()
-        
-        dialog.bind('<Up>', on_key_press)
-        dialog.bind('<Down>', on_key_press)
-        dialog.bind('<Return>', on_key_press)
-        dialog.bind('<Escape>', on_key_press)
-
-        strategy_listbox.bind('<Up>', on_key_press)
-        strategy_listbox.bind('<Down>', on_key_press)
-        strategy_listbox.bind('<Return>', on_key_press)
-        strategy_listbox.bind('<Escape>', on_key_press)
-        strategy_listbox.bind('<Double-Button-1>', on_double_click)
-        strategy_listbox.focus_set()
-        
-        btn_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
-        btn_frame.pack(pady=20)
-        
-        def start_with_strategy():
-            selection = strategy_listbox.curselection()
-            if not selection:
-                messagebox.showerror(tr('error_select_strategy'), tr('error_select_strategy'))
-                self._connecting = False
-                self.force_tray_menu_update()
-                return
-            selected_strategy = self.zapret.available_strategies[selection[0]]
-            self.strategy_var.set(selected_strategy)
-            dialog.destroy()
-            
-            mode = self._pending_mode
-            self.update_status(f"{tr('status_starting')}", self.colors['accent'])
-            if hasattr(self, 'connect_btn') and self.connect_btn:
-                self.connect_btn.set_enabled(False)
-            self.root.update()
-            
-            if mode["name"] == tr('mode_zapret_tgproxy'):
-                def start_combined():
-                    success, msg = self.zapret.run_strategy(selected_strategy)
-                    if not success:
-                        self.root.after(0, lambda: self._on_combined_start_failed(msg))
-                        return
-                    
-                    self.current_strategy = selected_strategy
-                    self.save_settings()
-                    
-                    tg_success = self.tg_proxy.start()
-                    if not tg_success:
-                        self.zapret.stop_current_strategy()
-                        self.root.after(0, lambda: self._on_combined_start_failed(tr('error_tgproxy_start')))
-                        return
-                    
-                    if not self.tg_proxy.wait_for_start(8):
-                        self.zapret.stop_current_strategy()
-                        self.tg_proxy.stop()
-                        self.root.after(0, lambda: self._on_combined_start_failed(tr('error_tgproxy_timeout')))
-                        return
-                    
-                    self.is_connected = True
-                    self.stats.start_session()
-                    self.start_stats_monitoring()
-                    
-                    self.root.after(0, lambda: self._on_combined_start_success(mode["name"]))
-                
-                threading.Thread(target=start_combined, daemon=True).start()
-            else:
-                success, msg = self.zapret.run_strategy(selected_strategy)
-                if not success:
-                    self.update_status(tr('status_error'), self.colors['accent_red'])
-                    messagebox.showerror(tr('error_startup'), msg)
-                    if hasattr(self, 'connect_btn') and self.connect_btn:
-                        self.connect_btn.set_enabled(True)
-                    self._connecting = False
-                    self.force_tray_menu_update()
-                    return
-                
-                self.current_strategy = selected_strategy
-                self.save_settings()
-                
-                if mode.get("tgproxy", False):
-                    self.tg_proxy.start()
-                
-                self.is_connected = True
-                self.stats.start_session()
-                self.start_stats_monitoring()
-                
-                if hasattr(self, 'mode_label') and self.mode_label:
-                    self.mode_label.config(text=mode["name"], fg=self.colors['accent_green'])
-                self.update_status(f"{tr('status_connected')}", self.colors['accent_green'])
-                self.update_ui_state()
-                self.save_settings()
-                self.root.after(500, self.update_tray_icon_state)
-                if hasattr(self, 'connect_btn') and self.connect_btn:
-                    self.connect_btn.set_enabled(True)
-
-                self._connecting = False
-                self.force_tray_menu_update()
-        
-        start_btn = RoundedButton(btn_frame, text=tr('button_start'), command=start_with_strategy,
-                                width=120, height=35, bg=self.colors['accent'],
-                                font=("Segoe UI Variable", 10), corner_radius=8,
-                                hover_color=self.colors['accent'], theme_name=self.current_theme)
-        start_btn.pack(side=tk.LEFT, padx=5)
-        
-        cancel_btn = RoundedButton(btn_frame, text=tr('mode_cancel'), command=lambda: self._cancel_strategy_selection(dialog),
-                                width=80, height=35, bg=self.colors['button_bg'],
-                                font=("Segoe UI Variable", 10), corner_radius=8,
-                                hover_color=self.colors['accent'], theme_name=self.current_theme)
-        cancel_btn.pack(side=tk.LEFT, padx=5)
 
     def _cancel_strategy_selection(self, dialog):
         dialog.destroy()
@@ -2115,31 +1767,100 @@ class ZapretLauncher:
 
     def set_autostart(self, enabled):
         try:
-            exe_path = sys.executable if getattr(sys, 'frozen', False) else sys.argv[0]
-            key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
-            
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE) as key:
-                if enabled:
-                    winreg.SetValueEx(key, "Zapret Launcher", 0, winreg.REG_SZ, exe_path)
-                    self.log_event("info", f"Autostart enabled: {exe_path}")
-                else:
-                    try:
-                        winreg.DeleteValue(key, "Zapret Launcher")
-                        self.log_event("info", f"Autostart disabled: {exe_path}")
-                    except:
-                        pass
-            return True
+            if enabled:
+                exe_path = sys.executable if getattr(sys, 'frozen', False) else sys.argv[0]
+                
+                xml_template = '''<?xml version="1.0" encoding="UTF-16"?>
+                <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+                <RegistrationInfo>
+                    <Date>2024-01-01T00:00:00</Date>
+                    <Author>Zapret Launcher</Author>
+                    <Description>Auto Start</Description>
+                </RegistrationInfo>
+                <Triggers>
+                    <LogonTrigger>
+                    <Enabled>true</Enabled>
+                    </LogonTrigger>
+                </Triggers>
+                <Principals>
+                    <Principal id="Author">
+                    <RunLevel>HighestAvailable</RunLevel>
+                    <UserId>{user_id}</UserId>
+                    <LogonType>InteractiveToken</LogonType>
+                    </Principal>
+                </Principals>
+                <Settings>
+                    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+                    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+                    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+                    <AllowHardTerminate>true</AllowHardTerminate>
+                    <StartWhenAvailable>true</StartWhenAvailable>
+                    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+                    <IdleSettings>
+                    <StopOnIdleEnd>true</StopOnIdleEnd>
+                    <RestartOnIdle>false</RestartOnIdle>
+                    </IdleSettings>
+                    <AllowStartOnDemand>true</AllowStartOnDemand>
+                    <Enabled>true</Enabled>
+                    <Hidden>false</Hidden>
+                    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+                    <WakeToRun>false</WakeToRun>
+                    <ExecutionTimeLimit>PT72H</ExecutionTimeLimit>
+                    <Priority>7</Priority>
+                    <RestartOnFailure>
+                    <Interval>PT1M</Interval>
+                    <Count>3</Count>
+                    </RestartOnFailure>
+                </Settings>
+                <Actions Context="Author">
+                    <Exec>
+                    <Command>"{exe_path}"</Command>
+                    <Arguments>--from-splash</Arguments>
+                    </Exec>
+                </Actions>
+                </Task>'''
+                
+                user_id = getpass.getuser()
+                xml = xml_template.format(exe_path=exe_path, user_id=user_id)
+
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.xml', delete=False) as f:
+                    f.write(xml)
+                    temp_xml = f.name
+                
+                subprocess.run(
+                    ['schtasks', '/create', '/tn', 'ZapretLauncher', '/xml', temp_xml, '/f'],
+                    capture_output=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
+                
+                try:
+                    os.unlink(temp_xml)
+                except:
+                    pass
+                
+                self.log_event("info", f"Task scheduled for auto-start: {exe_path}")
+                return True
+            else:
+                subprocess.run(
+                    ['schtasks', '/delete', '/tn', 'ZapretLauncher', '/f'],
+                    capture_output=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
+                self.log_event("info", "Auto-start task removed")
+                return True
         except Exception as e:
-            self.log_event("error", f"Unexpected error in autostart launcher: {e}")
+            self.log_event("error", f"Error setting auto-start: {e}")
             return False
 
     def check_autostart_status(self):
         try:
-            key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
-            
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ) as key:
-                value, _ = winreg.QueryValueEx(key, "Zapret Launcher")
-                return value is not None
+            result = subprocess.run(
+                ['schtasks', '/query', '/tn', 'ZapretLauncher'],
+                capture_output=True,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            return 'ZapretLauncher' in result.stdout
         except:
             return False
 
@@ -2274,7 +1995,7 @@ class ZapretLauncher:
             self._connecting = True
             try:
                 if self.check_vpn_before_connect():
-                    self.show_mode_selector()
+                    self.dialogs.show_mode_selector()
             finally:
                 self.root.after(500, lambda: setattr(self, '_connecting', False))
         self.root.after(500, self.update_tray_icon_state)
@@ -2495,6 +2216,32 @@ class ZapretLauncher:
         except:
             pass
 
+    def toggle_vpn_detection(self):
+        current = getattr(self, '_show_vpn_detection', False)
+        new_state = not current
+        self._show_vpn_detection = new_state
+        self.save_settings()
+        
+        if new_state:
+            self.show_notification(tr('dialog_enabled'), 2000)
+            self.log_event("info", "VPN detection enabled")
+        else:
+            self.show_notification(tr('dialog_disabled'), 2000)
+            self.log_event("info", "VPN detection disabled")
+
+    def toggle_hide_duplicates_warning(self):
+        current = getattr(self, '_hide_duplicates_warning', False)
+        new_state = not current
+        self._hide_duplicates_warning = new_state
+        self.save_settings()
+        
+        if new_state:
+            self.show_notification(tr('dialog_disabled'), 2000)
+            self.log_event("info", "Duplicates warning hidden")
+        else:
+            self.show_notification(tr('dialog_enabled'), 2000)
+            self.log_event("info", "Duplicates warning shown")
+
     def _stop_windivert_service(self):
         try:
             result = subprocess.run(
@@ -2556,6 +2303,9 @@ class ZapretLauncher:
                     self.tg_fake_tls = data.get('tg_fake_tls', TG_FAKE_TLS)
                     self.tg_fake_tls_domain = data.get('tg_fake_tls_domain', TG_FAKE_TLS_DOMAIN)
 
+                    self._show_vpn_detection = data.get('show_vpn_detection', False)
+                    self._hide_duplicates_warning = data.get('hide_duplicates_warning', False)
+
                     saved_theme = data.get('theme', 'Default')
                     if saved_theme in get_theme_names():
                         self.current_theme = saved_theme
@@ -2575,6 +2325,8 @@ class ZapretLauncher:
             self.tg_port = TG_PORT
             self.tg_fake_tls = TG_FAKE_TLS
             self.tg_fake_tls_domain = TG_FAKE_TLS_DOMAIN
+            self._show_vpn_detection = True
+            self._hide_duplicates_warning = False
 
     def save_settings(self):
         try:
@@ -2583,6 +2335,8 @@ class ZapretLauncher:
                 'autostart_enabled': self.check_autostart_status(),
                 'update_interval': self.update_interval_index,
                 'tg_instruction': getattr(self, '_tg_instruction', False),
+                'show_vpn_detection': getattr(self, '_show_vpn_detection', False),
+                'hide_duplicates_warning': getattr(self, '_hide_duplicates_warning', False),
                 'language': self.languages.get_current_language(),
                 'tg_secret': getattr(self, '_tg_secret', None),
                 'theme': self.current_theme,
@@ -2624,399 +2378,6 @@ class ZapretLauncher:
         self.pages.show_page_with_animation("logs")
         self.pages.update_logs_display()
 
-    def show_additionally_page(self):
-        self.pages.show_page_with_animation("additionally")
-
-    def add_soundcloud_unblock(self):
-        try:
-            list_general_path = LISTS_DIR / "list-custom.txt"
-            ipset_all_path = LISTS_DIR / "ipset-all.txt"
-            
-            soundcloud_domains = [
-                "soundcloud.com", "www.soundcloud.com", "style.sndcdn.com",
-                "a-v2.sndcdn.com", "api-v2.soundcloud.com", "sb.scorecardresearch.com",
-                "secure.quantserve.com", "eventlogger.soundcloud.com", "api.soundcloud.com",
-                "ssl.google-analytics.com", "sdk-04.moengage.com", "al.sndcdn.com",
-                "i1.sndcdn.com", "i2.sndcdn.com", "i3.sndcdn.com", "i4.sndcdn.com",
-                "wis.sndcdn.com", "va.sndcdn.com", "pixel.quantserve.com",
-                "assets.web.soundcloud.cloud", "*.cloudfront.net", ".soundcloud.",
-                "playback.media-streaming.soundcloud.cloud", "id5-sync.com",
-                "cdn.moengage.com", "htlbid.com", "securepubads.g.doubleclick.net",
-                "cdn.cookielaw.org"
-            ]
-            
-            soundcloud_ips = [
-                "18.165.122.4/32", "18.165.122.6/32",
-                "18.165.122.82/32", "18.165.122.86/32"
-            ]
-            
-            if list_general_path.exists():
-                with open(list_general_path, 'r', encoding='utf-8') as f:
-                    lines = f.readlines()
-                
-                clean_domains = set()
-                for line in lines:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    
-                    if '.' in line and len(line) > 3:
-                        for domain in soundcloud_domains:
-                            if domain in line and line != domain:
-                                parts = line.split(domain)
-                                for part in parts:
-                                    part = part.strip()
-                                    if part and '.' in part and len(part) > 3:
-                                        clean_domains.add(part)
-                                clean_domains.add(domain)
-                                break
-                        else:
-                            clean_domains.add(line)
-                
-                for domain in soundcloud_domains:
-                    clean_domains.add(domain)
-                
-                filtered_domains = set()
-                for domain in clean_domains:
-                    if domain in ['cloud', 'www.', 'www', '.com', 'com', 'http', 'https']:
-                        continue
-                    if domain.startswith('/') or domain.endswith('/'):
-                        continue
-                    if len(domain) < 4:
-                        continue
-                    filtered_domains.add(domain)
-                
-                with open(list_general_path, 'w', encoding='utf-8') as f:
-                    for domain in sorted(filtered_domains):
-                        f.write(f"{domain}\n")
-            
-            if ipset_all_path.exists():
-                with open(ipset_all_path, 'r', encoding='utf-8') as f:
-                    lines = f.readlines()
-                
-                clean_ips = set()
-                for line in lines:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    
-                    if '/' in line or ('.' in line and any(c.isdigit() for c in line)):
-                        if len(line) > 5 and line[0].isdigit():
-                            clean_ips.add(line)
-                
-                for ip in soundcloud_ips:
-                    clean_ips.add(ip)
-                
-                with open(ipset_all_path, 'w', encoding='utf-8') as f:
-                    for ip in sorted(clean_ips):
-                        f.write(f"{ip}\n")
-            
-            self.show_notification(tr('soundcloud_unblocked'), 3000)
-            self.log_event("info", "SoundCloud rules added to list-custom.txt and ipset-all.txt")
-            return True
-        except Exception as e:
-            self.log_event("error", f"Error adding SoundCloud rules: {str(e)}")
-            return False
-
-    def remove_soundcloud_unblock(self):
-        try:
-            list_general_path = LISTS_DIR / "list-custom.txt"
-            ipset_all_path = LISTS_DIR / "ipset-all.txt"
-            
-            soundcloud_domains = [
-                "soundcloud.com", "www.soundcloud.com", "style.sndcdn.com",
-                "a-v2.sndcdn.com", "api-v2.soundcloud.com", "sb.scorecardresearch.com",
-                "secure.quantserve.com", "eventlogger.soundcloud.com", "api.soundcloud.com",
-                "ssl.google-analytics.com", "sdk-04.moengage.com", "al.sndcdn.com",
-                "i1.sndcdn.com", "i2.sndcdn.com", "i3.sndcdn.com", "i4.sndcdn.com",
-                "wis.sndcdn.com", "va.sndcdn.com", "pixel.quantserve.com",
-                "assets.web.soundcloud.cloud", "*.cloudfront.net", ".soundcloud.",
-                "playback.media-streaming.soundcloud.cloud", "id5-sync.com",
-                "cdn.moengage.com", "htlbid.com", "securepubads.g.doubleclick.net",
-                "cdn.cookielaw.org"
-            ]
-            
-            soundcloud_ips = [
-                "18.165.122.4/32", "18.165.122.6/32",
-                "18.165.122.82/32", "18.165.122.86/32"
-            ]
-            
-            if list_general_path.exists():
-                with open(list_general_path, 'r', encoding='utf-8') as f:
-                    lines = f.readlines()
-                
-                clean_domains = set()
-                for line in lines:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    
-                    if line in ['cloud', 'www.', 'www', '.com', 'com', 'http', 'https']:
-                        continue
-                    if line.startswith('/') or line.endswith('/'):
-                        continue
-                    if len(line) < 4:
-                        continue
-                    
-                    is_soundcloud = False
-                    for domain in soundcloud_domains:
-                        if domain in line:
-                            is_soundcloud = True
-                            break
-                    
-                    if not is_soundcloud:
-                        clean_domains.add(line)
-                
-                with open(list_general_path, 'w', encoding='utf-8') as f:
-                    for domain in sorted(clean_domains):
-                        f.write(f"{domain}\n")
-            
-            if ipset_all_path.exists():
-                with open(ipset_all_path, 'r', encoding='utf-8') as f:
-                    lines = f.readlines()
-                
-                clean_ips = set()
-                for line in lines:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    
-                    if line in soundcloud_ips:
-                        continue
-                    if '/' in line and len(line) > 5:
-                        clean_ips.add(line)
-                    elif '.' in line and len(line) > 5 and line[0].isdigit():
-                        clean_ips.add(line)
-                
-                with open(ipset_all_path, 'w', encoding='utf-8') as f:
-                    for ip in sorted(clean_ips):
-                        f.write(f"{ip}\n")
-            
-            self.show_notification(tr('soundcloud_removed'), 3000)
-            self.log_event("info", "SoundCloud rules have been removed from list-custom.txt and ipset-all.txt")
-            return True
-        except Exception as e:
-            self.log_event("error", f"Error removing SoundCloud rules: {str(e)}")
-            return False
-
-    def check_soundcloud_enabled(self):
-        try:
-            list_general_path = LISTS_DIR / "list-custom.txt"
-            
-            if not list_general_path.exists():
-                return False
-            
-            with open(list_general_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-
-            return "soundcloud.com" in content
-            
-        except Exception:
-            return False
-        
-    def add_facebook_instagram_unblock(self):
-        try:
-            list_general_path = LISTS_DIR / "list-custom.txt"
-            ipset_all_path = LISTS_DIR / "ipset-all.txt"
-            
-            meta_domains = [
-                "facebook.com", "www.facebook.com", "fb.com", "www.fb.com",
-                "fbcdn.net", "www.fbcdn.net", "static.xx.fbcdn.net", "scontent.xx.fbcdn.net",
-                "graph.facebook.com", "api.facebook.com", "m.facebook.com", "business.facebook.com",
-                "developers.facebook.com", "connect.facebook.net", "facebook.net",
-                "fbcdn-profile-a.akamaihd.net", "fbstatic-a.akamaihd.net", "fbexternal-a.akamaihd.net",
-                "instagram.com", "www.instagram.com", "cdninstagram.com", "www.cdninstagram.com",
-                "scontent.cdninstagram.com", "graph.instagram.com", "api.instagram.com", "i.instagram.com",
-                "meta.com", "www.meta.com", "cdn.meta.com", "metacdn.com",
-                "whatsapp.com", "www.whatsapp.com"
-            ]
-            
-            meta_ips = [
-                "31.13.24.0/21", "31.13.64.0/18", "66.220.144.0/20", "69.63.176.0/20",
-                "69.171.224.0/19", "74.119.76.0/22", "103.4.96.0/22", "129.134.0.0/16",
-                "147.75.208.0/20", "157.240.0.0/16", "173.252.64.0/18", "179.60.192.0/22",
-                "185.60.216.0/22", "185.89.216.0/22", "199.96.56.0/21", "204.15.20.0/22"
-            ]
-            
-            if list_general_path.exists():
-                with open(list_general_path, 'r', encoding='utf-8') as f:
-                    lines = f.readlines()
-                
-                clean_domains = set()
-                for line in lines:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    
-                    if line in ['cloud', 'www.', 'www', '.com', 'com', 'http', 'https']:
-                        continue
-                    if line.startswith('/') or line.endswith('/'):
-                        continue
-                    if len(line) < 4:
-                        continue
-                    
-                    is_merged = False
-                    for domain in meta_domains:
-                        if domain in line and line != domain:
-                            parts = line.split(domain)
-                            for part in parts:
-                                part = part.strip()
-                                if part and '.' in part and len(part) > 3:
-                                    if part not in ['cloud', 'www.', 'www', '.com', 'com']:
-                                        clean_domains.add(part)
-                            clean_domains.add(domain)
-                            is_merged = True
-                            break
-                    
-                    if not is_merged:
-                        clean_domains.add(line)
-                
-                for domain in meta_domains:
-                    clean_domains.add(domain)
-                
-                filtered_domains = set()
-                for domain in clean_domains:
-                    if domain in ['cloud', 'www.', 'www', '.com', 'com', 'http', 'https']:
-                        continue
-                    if domain.startswith('/') or domain.endswith('/'):
-                        continue
-                    if len(domain) < 4:
-                        continue
-                    filtered_domains.add(domain)
-                
-                with open(list_general_path, 'w', encoding='utf-8') as f:
-                    for domain in sorted(filtered_domains):
-                        f.write(f"{domain}\n")
-            else:
-                return False
-            
-            if ipset_all_path.exists():
-                with open(ipset_all_path, 'r', encoding='utf-8') as f:
-                    lines = f.readlines()
-                
-                clean_ips = set()
-                for line in lines:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    
-                    if '/' in line and len(line) > 5:
-                        clean_ips.add(line)
-                    elif '.' in line and line.count('.') == 3 and len(line) > 7:
-                        clean_ips.add(line)
-                
-                for ip in meta_ips:
-                    clean_ips.add(ip)
-                
-                with open(ipset_all_path, 'w', encoding='utf-8') as f:
-                    for ip in sorted(clean_ips):
-                        f.write(f"{ip}\n")
-            
-            self.show_notification(tr('meta_unblocked'), 3000)
-            self.log_event("info", f"Meta rules added to list-custom.txt and ipset-all.txt")
-            return True
-        except Exception as e:
-            self.log_event("error", f"Error adding Meta rules: {str(e)}")
-            return False
-
-    def remove_facebook_instagram_unblock(self):
-        try:
-            list_general_path = LISTS_DIR / "list-custom.txt"
-            ipset_all_path = LISTS_DIR / "ipset-all.txt"
-            
-            meta_domains = [
-                "facebook.com", "www.facebook.com", "fb.com", "www.fb.com",
-                "fbcdn.net", "www.fbcdn.net", "static.xx.fbcdn.net", "scontent.xx.fbcdn.net",
-                "graph.facebook.com", "api.facebook.com", "m.facebook.com", "business.facebook.com",
-                "developers.facebook.com", "connect.facebook.net", "facebook.net",
-                "fbcdn-profile-a.akamaihd.net", "fbstatic-a.akamaihd.net", "fbexternal-a.akamaihd.net",
-                "instagram.com", "www.instagram.com", "cdninstagram.com", "www.cdninstagram.com",
-                "scontent.cdninstagram.com", "graph.instagram.com", "api.instagram.com", "i.instagram.com",
-                "meta.com", "www.meta.com", "cdn.meta.com", "metacdn.com",
-                "whatsapp.com", "www.whatsapp.com"
-            ]
-            
-            meta_ips = [
-                "31.13.24.0/21", "31.13.64.0/18", "66.220.144.0/20", "69.63.176.0/20",
-                "69.171.224.0/19", "74.119.76.0/22", "103.4.96.0/22", "129.134.0.0/16",
-                "147.75.208.0/20", "157.240.0.0/16", "173.252.64.0/18", "179.60.192.0/22",
-                "185.60.216.0/22", "185.89.216.0/22", "199.96.56.0/21", "204.15.20.0/22"
-            ]
-            
-            if list_general_path.exists():
-                with open(list_general_path, 'r', encoding='utf-8') as f:
-                    lines = f.readlines()
-                
-                clean_domains = set()
-                for line in lines:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    
-                    if line in ['cloud', 'www.', 'www', '.com', 'com', 'http', 'https']:
-                        continue
-                    if line.startswith('/') or line.endswith('/'):
-                        continue
-                    if len(line) < 4:
-                        continue
-                    
-                    is_meta = False
-                    for domain in meta_domains:
-                        if domain in line:
-                            is_meta = True
-                            break
-                    
-                    if not is_meta:
-                        clean_domains.add(line)
-                
-                with open(list_general_path, 'w', encoding='utf-8') as f:
-                    for domain in sorted(clean_domains):
-                        f.write(f"{domain}\n")
-            
-            if ipset_all_path.exists():
-                with open(ipset_all_path, 'r', encoding='utf-8') as f:
-                    lines = f.readlines()
-                
-                clean_ips = set()
-                for line in lines:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    
-                    if line in meta_ips:
-                        continue
-                    
-                    if '/' in line and len(line) > 5:
-                        clean_ips.add(line)
-                    elif '.' in line and line.count('.') == 3 and len(line) > 7:
-                        clean_ips.add(line)
-                
-                with open(ipset_all_path, 'w', encoding='utf-8') as f:
-                    for ip in sorted(clean_ips):
-                        f.write(f"{ip}\n")
-            
-            self.show_notification(tr('meta_removed'), 3000)
-            self.log_event("info", f"Meta rules have been removed from list-custom.txt and ipset-all.txt")
-            return True
-        except Exception as e:
-            self.log_event("error", f"Error removing Meta rules: {str(e)}")
-            return False
-
-    def check_meta_enabled(self):
-        try:
-            list_general_path = LISTS_DIR / "list-custom.txt"
-            
-            if not list_general_path.exists():
-                return False
-            
-            with open(list_general_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            return "facebook.com" in content or "instagram.com" in content
-            
-        except Exception:
-            return False
-
     def _reset_traffic_history(self):
         self.traffic_history = {}
         self.traffic_history_vpn = {}
@@ -3025,6 +2386,19 @@ class ZapretLauncher:
         self.traffic_speed_vpn_history = {}
         self.traffic_speed_direct_history = {}
         self.traffic_last_update = time.time()
+
+    def check_lists_for_duplicates(self):
+        if getattr(self, '_hide_duplicates_warning', False):
+            return
+        
+        try:
+            lists_dir = ZAPRET_CORE_DIR / "lists"
+            has_duplicates, summary = check_lists_for_duplicates(lists_dir)
+            
+            if has_duplicates:
+                self.root.after(200, lambda: self.dialogs.show_duplicates_dialog(summary))
+        except Exception as e:
+            self.log_event("error", f"Failed to check lists for duplicates: {e}")
 
     def copy_tg_link_to_clipboard(self):
         secret = getattr(self, '_tg_secret', '')
@@ -3497,682 +2871,65 @@ class ZapretLauncher:
         )
 
     def check_vpn_before_connect(self):
+        if not getattr(self, '_show_vpn_detection', False):
+            return True
+        
         try:
-            checker = VPNChecker()
-            has_vpn, processes = checker.check_vpn_processes()
+            vpn_keywords = [
+                'openvpn', 'wireguard', 'protonvpn', 'nordvpn', 
+                'expressvpn', 'surfshark', 'cyberghost', 'ipvanish',
+                'tunnelbear', 'hotspotshield', 'windscribe', 'vyprvpn',
+                'privateinternetaccess', 'pia', 'mullvad', 'ivpn',
+                'airvpn', 'perfectprivacy', 'zenmate', 'hidester',
+                'slickvpn', 'fastestvpn', 'buffered', 'vpn.ac',
+                'torguard', 'vpnunlimited', 'vpngate',
+                'softether', 'v2ray', 'shadowsocks', 'trojan',
+                'wg-quick', 'ovpn', 'vpn.exe', 'vpnclient',
+                'forticlient', 'cisco', 'anyconnect', 'pulse secure',
+                'globalprotect', 'openconnect', 'wireguard.exe',
+                'protonvpn.exe', 'nordvpn.exe', 'expressvpn.exe',
+                'planetvpn', 'planetvpn.exe', 'vpn', 'itopvpn', 
+                'itopvpn.exe', 'bebra.exe', 'bebravpn.exe',
+                'xray', 'amneziawg', 'surfshark', 'surfsharkvpn'
+            ]
+            
+            has_vpn = False
+            detected_processes = []
+            
+            for proc in psutil.process_iter(['name']):
+                try:
+                    proc_name = proc.info['name'].lower() if proc.info['name'] else ''
+                    
+                    skip_processes = ['svchost.exe', 'textinput.exe', 'explorer.exe', 
+                                    'taskhost.exe', 'dwm.exe', 'csrss.exe', 'winlogon.exe',
+                                    'services.exe', 'lsass.exe', 'wininit.exe', 'spoolsv.exe',
+                                    'searchindexer.exe', 'wmpnetwk.exe', 'system', 'system idle process']
+                    
+                    if any(skip in proc_name for skip in skip_processes):
+                        continue
+                    
+                    for keyword in vpn_keywords:
+                        if keyword in proc_name:
+                            has_vpn = True
+                            detected_processes.append(proc_name)
+                            break
+                            
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
             
             if has_vpn:
                 vpn_data = {
                     'vpn_detected': True,
-                    'vpn_processes': processes,
+                    'vpn_processes': detected_processes,
                     'vpn_interfaces': []
                 }
-                self.show_vpn_detected_dialog(vpn_data)
+                self.dialogs.show_vpn_detected_dialog(vpn_data)
                 return False
             return True
+            
         except Exception as e:
             self.log_event("error", f"VPN check error: {e}")
             return True
-
-    def show_hosts_instruction(self):
-        dialog = tk.Toplevel(self.root)
-        dialog.title(tr('instruction_title_window'))
-        dialog.resizable(False, False)
-        dialog.configure(bg=self.colors['bg_medium'])
-        dialog.transient(self.root)
-        dialog.grab_set()
-        dialog.focus_force()
-        
-        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 300
-        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 240
-        
-        dialog.geometry(f"600x480+{x}+{y}")
-
-        dialog.update_idletasks()
-        self.set_dialog_header_color(dialog)
-        
-        title_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
-        title_frame.pack(fill=tk.X, pady=(15, 5))
-        
-        title_label = tk.Label(title_frame, text=tr('hosts_instruction_title'), 
-                            font=("Segoe UI Variable", 18, "bold"),
-                            fg=self.colors['accent'], bg=self.colors['bg_medium'])
-        title_label.pack()
-        
-        subtitle_label = tk.Label(title_frame, text=tr('hosts_instruction_subtitle'),
-                                font=("Segoe UI Variable", 10),
-                                fg=self.colors['text_secondary'], bg=self.colors['bg_medium'])
-        subtitle_label.pack(pady=(3, 0))
-        
-        separator = tk.Frame(dialog, bg=self.colors['separator'], height=1)
-        separator.pack(fill=tk.X, padx=30, pady=8)
-        
-        main_frame = tk.Frame(dialog, bg=self.colors['bg_light'])
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=5)
-        
-        inner = tk.Frame(main_frame, bg=self.colors['bg_light'])
-        inner.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
-        
-        steps = [
-            ("1.", tr('hosts_step1')),
-            ("2.", tr('hosts_step2')),
-            ("", tr('hosts_step2_desc')),
-            ("3.", tr('hosts_step3')),
-        ]
-        
-        current_step = 0
-        
-        for i, step in enumerate(steps):
-            text, desc = step
-            if text:
-                step_frame = tk.Frame(inner, bg=self.colors['bg_light'])
-                step_frame.pack(fill=tk.X, pady=(5 if current_step > 0 else 0, 1))
-                
-                step_num = tk.Label(step_frame, text=text, font=("Segoe UI Variable", 12, "bold"),
-                                fg=self.colors['accent'], bg=self.colors['bg_light'])
-                step_num.pack(side=tk.LEFT)
-                
-                step_text = tk.Label(step_frame, text=desc, font=("Segoe UI Variable", 10),
-                                    fg=self.colors['text_primary'], bg=self.colors['bg_light'])
-                step_text.pack(side=tk.LEFT, padx=(5, 0))
-                current_step += 1
-            else:
-                sub_frame = tk.Frame(inner, bg=self.colors['bg_light'])
-                sub_frame.pack(fill=tk.X, pady=0)
-                
-                spacer = tk.Label(sub_frame, text="   ", font=("Segoe UI Variable", 10),
-                                fg=self.colors['text_primary'], bg=self.colors['bg_light'])
-                spacer.pack(side=tk.LEFT)
-                
-                bullet = tk.Label(sub_frame, text="▸", font=("Segoe UI Variable", 9),
-                                fg=self.colors['accent'], bg=self.colors['bg_light'])
-                bullet.pack(side=tk.LEFT, padx=(10, 3))
-                
-                sub_text = tk.Label(sub_frame, text=desc, font=("Segoe UI Variable", 9),
-                                fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
-                sub_text.pack(side=tk.LEFT)
-        
-        copy_frame_block = tk.Frame(inner, bg=self.colors['bg_light'])
-        copy_frame_block.pack(fill=tk.X, pady=(10, 5))
-        
-        spacer = tk.Label(copy_frame_block, text="   ", font=("Segoe UI Variable", 10),
-                        fg=self.colors['text_primary'], bg=self.colors['bg_light'])
-        spacer.pack(side=tk.LEFT)
-        
-        bullet = tk.Label(copy_frame_block, text="▸", font=("Segoe UI Variable", 9),
-                        fg=self.colors['accent'], bg=self.colors['bg_light'])
-        bullet.pack(side=tk.LEFT, padx=(10, 3))
-        
-        copy_label = tk.Label(copy_frame_block, text=tr('ghub_copy_lines'), font=("Segoe UI Variable", 9),
-                            fg=self.colors['accent'], bg=self.colors['bg_light'], cursor="hand2")
-        copy_label.pack(side=tk.LEFT)
-        
-        hosts_lines = """149.154.167.220 zws4.web.telegram.org
-149.154.167.220 vesta.web.telegram.org
-149.154.167.220 vesta-1.web.telegram.org
-149.154.167.220 venus-1.web.telegram.org
-149.154.167.220 telegram.me
-149.154.167.220 telegram.dog
-149.154.167.220 telegram.space
-149.154.167.220 telesco.pe
-149.154.167.220 core.telegram.org
-149.154.167.220 translations.telegram.org
-149.154.167.220 macos.telegram.org
-149.154.167.220 tg.dev
-149.154.167.220 telegram.org
-149.154.167.220 my.telegram.org
-149.154.167.220 telegra.ph
-149.154.167.220 t.me
-149.154.167.220 api.telegram.org
-149.154.167.220 desktop.telegram.org
-149.154.167.220 td.telegram.org
-149.154.167.220 venus.web.telegram.org
-149.154.167.220 web.telegram.org
-149.154.167.220 kws2-1.web.telegram.org
-149.154.167.220 kws2.web.telegram.org
-149.154.167.220 kws4-1.web.telegram.org
-149.154.167.220 kws4.web.telegram.org
-149.154.167.220 zws2-1.web.telegram.org
-149.154.167.220 zws2.web.telegram.org
-149.154.167.220 zws4-1.web.telegram.org"""
-        
-        def copy_hosts_lines(event=None):
-            self.root.clipboard_clear()
-            self.root.clipboard_append(hosts_lines)
-            self.root.update()
-            copy_label.config(text=tr('tg_copied'), fg=self.colors['accent_green'])
-            self.show_notification(tr('ghub_copied_notification'), 2000)
-            self.root.after(2000, lambda: copy_label.config(text=tr('ghub_copied_notification'), fg=self.colors['accent']))
-        
-        copy_label.bind("<Button-1>", copy_hosts_lines)
-        
-        def on_enter_copy(event):
-            copy_label.config(fg=self.colors['accent_hover'], font=("Segoe UI Variable", 9, "underline"))
-        
-        def on_leave_copy(event):
-            copy_label.config(fg=self.colors['accent'], font=("Segoe UI Variable", 9))
-        
-        copy_label.bind("<Enter>", on_enter_copy)
-        copy_label.bind("<Leave>", on_leave_copy)
-        
-        step4_frame = tk.Frame(inner, bg=self.colors['bg_light'])
-        step4_frame.pack(fill=tk.X, pady=(10, 3))
-        
-        step_num4 = tk.Label(step4_frame, text="4.", font=("Segoe UI Variable", 12, "bold"),
-                            fg=self.colors['accent'], bg=self.colors['bg_light'])
-        step_num4.pack(side=tk.LEFT)
-        
-        step_text4 = tk.Label(step4_frame, text=tr('hosts_step4'), font=("Segoe UI Variable", 10),
-                            fg=self.colors['text_primary'], bg=self.colors['bg_light'])
-        step_text4.pack(side=tk.LEFT, padx=(5, 0))
-        
-        step5_frame = tk.Frame(inner, bg=self.colors['bg_light'])
-        step5_frame.pack(fill=tk.X, pady=(3, 5))
-        
-        step_num5 = tk.Label(step5_frame, text="5.", font=("Segoe UI Variable", 12, "bold"),
-                            fg=self.colors['accent'], bg=self.colors['bg_light'])
-        step_num5.pack(side=tk.LEFT)
-        
-        step_text5 = tk.Label(step5_frame, text=tr('hosts_step5'), font=("Segoe UI Variable", 10),
-                            fg=self.colors['text_primary'], bg=self.colors['bg_light'])
-        step_text5.pack(side=tk.LEFT, padx=(5, 0))
-        
-        bottom_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
-        bottom_frame.pack(fill=tk.X, padx=30, pady=12)
-        
-        close_btn = RoundedButton(
-            bottom_frame,
-            text=tr('button_close'),
-            command=dialog.destroy,
-            width=100, height=32,
-            bg=self.colors['accent'],
-            fg=self.colors['text_primary'],
-            font=("Segoe UI Variable", 10),
-            corner_radius=8,
-            hover_color=self.colors['accent'], 
-            theme_name=self.current_theme
-        )
-        close_btn.pack(side=tk.RIGHT)
-
-    def show_github_instruction(self):
-        dialog = tk.Toplevel(self.root)
-        dialog.title(tr('instruction_title_window'))
-        dialog.resizable(False, False)
-        dialog.configure(bg=self.colors['bg_medium'])
-        dialog.transient(self.root)
-        dialog.grab_set()
-        dialog.focus_force()
-        
-        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 300
-        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 200
-        
-        dialog.geometry(f"700x500+{x}+{y}")
-
-        dialog.update_idletasks()
-        self.set_dialog_header_color(dialog)
-        
-        title_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
-        title_frame.pack(fill=tk.X, pady=(15, 5))
-        
-        title_label = tk.Label(title_frame, text=tr('ghub_instruction_title'), 
-                            font=("Segoe UI Variable", 18, "bold"),
-                            fg=self.colors['accent'], bg=self.colors['bg_medium'])
-        title_label.pack()
-        
-        subtitle_label = tk.Label(title_frame, text=tr('ghub_instruction_subtitle'),
-                                font=("Segoe UI Variable", 10),
-                                fg=self.colors['text_secondary'], bg=self.colors['bg_medium'])
-        subtitle_label.pack(pady=(3, 0))
-        
-        separator = tk.Frame(dialog, bg=self.colors['separator'], height=1)
-        separator.pack(fill=tk.X, padx=30, pady=8)
-        
-        main_frame = tk.Frame(dialog, bg=self.colors['bg_light'])
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=5)
-        
-        inner = tk.Frame(main_frame, bg=self.colors['bg_light'])
-        inner.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
-        
-        step1_frame = tk.Frame(inner, bg=self.colors['bg_light'])
-        step1_frame.pack(fill=tk.X, pady=(0, 8))
-        
-        step_num1 = tk.Label(step1_frame, text="1.", font=("Segoe UI Variable", 12, "bold"),
-                            fg=self.colors['accent'], bg=self.colors['bg_light'])
-        step_num1.pack(side=tk.LEFT)
-        
-        step_text1 = tk.Label(step1_frame, text=tr('ghub_step1'), font=("Segoe UI Variable", 8),
-                            fg=self.colors['text_primary'], bg=self.colors['bg_light'])
-        step_text1.pack(side=tk.LEFT, padx=(5, 0))
-        
-        step2_frame = tk.Frame(inner, bg=self.colors['bg_light'])
-        step2_frame.pack(fill=tk.X, pady=(0, 8))
-        
-        step_num2 = tk.Label(step2_frame, text="2.", font=("Segoe UI Variable", 12, "bold"),
-                            fg=self.colors['accent'], bg=self.colors['bg_light'])
-        step_num2.pack(side=tk.LEFT)
-        
-        step_text2 = tk.Label(step2_frame, text=tr('ghub_step2'), font=("Segoe UI Variable", 8),
-                            fg=self.colors['text_primary'], bg=self.colors['bg_light'])
-        step_text2.pack(side=tk.LEFT, padx=(5, 0))
-        
-        step3_frame = tk.Frame(inner, bg=self.colors['bg_light'])
-        step3_frame.pack(fill=tk.X, pady=(0, 8))
-        
-        step_num3 = tk.Label(step3_frame, text="3.", font=("Segoe UI Variable", 12, "bold"),
-                            fg=self.colors['accent'], bg=self.colors['bg_light'])
-        step_num3.pack(side=tk.LEFT)
-        
-        step_text3 = tk.Label(step3_frame, text=tr('ghub_step3'), font=("Segoe UI Variable", 8),
-                            fg=self.colors['text_primary'], bg=self.colors['bg_light'])
-        step_text3.pack(side=tk.LEFT, padx=(5, 0))
-        
-        step4_frame = tk.Frame(inner, bg=self.colors['bg_light'])
-        step4_frame.pack(fill=tk.X, pady=(0, 8))
-        
-        step_num4 = tk.Label(step4_frame, text="4.", font=("Segoe UI Variable", 12, "bold"),
-                            fg=self.colors['accent'], bg=self.colors['bg_light'])
-        step_num4.pack(side=tk.LEFT)
-        
-        step_text4 = tk.Label(step4_frame, text=tr('ghub_step4'), font=("Segoe UI Variable", 8),
-                            fg=self.colors['text_primary'], bg=self.colors['bg_light'])
-        step_text4.pack(side=tk.LEFT, padx=(5, 0))
-
-        step5_frame = tk.Frame(inner, bg=self.colors['bg_light'])
-        step5_frame.pack(fill=tk.X, pady=(0, 8))
-        
-        step_num5 = tk.Label(step5_frame, text="5.", font=("Segoe UI Variable", 12, "bold"),
-                            fg=self.colors['accent'], bg=self.colors['bg_light'])
-        step_num5.pack(side=tk.LEFT)
-        
-        step_text5 = tk.Label(step5_frame, text=tr('ghub_step5'), font=("Segoe UI Variable", 8),
-                            fg=self.colors['text_primary'], bg=self.colors['bg_light'])
-        step_text5.pack(side=tk.LEFT, padx=(5, 0))
-
-        step6_frame = tk.Frame(inner, bg=self.colors['bg_light'])
-        step6_frame.pack(fill=tk.X, pady=(0, 8))
-        
-        step_num6 = tk.Label(step6_frame, text="6.", font=("Segoe UI Variable", 12, "bold"),
-                            fg=self.colors['accent'], bg=self.colors['bg_light'])
-        step_num6.pack(side=tk.LEFT)
-        
-        step_text6 = tk.Label(step6_frame, text=tr('ghub_step6'), font=("Segoe UI Variable", 8),
-                            fg=self.colors['text_primary'], bg=self.colors['bg_light'])
-        step_text6.pack(side=tk.LEFT, padx=(5, 0))
-
-        step7_frame = tk.Frame(inner, bg=self.colors['bg_light'])
-        step7_frame.pack(fill=tk.X, pady=(0, 8))
-        
-        step_num7 = tk.Label(step7_frame, text="7.", font=("Segoe UI Variable", 12, "bold"),
-                            fg=self.colors['accent'], bg=self.colors['bg_light'])
-        step_num7.pack(side=tk.LEFT)
-        
-        step_text7 = tk.Label(step7_frame, text=tr('ghub_step7'), font=("Segoe UI Variable", 8),
-                            fg=self.colors['text_primary'], bg=self.colors['bg_light'])
-        step_text7.pack(side=tk.LEFT, padx=(5, 0))
-
-        step8_frame = tk.Frame(inner, bg=self.colors['bg_light'])
-        step8_frame.pack(fill=tk.X, pady=(0, 8))
-        
-        step_num8 = tk.Label(step8_frame, text="8.", font=("Segoe UI Variable", 12, "bold"),
-                            fg=self.colors['accent'], bg=self.colors['bg_light'])
-        step_num8.pack(side=tk.LEFT)
-        
-        step_text8 = tk.Label(step8_frame, text=tr('ghub_step8'), font=("Segoe UI Variable", 8),
-                            fg=self.colors['text_primary'], bg=self.colors['bg_light'])
-        step_text8.pack(side=tk.LEFT, padx=(5, 0))
-
-        copy_frame_block = tk.Frame(inner, bg=self.colors['bg_light'])
-        copy_frame_block.pack(fill=tk.X, pady=(10, 5))
-        
-        spacer = tk.Label(copy_frame_block, text="   ", font=("Segoe UI Variable", 10),
-                        fg=self.colors['text_primary'], bg=self.colors['bg_light'])
-        spacer.pack(side=tk.LEFT)
-        
-        bullet = tk.Label(copy_frame_block, text="▸", font=("Segoe UI Variable", 9),
-                        fg=self.colors['accent'], bg=self.colors['bg_light'])
-        bullet.pack(side=tk.LEFT, padx=(10, 3))
-        
-        copy_label = tk.Label(copy_frame_block, text=tr('ghub_copy_lines'), font=("Segoe UI Variable", 9),
-                            fg=self.colors['accent'], bg=self.colors['bg_light'], cursor="hand2")
-        copy_label.pack(side=tk.LEFT)
-        
-        lists_lines = """githubapp.com
-dependabot.com
-github.com
-api.github.com
-githubassets.com
-githubusercontent.com
-gh.io
-ghcr.io
-github.io
-github.new
-github.dev
-github.blog
-github.community"""
-
-        def copy_lists_lines(event=None):
-            self.root.clipboard_clear()
-            self.root.clipboard_append(lists_lines)
-            self.root.update()
-            copy_label.config(text=tr('tg_copied'), fg=self.colors['accent_green'])
-            self.show_notification(tr('ghub_copy_lines'), 2000)
-            self.root.after(2000, lambda: copy_label.config(text=tr('ghub_copy_lines'), fg=self.colors['accent']))
-        
-        copy_label.bind("<Button-1>", copy_lists_lines)
-        
-        def on_enter_copy(event):
-            copy_label.config(fg=self.colors['accent_hover'], font=("Segoe UI Variable", 9, "underline"))
-        
-        def on_leave_copy(event):
-            copy_label.config(fg=self.colors['accent'], font=("Segoe UI Variable", 9))
-        
-        copy_label.bind("<Enter>", on_enter_copy)
-        copy_label.bind("<Leave>", on_leave_copy)
-        
-        bottom_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
-        bottom_frame.pack(fill=tk.X, padx=30, pady=12)
-        
-        close_btn = RoundedButton(
-            bottom_frame,
-            text=tr('button_close'),
-            command=dialog.destroy,
-            width=100, height=32,
-            bg=self.colors['accent'],
-            fg=self.colors['text_primary'],
-            font=("Segoe UI Variable", 10),
-            corner_radius=8,
-            hover_color=self.colors['accent'], 
-            theme_name=self.current_theme
-        )
-        close_btn.pack(side=tk.RIGHT)
-
-    def show_tg_proxy_instruction(self):
-        dialog = tk.Toplevel(self.root)
-        dialog.title(tr('instruction_title_window'))
-        dialog.resizable(False, False)
-        dialog.configure(bg=self.colors['bg_medium'])
-        dialog.transient(self.root)
-        dialog.grab_set()
-        dialog.focus_force()
-
-        secret = getattr(self, '_tg_secret', None)
-        if not secret:
-            secret = tr('error_secret_not_found')
-        
-        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 250
-        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 310
-        
-        dialog.geometry(f"500x520+{x}+{y}")
-        
-        dialog.update_idletasks()
-        self.set_dialog_header_color(dialog)
-        
-        title_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
-        title_frame.pack(fill=tk.X, pady=(20, 5))
-        
-        title_label = tk.Label(title_frame, text=tr('tg_instruction_title'), 
-                            font=("Segoe UI Variable", 20, "bold"),
-                            fg=self.colors['accent'], bg=self.colors['bg_medium'])
-        title_label.pack()
-        
-        subtitle_label = tk.Label(title_frame, text=tr('tg_instruction_subtitle'),
-                                font=("Segoe UI Variable", 11),
-                                fg=self.colors['text_secondary'], bg=self.colors['bg_medium'])
-        subtitle_label.pack(pady=(5, 0))
-        separator = tk.Frame(dialog, bg=self.colors['separator'], height=2)
-        separator.pack(fill=tk.X, padx=30, pady=10)
-        instruction_frame = tk.Frame(dialog, bg=self.colors['bg_light'])
-        instruction_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=5)
-        
-        steps = [
-            ("1.", tr('tg_step1')),
-            ("", tr('tg_step1_desc')),
-            ("2.", tr('tg_step2')),
-            ("", tr('tg_step2_desc')),
-            ("3.", tr('tg_step3')),
-            ("", tr('tg_type')),
-            ("", tr('tg_host')),
-            ("", tr('tg_port')),
-        ]
-        
-        current_step = 0
-        
-        for i, step in enumerate(steps):
-            text, desc = step
-            if text:
-                step_frame = tk.Frame(instruction_frame, bg=self.colors['bg_light'])
-                step_frame.pack(fill=tk.X, pady=(10 if current_step > 0 else 0, 2))
-                
-                step_num = tk.Label(step_frame, text=text, font=("Segoe UI Variable", 13, "bold"),
-                                fg=self.colors['accent'], bg=self.colors['bg_light'])
-                step_num.pack(side=tk.LEFT)
-                
-                step_text = tk.Label(step_frame, text=desc, font=("Segoe UI Variable", 11),
-                                    fg=self.colors['text_primary'], bg=self.colors['bg_light'])
-                step_text.pack(side=tk.LEFT, padx=(5, 0))
-                current_step += 1
-            else:
-                sub_frame = tk.Frame(instruction_frame, bg=self.colors['bg_light'])
-                sub_frame.pack(fill=tk.X, pady=1)
-                
-                spacer = tk.Label(sub_frame, text="   ", font=("Segoe UI Variable", 11),
-                                fg=self.colors['text_primary'], bg=self.colors['bg_light'])
-                spacer.pack(side=tk.LEFT)
-                
-                bullet = tk.Label(sub_frame, text="▸", font=("Segoe UI Variable", 10),
-                                fg=self.colors['accent'], bg=self.colors['bg_light'])
-                bullet.pack(side=tk.LEFT, padx=(10, 5))
-                
-                sub_text = tk.Label(sub_frame, text=desc, font=("Segoe UI Variable", 10),
-                                fg=self.colors['text_secondary'], bg=self.colors['bg_light'])
-                sub_text.pack(side=tk.LEFT)
-        
-        link_frame = tk.Frame(instruction_frame, bg=self.colors['bg_light'])
-        link_frame.pack(fill=tk.X, pady=(10, 5))
-        
-        spacer = tk.Label(link_frame, text="   ", font=("Segoe UI Variable", 11),
-                        fg=self.colors['text_primary'], bg=self.colors['bg_light'])
-        spacer.pack(side=tk.LEFT)
-        
-        bullet = tk.Label(link_frame, text="▸", font=("Segoe UI Variable", 10),
-                        fg=self.colors['accent'], bg=self.colors['bg_light'])
-        bullet.pack(side=tk.LEFT, padx=(10, 5))
-        
-        copy_frame = tk.Frame(link_frame, bg=self.colors['bg_light'], cursor="hand2")
-        copy_frame.pack(side=tk.LEFT, padx=(0, 10))
-        
-        link_text = tr('tg_copy_secret')
-        copy_label = tk.Label(copy_frame, text=link_text, font=("Segoe UI Variable", 10),
-                            fg=self.colors['accent'], bg=self.colors['bg_light'])
-        copy_label.pack()
-        
-        def copy_link(event=None):
-            secret = getattr(self, '_tg_secret', None)
-            if not secret:
-                secret = tr('error_secret_not_found')
-            
-            if self.tg_fake_tls and self.tg_fake_tls_domain:
-                domain_hex = self.tg_fake_tls_domain.encode('ascii').hex()
-                link = f"ee{secret}{domain_hex}"
-                notification = tr('notification_copied_secret')
-            else:
-                link = f"{secret}"
-                notification = tr('notification_copied_secret')
-            
-            self.root.clipboard_clear()
-            self.root.clipboard_append(link)
-            self.root.update()
-            copy_label.config(text=tr('tg_copied'), fg=self.colors['accent_green'])
-            self.show_notification(notification, 1500)
-        
-        copy_label.bind("<Button-1>", copy_link)
-        
-        def on_enter(event):
-            copy_label.config(fg=self.colors['accent_hover'], font=("Segoe UI Variable", 10, "underline"))
-            copy_frame.config(cursor="hand2")
-        
-        def on_leave(event):
-            copy_label.config(fg=self.colors['accent'], font=("Segoe UI Variable", 10))
-        
-        copy_label.bind("<Enter>", on_enter)
-        copy_label.bind("<Leave>", on_leave)
-        
-        bottom_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
-        bottom_frame.pack(fill=tk.X, padx=30, pady=15)
-        dont_show_var = tk.BooleanVar(value=False)
-
-        dont_show_cb = tk.Checkbutton(
-            bottom_frame,
-            text=tr('tg_dont_show'),
-            variable=dont_show_var,
-            bg=self.colors['bg_medium'],
-            fg=self.colors['text_secondary'],
-            selectcolor=self.colors['bg_medium'],
-            activebackground=self.colors['bg_medium'],
-            activeforeground=self.colors['text_secondary'],
-            highlightthickness=0,
-            bd=0,
-            padx=0,
-            font=("Segoe UI Variable", 10)
-        )
-        dont_show_cb.pack(side=tk.LEFT)
-
-        close_btn = RoundedButton(
-            bottom_frame,
-            text=tr('button_close'),
-            command=lambda: self._cancel_tg_proxy_mode(dialog, dont_show_var.get()),
-            width=100, height=35,
-            bg=self.colors['accent'],
-            fg=self.colors['text_primary'],
-            font=("Segoe UI Variable", 10),
-            corner_radius=8,
-            hover_color=self.colors['accent'], 
-            theme_name=self.current_theme
-        )
-        close_btn.pack(side=tk.RIGHT)
-
-    def show_vpn_detected_dialog(self, vpn_data: Dict = None):
-        dialog = tk.Toplevel(self.root)
-        dialog.title(tr('error_warning'))
-        dialog.resizable(False, False)
-        dialog.configure(bg=self.colors['bg_medium'])
-        dialog.transient(self.root)
-        dialog.grab_set()
-        dialog.focus_force()
-
-        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 250
-        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 150
-        
-        dialog.geometry(f"500x300+{x}+{y}")
-        
-        dialog.update_idletasks()
-        self.set_dialog_header_color(dialog)
-        
-        title_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
-        title_frame.pack(fill=tk.X, pady=(20, 5))
-        
-        title_label = tk.Label(
-            title_frame, 
-            text=tr('vpn_detected_title'), 
-            font=("Segoe UI Variable", 20, "bold"),
-            fg=self.colors['accent'], 
-            bg=self.colors['bg_medium']
-        )
-        title_label.pack()
-        
-        separator = tk.Frame(dialog, bg=self.colors['separator'], height=2)
-        separator.pack(fill=tk.X, padx=30, pady=10)
-        
-        message_frame = tk.Frame(dialog, bg=self.colors['bg_light'])
-        message_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=5)
-        
-        inner = tk.Frame(message_frame, bg=self.colors['bg_light'])
-        inner.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
-        
-        message_text = tr('vpn_detected_message')
-        
-        if vpn_data and vpn_data.get('vpn_processes'):
-            procs = ', '.join(vpn_data['vpn_processes'][:3])
-            message_text += f"\n\n{tr('vpn_detected_processes')}: {procs}"
-        
-        if vpn_data and vpn_data.get('vpn_interfaces'):
-            ifaces = ', '.join(vpn_data['vpn_interfaces'][:3])
-            message_text += f"\n{tr('vpn_detected_interfaces')}: {ifaces}"
-        
-        message_label = tk.Label(
-            inner,
-            text=message_text,
-            font=("Segoe UI Variable", 10),
-            fg=self.colors['text_primary'],
-            bg=self.colors['bg_light'],
-            wraplength=400,
-            justify=tk.LEFT
-        )
-        message_label.pack(pady=10)
-        
-        bottom_frame = tk.Frame(dialog, bg=self.colors['bg_medium'])
-        bottom_frame.pack(fill=tk.X, padx=30, pady=15)
-
-        def on_ignore():
-            dialog.destroy()
-            self.log_event("info", "VPN detection ignored by user")
-            self.show_mode_selector()
-
-        def on_disable():
-            dialog.destroy()
-            self.log_event("info", "User requested to disable VPN")
-            
-            if vpn_data and vpn_data.get('vpn_processes'):
-                killed_count = 0
-                for proc_name in vpn_data['vpn_processes']:
-                    try:
-                        for proc in psutil.process_iter(['name', 'pid']):
-                            try:
-                                if proc.info['name'] and proc_name.lower() in proc.info['name'].lower():
-                                    proc.kill()
-                                    killed_count += 1
-                            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                                continue
-                    except Exception:
-                        pass
-                
-                if killed_count > 0:
-                    self.show_notification(tr('vpn_disabled_notification', killed_count), 3000)
-                else:
-                    self.show_notification(tr('vpn_no_processes_to_kill'), 2000)
-            
-            self.show_mode_selector()
-
-        button_frame = tk.Frame(bottom_frame, bg=self.colors['bg_medium'])
-        button_frame.pack(side=tk.RIGHT)
-
-        ignore_btn = RoundedButton(
-            button_frame,
-            text=tr('vpn_ignore'),
-            command=on_ignore,
-            width=120, height=35,
-            bg=self.colors['button_bg'],
-            fg=self.colors['text_secondary'],
-            font=("Segoe UI Variable", 10),
-            corner_radius=8,
-            hover_color=self.colors['accent'],
-            theme_name=self.current_theme
-        )
-        ignore_btn.pack(side=tk.LEFT, padx=5)
-
-        disable_btn = RoundedButton(
-            button_frame,
-            text=tr('vpn_disable'),
-            command=on_disable,
-            width=120, height=35,
-            bg=self.colors['accent'],
-            fg=self.colors['text_primary'],
-            font=("Segoe UI Variable", 10),
-            corner_radius=8,
-            hover_color=self.colors['accent'],
-            theme_name=self.current_theme
-        )
-        disable_btn.pack(side=tk.LEFT, padx=5)
 
     def _start_tg_proxy_mode(self, dialog, dont_show=False):
         if dialog:
@@ -4214,7 +2971,7 @@ github.community"""
             self.root.after(1000, self.copy_tg_link_to_clipboard)
 
         if not self._tg_instruction:
-            self.root.after(500, self.show_tg_proxy_instruction)
+            self.root.after(500, self.dialogs.show_tg_proxy_instruction)
 
         self.root.after(500, self.update_tray_icon_state)
         self._connecting = False
@@ -4269,6 +3026,46 @@ github.community"""
             return latest_int > current_int
         except ValueError:
             return str(latest) > str(current)
+
+    def _compare_zapret_versions(self, current, latest):
+        if not current or current == "0.0":
+            return True
+        
+        def version_to_parts(ver):
+            ver = ver.strip().lower()
+            match = re.match(r'^(\d+(?:\.\d+)*)([a-z]?)$', ver)
+            if not match:
+                return [0, 0, 0], 0
+            
+            num_part, letter = match.groups()
+            nums = [int(x) for x in num_part.split('.')]
+            while len(nums) < 3:
+                nums.append(0)
+            
+            letter_val = ord(letter) - ord('a') + 1 if letter else 0
+            
+            return nums, letter_val
+        
+        current_nums, current_letter = version_to_parts(current)
+        latest_nums, latest_letter = version_to_parts(latest)
+        
+        for i in range(3):
+            if latest_nums[i] > current_nums[i]:
+                return True
+            elif latest_nums[i] < current_nums[i]:
+                return False
+        
+        return latest_letter > current_letter
+
+    def get_current_zapret_version(self):
+        try:
+            version_file = APPDATA_DIR / "zapret_core" / "version.txt"
+            if version_file.exists():
+                version = version_file.read_text(encoding='utf-8').strip()
+                return version
+        except Exception:
+            pass
+        return "0.0"
     
     def start_update_checker(self):
         self.stop_update_checker()
@@ -4321,7 +3118,7 @@ github.community"""
             pass
 
 if __name__ == "__main__":
-    mutex_name = "ZapretLauncher_SingleInstance"
+    mutex_name = "ZapretLauncher41241_SingleInstance"
     mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
     last_error = ctypes.windll.kernel32.GetLastError()
     
@@ -4331,20 +3128,36 @@ if __name__ == "__main__":
             ctypes.windll.user32.ShowWindow(hwnd, 5)
             ctypes.windll.user32.SetForegroundWindow(hwnd)
         sys.exit(0)
+
+    auto_start = '--auto-start' in sys.argv
+    
+    if auto_start:
+        try:
+            key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ) as key:
+                value, _ = winreg.QueryValueEx(key, "Zapret Launcher")
+                if not value:
+                    sys.exit(0)
+        except:
+            sys.exit(0)
     
     if not is_admin():
-        result = messagebox.askyesno(
-            "Zapret Launcher",
-            tr('dialog_admin_message')
-        )
-        if result:
+        if auto_start:
             run_as_admin()
+            sys.exit(0)
         else:
-            messagebox.showerror(
-                tr('error_no_connection'), 
-                tr('dialog_no_connection')
+            result = messagebox.askyesno(
+                "Zapret Launcher",
+                tr('dialog_admin_message')
             )
-            sys.exit(1)
+            if result:
+                run_as_admin()
+            else:
+                messagebox.showerror(
+                    tr('error_no_connection'), 
+                    tr('dialog_no_connection')
+                )
+                sys.exit(1)
 
     zapret_version = "0.0"
     try:
@@ -4363,7 +3176,9 @@ if __name__ == "__main__":
     except Exception:
         pass
     
-    if '--no-splash' not in sys.argv and '--from-splash' not in sys.argv:
+    show_splash = '--no-splash' not in sys.argv and '--from-splash' not in sys.argv and not auto_start
+    
+    if show_splash:
         splash = SplashWindow(theme=current_theme, 
                             current_version=CURRENT_VERSION, 
                             current_build=CURRENT_BUILD,
