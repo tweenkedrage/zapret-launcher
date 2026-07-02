@@ -12,7 +12,6 @@ from .lists_page import ListsPage
 from .traffic_page import TrafficPage
 from .logs_page import LogsPage
 from .settings_page import SettingsPage
-from .additionally_page import AdditionallyPage
 
 __all__ = [
     'MainPage',
@@ -20,6 +19,5 @@ __all__ = [
     'ListsPage',
     'TrafficPage',
     'LogsPage',
-    'SettingsPage',
-    'AdditionallyPage'
+    'SettingsPage'
 ]
