@@ -25,6 +25,7 @@ class ModernSystemTray:
         self.current_rtt = None
         self.last_rtt_update = 0
         self.update_available = False
+        self.zapret_update_available = False
         self.update_check_timer_id = None
         self.colors = {
             'bg_dark': '#1E1E24',
@@ -92,6 +93,12 @@ class ModernSystemTray:
         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
     def get_tooltip_text(self):
+        update_text = ""
+        if hasattr(self, 'update_available') and self.update_available:
+            update_text = f"\n{tr('update_available')}"
+        elif hasattr(self, 'update_available') and self.zapret_update_available:
+            update_text = f"\n{tr('update_available')}"
+        
         if self.app.is_connected:
             stats = self.app.stats.get_stats_dict()
             mode_text = self.app.mode_label.cget('text') if hasattr(self.app, 'mode_label') and self.app.mode_label else tr('status_connected')
@@ -110,6 +117,7 @@ class ModernSystemTray:
                 f"{rtt_text}\n"
                 f"{stats['speed_down_str']} / {stats['speed_up_str']}\n"
                 f"{stats['down_str']} / {stats['up_str']}"
+                f"\n{update_text}"
             )
         else:
             return (
@@ -290,26 +298,52 @@ class ModernSystemTray:
 
     def check_for_updates(self):
         try:
-            buildnumber_url = "https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/docs/build_number.txt" # build_number.txt
-            
+            buildnumber_url = "https://zapret-launcher.ru/updater/docs/build_number.txt"
             req = urllib.request.Request(
                 buildnumber_url,
                 headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
             )
-            
             with urllib.request.urlopen(req, timeout=10) as response:
                 latest_build = response.read().decode('utf-8').strip()
             
             current_build = CURRENT_BUILD
+            need_launcher_update = self._compare_builds(current_build, latest_build)
             
-            if self._compare_builds(current_build, latest_build):
+            if need_launcher_update:
                 if not self.update_available:
                     self.update_available = True
+                    self.zapret_update_available = False
                     self.update_icon_state()
-            else:
-                if self.update_available:
+                return
+            
+            try:
+                zapret_version_url = "https://zapret-launcher.ru/updater/docs/zapret_version.txt"
+                req_zapret = urllib.request.Request(
+                    zapret_version_url,
+                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+                )
+                with urllib.request.urlopen(req_zapret, timeout=10) as response:
+                    latest_zapret = response.read().decode('utf-8').strip()
+                
+                current_zapret = self.app.get_current_zapret_version()
+                need_zapret_update = self.app._compare_zapret_versions(current_zapret, latest_zapret)
+                
+                if need_zapret_update:
+                    if not self.zapret_update_available:
+                        self.zapret_update_available = True
+                        self.update_available = False
+                        self.update_icon_state()
+                else:
+                    if self.zapret_update_available or self.update_available:
+                        self.zapret_update_available = False
+                        self.update_available = False
+                        self.update_icon_state()
+            except Exception:
+                if self.zapret_update_available or self.update_available:
+                    self.zapret_update_available = False
                     self.update_available = False
                     self.update_icon_state()
+                    
         except Exception:
             pass
 
@@ -396,6 +430,16 @@ class ModernSystemTray:
                         outline=(255, 255, 255, 255),
                         width=1
                     )
+                elif hasattr(self, 'zapret_update_available') and self.zapret_update_available:
+                    draw.ellipse(
+                        [indicator_x, indicator_y, indicator_x + indicator_size, indicator_y + indicator_size],
+                        fill=(30, 144, 255)
+                    )
+                    draw.ellipse(
+                        [indicator_x - 1, indicator_y - 1, indicator_x + indicator_size + 1, indicator_y + indicator_size + 1],
+                        outline=(255, 255, 255, 255),
+                        width=1
+                    )
                 else:
                     if is_connected:
                         indicator_color = self._hex_to_rgb(self.colors['accent_green'])
@@ -450,6 +494,11 @@ class ModernSystemTray:
             self._prepare_and_quit()
 
     def _prepare_and_quit(self):
+        try:
+            self.app.save_settings()
+        except:
+            pass
+        
         if self.icon:
             self.icon.stop()
 
