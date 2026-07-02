@@ -18,6 +18,7 @@ import subprocess
 import sys
 import pywinstyles
 import webbrowser
+import tempfile
 import threading
 import re
 import ctypes
@@ -217,7 +218,7 @@ class SplashWindow:
             manual_label.config(fg=self.colors['text_secondary'])
         
         def on_click_manual(event):
-            webbrowser.open("https://zapret-launcher.ru/updater/zapret-launcher-installer.exe")
+            webbrowser.open("https://raw.githubusercontent.com/tweenkedrage/zapret-launcher/main/updater/zapret-launcher-installer-win10.exe")
         
         manual_label.bind("<Enter>", on_enter_manual)
         manual_label.bind("<Leave>", on_leave_manual)
@@ -231,7 +232,7 @@ class SplashWindow:
                 base_path = Path(__file__).parent.parent
             
             icon_paths = [
-                base_path / "resources" / "icon.ico",
+                base_path / "resources" / "icon.ico"
             ]
             
             for path in icon_paths:
@@ -304,7 +305,7 @@ class SplashWindow:
         self.update_status(tr('splash_check_connecting'), 10)
         def check():
             try:
-                req = urllib.request.Request("http://www.google.com", headers={'User-Agent': 'Mozilla/5.0'})
+                req = urllib.request.Request("http://www.google.com", headers={'User-Agent': 'Mozilla/5.0', 'Connection': 'close'})
                 urllib.request.urlopen(req, timeout=5)
                 self.after(0, self._check_for_update)
             except Exception:
@@ -318,7 +319,7 @@ class SplashWindow:
             try:
                 req = urllib.request.Request(
                     self.build_url,
-                    headers={'User-Agent': 'Mozilla/5.0'}
+                    headers={'User-Agent': 'Mozilla/5.0', 'Connection': 'close'}
                 )
                 try:
                     with urllib.request.urlopen(req, timeout=10) as response:
@@ -328,7 +329,7 @@ class SplashWindow:
                         self._switch_to_alternative_urls()
                         req = urllib.request.Request(
                             self.build_url,
-                            headers={'User-Agent': 'Mozilla/5.0'}
+                            headers={'User-Agent': 'Mozilla/5.0', 'Connection': 'close'}
                         )
                         with urllib.request.urlopen(req, timeout=10) as response:
                             latest_build = response.read().decode('utf-8').strip()
@@ -346,11 +347,11 @@ class SplashWindow:
                     self.after(1000, lambda: self._update_zapret_core_only(latest_zapret))
                 else:
                     self.after(0, lambda: self.update_status(tr('splash_starting_exe'), 100))
-                    self.after(1500, self._launch_main_app)
+                    self.after(1000, self._launch_main_app)
                     
             except Exception:
                 self.after(0, lambda: self.update_status(tr('splash_starting_exe'), 100))
-                self.after(1500, self._launch_main_app)
+                self.after(1000, self._launch_main_app)
         
         threading.Thread(target=check, daemon=True).start()
 
@@ -473,7 +474,7 @@ class SplashWindow:
             try:
                 req = urllib.request.Request(
                     self.build_url,
-                    headers={'User-Agent': 'Mozilla/5.0'}
+                    headers={'User-Agent': 'Mozilla/5.0', 'Connection': 'close'}
                 )
                 try:
                     with urllib.request.urlopen(req, timeout=10) as response:
@@ -483,7 +484,7 @@ class SplashWindow:
                         self._switch_to_alternative_urls()
                         req = urllib.request.Request(
                             self.build_url,
-                            headers={'User-Agent': 'Mozilla/5.0'}
+                            headers={'User-Agent': 'Mozilla/5.0', 'Connection': 'close'}
                         )
                         with urllib.request.urlopen(req, timeout=10) as response:
                             latest_build = response.read().decode('utf-8').strip()
@@ -501,11 +502,11 @@ class SplashWindow:
                     self.after(1000, lambda: self._update_zapret_core_only(latest_zapret))
                 else:
                     self.after(0, lambda: self.update_status(tr('splash_starting_exe'), 100))
-                    self.after(1500, self._launch_main_app)
+                    self.after(1000, self._launch_main_app)
                     
             except Exception:
                 self.after(0, lambda: self.update_status(tr('splash_starting_exe'), 100))
-                self.after(1500, self._launch_main_app)
+                self.after(1000, self._launch_main_app)
         
         threading.Thread(target=check, daemon=True).start()
 
@@ -513,7 +514,7 @@ class SplashWindow:
         try:
             req = urllib.request.Request(
                 self.zapret_version_url,
-                headers={'User-Agent': 'Mozilla/5.0'}
+                headers={'User-Agent': 'Mozilla/5.0', 'Connection': 'close'}
             )
             try:
                 with urllib.request.urlopen(req, timeout=10) as response:
@@ -523,7 +524,7 @@ class SplashWindow:
                     self.zapret_version_url = self.zapret_version_url_alt
                     req = urllib.request.Request(
                         self.zapret_version_url,
-                        headers={'User-Agent': 'Mozilla/5.0'}
+                        headers={'User-Agent': 'Mozilla/5.0', 'Connection': 'close'}
                     )
                     with urllib.request.urlopen(req, timeout=10) as response:
                         latest_version = response.read().decode('utf-8').strip()
@@ -544,7 +545,7 @@ class SplashWindow:
         try:
             req = urllib.request.Request(
                 url,
-                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Connection': 'close'}
             )
             
             with urllib.request.urlopen(req, timeout=120) as response:
@@ -664,6 +665,8 @@ class SplashWindow:
         
     def _download_zapret_core(self):
         temp_zip = None
+        saved_custom_files = {}
+        
         try:
             zapret_dir = self.appdata_path / "zapret_core"
             temp_zip = self.appdata_path / "zapret_core_temp.zip"
@@ -677,60 +680,106 @@ class SplashWindow:
             self.update_status(tr('splash_extracting_zapret'), 88)
             
             self._stop_zapret_processes()
-            time.sleep(1)
+            time.sleep(1.5)
             
-            temp_extract = self.appdata_path / "zapret_core_temp_extract"
-            if temp_extract.exists():
-                shutil.rmtree(temp_extract, ignore_errors=True)
-            temp_extract.mkdir(parents=True, exist_ok=True)
+            lists_dir = zapret_dir / "lists"
+            if lists_dir.exists():
+                custom_file = lists_dir / "list-custom.txt"
+                if custom_file.exists():
+                    with open(custom_file, 'r', encoding='utf-8') as f:
+                        saved_custom_files['list-custom.txt'] = f.read()
+                
+                white_user_file = lists_dir / "ipset-white-user.txt"
+                if white_user_file.exists():
+                    with open(white_user_file, 'r', encoding='utf-8') as f:
+                        saved_custom_files['ipset-white-user.txt'] = f.read()
+            
+            if zapret_dir.exists():
+                version_file = zapret_dir / "version.txt"
+                if version_file.exists():
+                    version_file.unlink()
+                
+                bat_files_to_delete = [
+                    "service.bat",
+                    "general.bat",
+                    "general (ALT).bat",
+                    "general (ALT2).bat",
+                    "general (ALT3).bat",
+                    "general (ALT4).bat",
+                    "general (ALT5).bat",
+                    "general (ALT6).bat",
+                    "general (ALT7).bat",
+                    "general (ALT8).bat",
+                    "general (ALT9).bat",
+                    "general (ALT10).bat",
+                    "general (ALT11).bat",
+                    "general (ALT12).bat",
+                    "general (FAKE TLS AUTO).bat",
+                    "general (FAKE TLS AUTO ALT2).bat",
+                    "general (FAKE TLS AUTO ALT3).bat",
+                    "general (SIMPLE FAKE).bat",
+                    "general (SIMPLE FAKE ALT).bat",
+                    "general (SIMPLE FAKE ALT2).bat"
+                ]
+                
+                for bat_file in bat_files_to_delete:
+                    bat_path = zapret_dir / bat_file
+                    if bat_path.exists():
+                        bat_path.unlink()
+                
+                if lists_dir.exists():
+                    for file in lists_dir.iterdir():
+                        if file.is_file():
+                            if file.name not in ['list-custom.txt', 'ipset-white-user.txt']:
+                                file.unlink()
+                
+                utils_dir = zapret_dir / "utils"
+                if utils_dir.exists():
+                    shutil.rmtree(utils_dir)
+                
+                bin_dir = zapret_dir / "bin"
+                if bin_dir.exists():
+                    shutil.rmtree(bin_dir)
             
             with zipfile.ZipFile(temp_zip, 'r') as zf:
-                total_files = len(zf.namelist())
-                extracted = 0
+                temp_extract = tempfile.mkdtemp()
+                zf.extractall(temp_extract)
                 
-                for file_info in zf.infolist():
-                    zf.extract(file_info, temp_extract)
-                    extracted += 1
-                    
-                    if total_files > 0:
-                        progress = 88 + int((extracted / total_files) * 10)
-                        progress = min(98, progress)
-                        self.update_status(None, progress)
-            
-            source_core = temp_extract / "zapret_core"
-            
-            if source_core.exists():
-                for item in source_core.iterdir():
+                extracted_core = Path(temp_extract) / "zapret_core"
+                if not extracted_core.exists():
+                    extracted_core = Path(temp_extract)
+                
+                for item in extracted_core.iterdir():
                     dest = zapret_dir / item.name
                     
                     if item.is_dir() and item.name == "lists":
-                        if dest.exists():
-                            files_to_update = [
-                                "ipset-all.txt",
-                                "ipset-all.txt.backup",
-                                "ipset-white.txt",
-                                "list-general.txt",
-                                "list-google.txt",
-                                "list-white.txt"
-                            ]
-                            
-                            for file_name in files_to_update:
-                                source_file = item / file_name
-                                dest_file = dest / file_name
-                                if source_file.exists():
-                                    try:
-                                        shutil.copy2(source_file, dest_file)
-                                    except Exception:
-                                        pass
+                        lists_dest = dest
+                        lists_dest.mkdir(parents=True, exist_ok=True)
+                        
+                        for file_in_archive in item.iterdir():
+                            if file_in_archive.is_file():
+                                if file_in_archive.name not in ['list-custom.txt', 'ipset-white-user.txt']:
+                                    dest_file = lists_dest / file_in_archive.name
+                                    shutil.copy2(file_in_archive, dest_file)
+                    
                     elif item.is_dir():
                         if dest.exists():
                             shutil.rmtree(dest)
                         shutil.copytree(item, dest)
                     else:
                         shutil.copy2(item, dest)
+                
+                shutil.rmtree(temp_extract)
             
-            if temp_extract.exists():
-                shutil.rmtree(temp_extract, ignore_errors=True)
+            if saved_custom_files:
+                lists_dest = zapret_dir / "lists"
+                lists_dest.mkdir(parents=True, exist_ok=True)
+                
+                for filename, content in saved_custom_files.items():
+                    dest_file = lists_dest / filename
+                    with open(dest_file, 'w', encoding='utf-8') as f:
+                        f.write(content)
+            
             if temp_zip.exists():
                 temp_zip.unlink()
             
